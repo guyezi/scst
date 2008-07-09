@@ -1,0 +1,39 @@
+Index: scst/src/Makefile
+===================================================================
+--- scst/src/Makefile	(revision 233)
++++ scst/src/Makefile	(working copy)
+@@ -115,7 +115,7 @@ EXTRA_CFLAGS += -I$(SCST_INC_DIR) -Wextr
+ 
+ #EXTRA_CFLAGS += -DSTRICT_SERIALIZING
+ 
+-EXTRA_CFLAGS += -DEXTRACHECKS
++#EXTRA_CFLAGS += -DEXTRACHECKS
+ 
+ #EXTRA_CFLAGS += -DUSE_EXPECTED_VALUES
+ #EXTRA_CFLAGS += -DALLOW_PASSTHROUGH_IO_SUBMIT_IN_SIRQ
+@@ -125,7 +125,7 @@ EXTRA_CFLAGS += -DEXTRACHECKS
+ 
+ #EXTRA_CFLAGS += -DTRACING
+ 
+-EXTRA_CFLAGS += -DDEBUG -g
++#EXTRA_CFLAGS += -DDEBUG -g
+ #EXTRA_CFLAGS += -DDEBUG_TM -DTM_DBG_GO_OFFLINE=0
+ #EXTRA_CFLAGS += -DDEBUG_RETRY
+ #EXTRA_CFLAGS += -DDEBUG_OOM
+Index: scst/src/dev_handlers/Makefile
+===================================================================
+--- scst/src/dev_handlers/Makefile	(revision 230)
++++ scst/src/dev_handlers/Makefile	(working copy)
+@@ -69,10 +69,10 @@ endif
+ 
+ EXTRA_CFLAGS += -I$(SUBDIRS) -I$(SCST_INC_DIR) -Wextra -Wno-unused-parameter
+ 
+-EXTRA_CFLAGS += -DEXTRACHECKS
++#EXTRA_CFLAGS += -DEXTRACHECKS
+ 
+ #EXTRA_CFLAGS += -DTRACING
+-EXTRA_CFLAGS += -DDEBUG -g
++#EXTRA_CFLAGS += -DDEBUG -g
+ 
+ clean:
+ 	rm -f *.o *.ko .*.cmd *.mod.c .*.d .depend Modules.symvers \

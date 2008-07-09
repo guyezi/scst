@@ -1,0 +1,96 @@
+menu "SCSI target middle level support"
+
+config SCSI_TARGET
+	tristate "SCSI target middle level support"
+	default SCSI
+	depends on SCSI && PROC_FS
+	---help---
+	  SCSI TARGET is designed to provide unified, consistent interface
+	  between SCSI target drivers and Linux kernel and simplify target
+	  drivers development as much as possible.
+
+config SCSI_TARGET_DISK
+	tristate "SCSI target disk support"
+	default SCSI_TARGET
+	depends on SCSI && PROC_FS && SCSI_TARGET
+	---help---
+	  SCSI TARGET handler for disk device.
+
+config SCSI_TARGET_TAPE
+	tristate "SCSI target tape support"
+	default SCSI_TARGET
+	depends on SCSI && PROC_FS && SCSI_TARGET
+	---help---
+	  SCSI TARGET handler for tape device.
+
+config SCSI_TARGET_CDROM
+	tristate "SCSI target cdrom support"
+	default SCSI_TARGET
+	depends on SCSI && PROC_FS && SCSI_TARGET
+	---help---
+	  SCSI TARGET handler for cdrom device.
+
+config SCSI_TARGET_MODISK
+	tristate "SCSI target MO disk support"
+	default SCSI_TARGET
+	depends on SCSI && PROC_FS && SCSI_TARGET
+	---help---
+	  SCSI TARGET handler for MO disk device.
+
+config SCSI_TARGET_CHANGER
+	tristate "SCSI target changer support"
+	default SCSI_TARGET
+	depends on SCSI && PROC_FS && SCSI_TARGET
+	---help---
+	  SCSI TARGET handler for changer device.
+
+config SCSI_TARGET_PROCESSOR
+	tristate "SCSI target processor support"
+	default SCSI_TARGET
+	depends on SCSI && PROC_FS && SCSI_TARGET
+	---help---
+	  SCSI TARGET handler for processor device.
+
+config SCSI_TARGET_RAID
+	tristate "SCSI target storage array controller (raid) support"
+	default SCSI_TARGET
+	depends on SCSI && PROC_FS && SCSI_TARGET
+	---help---
+	  SCSI TARGET handler for raid storage array controller (raid) device.
+
+config SCSI_TARGET_VDISK
+	tristate "SCSI target virtual disk and/or cdrom support"
+	default SCSI_TARGET
+	depends on SCSI && PROC_FS && SCSI_TARGET
+	---help---
+	  SCSI TARGET handler for virtual disk and/or cdrom device.
+
+config SCSI_TARGET_USER
+	tristate "SCSI user space virtual target devices support"
+	default SCSI_TARGET
+	depends on SCSI && PROC_FS && SCSI_TARGET && ! HIGHMEM
+	---help---
+	  SCSI TARGET handler for virtual user space device.
+
+source "drivers/scst/iscsi-scst/Kconfig"
+
+config SCSI_TARGET_EXTRACHECKS
+       bool "Extra consistency checks"
+	---help---
+	 Enable additional consistency checks in the SCSI middle level target
+	 code. This may be helpful for SCST developers.
+
+config SCSI_TARGET_TRACING
+	bool "Tracing support"
+	---help---
+	 Enable SCSI middle level tracing support. Tracing can be controlled
+	 dynamically via /proc/scsi_tgt/trace_level. The traced information
+	 is sent to the kernel log and may be very helpful when analyzing
+	 the cause of a communication problem between initiator and target.
+
+config SCSI_TARGET_DEBUG
+	bool "Debug support"
+	---help---
+	  SCSI TARGET debugging.
+
+endmenu

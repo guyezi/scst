@@ -1,0 +1,108 @@
+Target driver for Qlogic 2200/2300 Fibre Channel cards
+======================================================
+
+Version 1.0.0, 7 July 2008
+--------------------------
+
+This driver has all required features and looks to be quite stable (for
+beta) and useful. It consists from two parts: the target mode driver
+itself and the changed initiator driver from Linux kernel, which is,
+particularly, intended to perform all the initialization and shutdown
+tasks. This driver was changed to provide the target mode support and
+all necessary callbacks, but it's still capable to work as initiator
+only. Mode, when a host acts as the initiator and the target
+simultaneously, is supported as well.
+
+This version is compatible with SCST core version 1.0.0 and higher.
+
+The original initiator driver was taken from the kernel 2.6.17.8.
+
+See also "ToDo" file for list of known issues and unimplemented 
+features.
+
+Installation
+------------
+
+Only vanilla kernels from kernel.org are supported, but it should work
+on vendors' kernels, if you manage to successfully compile on them. The
+main problem with vendor's kernels is that they often contain patches,
+which will appear only in the next version of the vanilla kernel,
+therefore it's quite hard to track such changes. Thus, if during
+compilation for some vendor kernel your compiler complains about
+redefinition of some symbol, you should either switch to vanilla kernel,
+or change as necessary the corresponding to that symbol "#if
+LINUX_VERSION_CODE" statement.
+
+At first, make sure that the link "/lib/modules/`you_kernel_version`/build" 
+points to the source code for your currently running kernel.
+
+Then you should replace (or link) by the initiator driver from this
+package "qla2xxx" subdirectory in kernel_source/drivers/scsi/ of the
+currently running kernel and using your favorite kernel configuration
+tool enable in the QLogic QLA2XXX Fibre Channel driver target mode
+support (CONFIG_SCSI_QLA2XXX_TARGET). Then rebuild the kernel and its
+modules. During this step you will compile the initiator driver. To
+install it, install the built kernel and its modules.
+
+Then edit qla2x00-target/Makefile and set SCST_INC_DIR variable to point
+to the directory, where SCST's public include files are located. If you
+install QLA2x00 target driver's source code in the SCST's directory,
+then SCST_INC_DIR will be set correctly for you.
+
+Also you can set SCST_DIR variable to the directory, where SCST was
+built, but this is optional. If you don't set it or set incorrectly,
+during the compilation you will get a bunch of harmless warnings like
+"WARNING: "scst_rx_data" [/XXX/qla2x00tgt.ko] undefined!"
+
+To compile the target driver, type 'make' in qla2x00-target/
+subdirectory. It will build qla2x00tgt.ko module.
+
+To install the target driver, type 'make install' in qla2x00-target/
+subdirectory. The target driver will be installed in
+/lib/modules/`you_kernel_version`/extra. To uninstall it, type 'make
+uninstall'.
+
+After the drivers are loaded and adapters successfully initialized by
+the initiator driver, including firmware image load, the target mode
+should be enabled via a sysfs interface on a per card basis. Under the
+appropriate scsi_host there is an entry target_mode_enabled, where you
+should write "1", like:
+
+echo "1" >/sys/class/scsi_host/host0/target_mode_enabled
+
+Then you should configure exported devices using the corresponding
+interface of SCST core. It is highly recommended to use scstadmin
+utility for that purpose.
+
+Compilation options
+-------------------
+
+There are the following compilation options, that could be commented
+in/out in Makefile:
+
+ - DEBUG_TGT - turns on some debugging code, including some logging. Makes
+   the driver considerably bigger and slower, producing large amount of
+   log data.
+
+ - TRACING - turns on ability to log events. Makes the driver considerably
+   bigger and lead to some performance loss.
+
+ - DEBUG_WORK_IN_THREAD - makes SCST process incoming commands and
+   call the driver's callbacks in SCST thread context instead of tasklet
+   one. Useful for debugging and lead to some performance loss.
+   
+Credits
+-------
+
+Thanks to 
+
+ * Nathaniel Clark <nate@misrule.us> for porting to new 2.6 kernel
+initiator driver.
+
+ * Mark Buechler <mark.buechler@gmail.com> for the original
+WWN-based authentification, a lot of useful suggestions, bug reports and
+help in debugging.
+
+ * Ming Zhang <mingz@ele.uri.edu> for his fixes.
+
+Vladislav Bolkhovitin <vst@vlnb.net>, http://scst.sourceforge.net
