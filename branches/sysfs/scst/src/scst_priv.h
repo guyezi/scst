@@ -383,6 +383,10 @@ void scst_cleanup_proc_target_entries(struct scst_tgt *vtt);
 int scst_build_proc_dev_handler_dir_entries(struct scst_dev_type *dev_type);
 void scst_cleanup_proc_dev_handler_dir_entries(struct scst_dev_type *dev_type);
 
+/* sysfs support  */
+int scst_sysfs_init(void);
+void scst_sysfs_cleanup(void);
+
 int scst_get_cdb_len(const uint8_t *cdb);
 
 void __scst_dev_check_set_UA(struct scst_device *dev, struct scst_cmd *exclude,

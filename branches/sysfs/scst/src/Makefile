@@ -33,12 +33,13 @@ ifneq ($(PATCHLEVEL),)
 SCST_INC_DIR := $(SUBDIRS)/../include
 
 obj-m := scst.o
-scst-objs := scst_main.o scst_targ.o scst_lib.o scst_mem.o scst_proc.o
+scst-objs := scst_main.o scst_targ.o scst_lib.o scst_mem.o scst_proc.o scst_sysfs.o
 
 scst-y        += scst_main.o
 scst-y        += scst_targ.o
 scst-y        += scst_lib.o
 scst-y        += scst_proc.o
+scst-y        += scst_sysfs.o
 scst-y        += scst_mem.o
 scst-y        += scst_debug.o
 obj-$(CONFIG_SCST)   += scst.o dev_handlers/

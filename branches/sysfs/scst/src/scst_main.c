@@ -1868,6 +1868,10 @@ static int __init init_scst(void)
 	if (res != 0)
 		goto out_thread_free;
 
+	res = scst_sysfs_init();
+	if (res != 0)
+		goto out_proc_free;
+
 
 	PRINT_INFO("SCST version %s loaded successfully (max mem for "
 		"commands %dMB, per device %dMB)", SCST_VERSION_STRING,
@@ -1878,6 +1882,9 @@ static int __init init_scst(void)
 out:
 	TRACE_EXIT_RES(res);
 	return res;
+
+out_proc_free:
+	scst_proc_cleanup_module();
 
 out_thread_free:
 	scst_stop_all_threads();
@@ -1941,6 +1948,7 @@ static void __exit exit_scst(void)
 	/* ToDo: unregister_cpu_notifier() */
 
 	scst_proc_cleanup_module();
+	scst_sysfs_cleanup();
 
 	scst_stop_all_threads();
 
