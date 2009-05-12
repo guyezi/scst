@@ -44,7 +44,7 @@
  */
 #define SCST_VERSION(a, b, c, d)    (((a) << 24) + ((b) << 16) + ((c) << 8) + d)
 #define SCST_VERSION_CODE	    SCST_VERSION(1, 0, 2, 0)
-#define SCST_VERSION_STRING	    "1.0.2"
+#define SCST_VERSION_STRING	    "1.0.2sysfs"
 #define SCST_INTERFACE_VERSION	    \
 		SCST_VERSION_STRING "$Revision$" SCST_CONST_VERSION
 
@@ -757,6 +757,8 @@ struct scst_tgt_template {
 	/* The pointer to the /proc directory entry */
 	struct proc_dir_entry *proc_tgt_root;
 
+	struct kobject *tgtt_kobj; /* kobject for this struct. */
+
 	/* Device number in /proc */
 	int proc_dev_num;
 };
@@ -958,6 +960,8 @@ struct scst_tgt {
 
 	/* Name on the default security group ("Default_target_name") */
 	char *default_group_name;
+
+	struct kobject *tgt_kobj; /* kobject for this struct. */
 };
 
 /* Hash size and hash fn for hash based lun translation */

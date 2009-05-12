@@ -13,16 +13,55 @@
 
 static DEFINE_MUTEX(scst_sysfs_mutex);
 
-/* struct kobject *targets; */
-/* struct kobject *devices; */
-/* struct kobject *sgv; */
-/* struct kobject *drivers; */
 
 struct scst_sysfs_root {
 	struct kobject kobj;
 };
 
 struct scst_sysfs_root *scst_sysfs_root;
+struct kobject *scst_targets_kobj;
+struct kobject *scst_devices_kobj;
+struct kobject *scst_sgv_kobj;
+struct kobject *scst_back_drivers_kobj;
+
+int scst_create_tgtt_kobj(struct scst_tgt_template *vtt)
+{
+	int retval = 0;
+
+	TRACE_ENTRY();
+
+	vtt->tgtt_kobj = kobject_create_and_add(vtt->name, scst_targets_kobj);
+	if (!vtt->tgtt_kobj)
+		retval = -EINVAL;
+
+	TRACE_EXIT_RES(retval);
+	return retval;
+}
+
+void scst_destroy_tgtt_kobj(struct scst_tgt_template *vtt)
+{
+	kobject_put(vtt->tgtt_kobj);
+}
+
+int scst_create_tgt_kobj(struct scst_tgt *tgt)
+{
+	int retval = 0;
+
+	TRACE_ENTRY();
+
+	tgt->tgt_kobj = kobject_create_and_add(tgt->default_group_name,
+					       tgt->tgtt->tgtt_kobj);
+	if (!tgt->tgt_kobj)
+		retval = -EINVAL;
+
+	TRACE_EXIT_RES(retval);
+	return retval;
+}
+
+void scst_destroy_tgt_kobj(struct scst_tgt *tgt)
+{
+	kobject_put(tgt->tgt_kobj);
+}
 
 static ssize_t scst_threads_show(struct kobject *kobj, struct kobj_attribute *attr,
 				 char *buf)
@@ -36,7 +75,6 @@ static ssize_t scst_threads_show(struct kobject *kobj, struct kobj_attribute *at
 	TRACE_EXIT();
 	return count;
 }
-
 
 static ssize_t scst_threads_store(struct kobject *kobj, struct kobj_attribute *attr,
 				  const char *buf, size_t count)
@@ -85,22 +123,22 @@ out:
 	return res;
 }
 
-
-static ssize_t scst_trace_level_show(struct kobject *kobj, struct kobj_attribute *attr,
+static ssize_t scst_trace_level_show(struct kobject *kobj,
+				     struct kobj_attribute *attr,
 				     char *buf)
 {
-	return sprintf(buf, "stgt show!!\n");
+	return sprintf(buf, "trace level show!!\n");
 }
 
-
-static ssize_t scst_trace_level_store(struct kobject *kobj, struct kobj_attribute *attr,
+static ssize_t scst_trace_level_store(struct kobject *kobj,
+				      struct kobj_attribute *attr,
 				      const char *buf, size_t count)
 {
 	return count;
 }
 
-
-static ssize_t scst_version_show(struct kobject *kobj, struct kobj_attribute *attr,
+static ssize_t scst_version_show(struct kobject *kobj,
+				 struct kobj_attribute *attr,
 				 char *buf)
 {
 	TRACE_ENTRY();
@@ -156,13 +194,13 @@ static ssize_t scst_version_show(struct kobject *kobj, struct kobj_attribute *at
 
 }
 
-
 struct kobj_attribute scst_threads_attr = 
-	__ATTR(threads, S_IRUGO | S_IWUSR, scst_threads_show, scst_threads_store);
+	__ATTR(threads, S_IRUGO | S_IWUSR, scst_threads_show,
+	       scst_threads_store);
 
-struct kobj_attribute scst_trace_level_attr = 
-	__ATTR(trace_level, S_IRUGO | S_IWUSR, scst_trace_level_show, scst_trace_level_store);
-
+struct kobj_attribute scst_trace_level_attr =
+	__ATTR(trace_level, S_IRUGO | S_IWUSR, scst_trace_level_show,
+	       scst_trace_level_store);
 
 struct kobj_attribute scst_version_attr = 
 	__ATTR(version, S_IRUGO, scst_version_show, NULL);
@@ -203,7 +241,6 @@ struct sysfs_ops scst_sysfs_root_kobj_ops = {
         .store = scst_store,
 };
 
-
 static struct kobj_type scst_sysfs_root_ktype = {
 	.sysfs_ops = &scst_sysfs_root_kobj_ops,
 	.release = scst_sysfs_root_release,
@@ -217,17 +254,49 @@ int __init scst_sysfs_init(void)
 	TRACE_ENTRY();
 
 	scst_sysfs_root = kzalloc(sizeof(*scst_sysfs_root), GFP_KERNEL);
-	if(!scst_sysfs_root)
+	if (!scst_sysfs_root)
 		goto sysfs_root_error;
 
 	retval = kobject_init_and_add(&scst_sysfs_root->kobj,
-			&scst_sysfs_root_ktype, NULL, "%s", "scsi_tgt");
+			&scst_sysfs_root_ktype, kernel_kobj, "%s", "scst_tgt");
 	if (retval) 
 		goto sysfs_root_kobj_error;
+
+	scst_targets_kobj = kobject_create_and_add("targets",
+						   &scst_sysfs_root->kobj);
+	if (!scst_targets_kobj)
+		goto targets_kobj_error;
+
+	scst_devices_kobj = kobject_create_and_add("devices",
+						   &scst_sysfs_root->kobj);
+	if (!scst_devices_kobj)
+		goto devices_kobj_error;
+
+	scst_sgv_kobj = kobject_create_and_add("sgv", &scst_sysfs_root->kobj);
+	if (!scst_sgv_kobj)
+		goto sgv_kobj_error;
+
+	scst_back_drivers_kobj = kobject_create_and_add("back_drivers",
+							&scst_sysfs_root->kobj);
+	if (!scst_back_drivers_kobj)
+		goto back_drivers_kobj_error;
+
 
 out:	
 	TRACE_EXIT_RES(retval);
 	return retval;
+
+back_drivers_kobj_error:
+	kobject_put(scst_sgv_kobj);
+
+sgv_kobj_error:
+	kobject_put(scst_devices_kobj);
+
+devices_kobj_error:
+	kobject_put(scst_targets_kobj);
+
+targets_kobj_error:
+	kobject_put(&scst_sysfs_root->kobj);
 
 sysfs_root_kobj_error:
 	kfree(scst_sysfs_root);
@@ -241,9 +310,12 @@ void __exit scst_sysfs_cleanup(void)
 {
 	TRACE_ENTRY();
 
+	kobject_put(scst_sgv_kobj);
+	kobject_put(scst_devices_kobj);
+	kobject_put(scst_targets_kobj);
+	kobject_put(scst_back_drivers_kobj);
 	kobject_put(&scst_sysfs_root->kobj);
 
 	TRACE_EXIT();
 	return;
 }
-

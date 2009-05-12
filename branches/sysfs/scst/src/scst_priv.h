@@ -386,6 +386,10 @@ void scst_cleanup_proc_dev_handler_dir_entries(struct scst_dev_type *dev_type);
 /* sysfs support  */
 int scst_sysfs_init(void);
 void scst_sysfs_cleanup(void);
+int scst_create_tgtt_kobj(struct scst_tgt_template *vtt);
+void scst_destroy_tgtt_kobj(struct scst_tgt_template *vtt);
+int scst_create_tgt_kobj(struct scst_tgt *tgt);
+void scst_destroy_tgt_kobj(struct scst_tgt *tgt);
 
 int scst_get_cdb_len(const uint8_t *cdb);
 

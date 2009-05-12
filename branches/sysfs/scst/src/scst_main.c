@@ -206,6 +206,10 @@ int __scst_register_target_template(struct scst_tgt_template *vtt,
 		goto out_err;
 	}
 
+	res = scst_create_tgtt_kobj(vtt);
+	if (res)
+		goto out_err;
+
 	if (!vtt->no_proc_entry) {
 		res = scst_build_proc_target_dir_entries(vtt);
 		if (res < 0)
@@ -300,6 +304,7 @@ restart:
 out_up:
 	mutex_unlock(&scst_mutex);
 
+	scst_destroy_tgtt_kobj(vtt);
 	scst_cleanup_proc_target_dir_entries(vtt);
 
 	TRACE_EXIT();
@@ -360,8 +365,12 @@ struct scst_tgt *scst_register(struct scst_tgt_template *vtt,
 	rc = scst_build_proc_target_entries(tgt);
 	if (rc < 0)
 		goto out_free_name;
-	else
-		list_add_tail(&tgt->tgt_list_entry, &vtt->tgt_list);
+
+	rc = scst_create_tgt_kobj(tgt);
+	if (rc < 0)
+		goto out_kobj_err;
+
+	list_add_tail(&tgt->tgt_list_entry, &vtt->tgt_list);
 
 	mutex_unlock(&scst_mutex);
 	scst_resume_activity();
@@ -372,6 +381,9 @@ struct scst_tgt *scst_register(struct scst_tgt_template *vtt,
 out:
 	TRACE_EXIT();
 	return tgt;
+
+out_kobj_err:
+	scst_cleanup_proc_target_entries(tgt);
 
 out_free_name:
 	kfree(tgt->default_group_name);
@@ -440,6 +452,7 @@ again:
 	list_del(&tgt->tgt_list_entry);
 
 	scst_cleanup_proc_target_entries(tgt);
+	scst_destroy_tgt_kobj(tgt);
 
 	kfree(tgt->default_group_name);
 
