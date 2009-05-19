@@ -13,54 +13,109 @@
 
 static DEFINE_MUTEX(scst_sysfs_mutex);
 
-
 struct scst_sysfs_root {
 	struct kobject kobj;
 };
 
-struct scst_sysfs_root *scst_sysfs_root;
-struct kobject *scst_targets_kobj;
-struct kobject *scst_devices_kobj;
-struct kobject *scst_sgv_kobj;
-struct kobject *scst_back_drivers_kobj;
+static struct scst_sysfs_root *scst_sysfs_root;
+static struct kobject *scst_targets_kobj;
+static struct kobject *scst_devices_kobj;
+static struct kobject *scst_sgv_kobj;
+static struct kobject *scst_back_drivers_kobj;
 
-int scst_create_tgtt_kobj(struct scst_tgt_template *vtt)
+int scst_create_tgtt_sysfs(struct scst_tgt_template *tgtt)
 {
 	int retval = 0;
 
 	TRACE_ENTRY();
 
-	vtt->tgtt_kobj = kobject_create_and_add(vtt->name, scst_targets_kobj);
-	if (!vtt->tgtt_kobj)
+	tgtt->tgtt_kobj = kobject_create_and_add(tgtt->name, scst_targets_kobj);
+	if (!tgtt->tgtt_kobj)
 		retval = -EINVAL;
 
 	TRACE_EXIT_RES(retval);
 	return retval;
 }
 
-void scst_destroy_tgtt_kobj(struct scst_tgt_template *vtt)
+void scst_cleanup_tgtt_sysfs(struct scst_tgt_template *tgtt)
 {
-	kobject_put(vtt->tgtt_kobj);
+	kobject_put(tgtt->tgtt_kobj);
 }
 
-int scst_create_tgt_kobj(struct scst_tgt *tgt)
+static void scst_tgt_free(struct kobject *kobj)
 {
-	int retval = 0;
+	struct scst_tgt *tgt;
 
 	TRACE_ENTRY();
 
-	tgt->tgt_kobj = kobject_create_and_add(tgt->default_group_name,
-					       tgt->tgtt->tgtt_kobj);
-	if (!tgt->tgt_kobj)
-		retval = -EINVAL;
+	tgt = container_of(kobj, struct scst_tgt, tgt_kobj);
+	kfree(tgt);
 
-	TRACE_EXIT_RES(retval);
-	return retval;
+	TRACE_EXIT();
+	return;
 }
 
-void scst_destroy_tgt_kobj(struct scst_tgt *tgt)
+static struct kobj_type tgt_ktype = {
+	.release = scst_tgt_free,
+};
+
+int scst_create_tgt_sysfs(struct scst_tgt *tgt)
 {
-	kobject_put(tgt->tgt_kobj);
+	int retval;
+
+	TRACE_ENTRY();
+
+	retval = kobject_init_and_add(&tgt->tgt_kobj, &tgt_ktype,
+			tgt->tgtt->tgtt_kobj, tgt->tgt_name);
+	if (retval != 0) {
+		PRINT_ERROR("Can't add tgt %s to sysfs", tgt->tgt_name);
+		goto out;
+	}
+
+	tgt->tgt_sess_kobj = kobject_create_and_add("sessions", &tgt->tgt_kobj);
+	if (!tgt->tgt_sess_kobj) {
+		PRINT_ERROR("Can't create sess kobj for tgt %s", tgt->tgt_name);
+		goto out_sess_obj_err;
+	}
+
+	tgt->tgt_luns_kobj = kobject_create_and_add("luns", &tgt->tgt_kobj);
+	if (!tgt->tgt_luns_kobj) {
+		PRINT_ERROR("Can't create luns kobj for tgt %s", tgt->tgt_name);
+		goto luns_kobj_err;
+	}
+
+	tgt->tgt_ini_grp_kobj = kobject_create_and_add("ini_group",
+						    &tgt->tgt_kobj);
+	if (!tgt->tgt_ini_grp_kobj) {
+		PRINT_ERROR("Can't create ini_grp kobj for tgt %s",
+			tgt->tgt_name);
+		goto ini_grp_kobj_err;
+	}
+
+out:
+	TRACE_EXIT_RES(retval);
+	return retval;
+
+ini_grp_kobj_err:
+	kobject_put(tgt->tgt_luns_kobj);
+
+luns_kobj_err:
+	kobject_put(tgt->tgt_sess_kobj);
+
+out_sess_obj_err:
+	kobject_del(&tgt->tgt_kobj);
+	retval = -ENOMEM;
+	goto out;
+}
+
+/* tgt can be dead upon exit from this function! */
+void scst_cleanup_tgt_sysfs_put_tgt(struct scst_tgt *tgt)
+{
+	kobject_put(tgt->tgt_sess_kobj);
+	kobject_put(tgt->tgt_luns_kobj);
+	kobject_put(tgt->tgt_ini_grp_kobj);
+	kobject_put(&tgt->tgt_kobj);
+	return;
 }
 
 static ssize_t scst_threads_show(struct kobject *kobj, struct kobj_attribute *attr,
@@ -88,7 +143,6 @@ static ssize_t scst_threads_store(struct kobject *kobj, struct kobj_attribute *a
 		res = -EOVERFLOW;
 		goto out;
 	}
-
 
 	if (mutex_lock_interruptible(&scst_sysfs_mutex) != 0) {
 		res = -EINTR;
@@ -191,7 +245,6 @@ static ssize_t scst_version_show(struct kobject *kobj,
 
 	TRACE_EXIT();
 	return strlen(buf);
-
 }
 
 struct kobj_attribute scst_threads_attr = 

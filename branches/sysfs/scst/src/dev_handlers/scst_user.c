@@ -2484,13 +2484,11 @@ static int dev_user_attach_tgt(struct scst_tgt_dev *tgt_dev)
 		sizeof(ucmd->user_cmd.sess.initiator_name)-1);
 	ucmd->user_cmd.sess.initiator_name[
 		sizeof(ucmd->user_cmd.sess.initiator_name)-1] = '\0';
-	if (tgt_dev->sess->tgt->default_group_name != NULL) {
-		strncpy(ucmd->user_cmd.sess.target_name,
-			&tgt_dev->sess->tgt->default_group_name[sizeof(SCST_DEFAULT_ACG_NAME)],
-			sizeof(ucmd->user_cmd.sess.target_name)-1);
-		ucmd->user_cmd.sess.target_name[
-			sizeof(ucmd->user_cmd.sess.target_name)-1] = '\0';
-	}
+	strncpy(ucmd->user_cmd.sess.target_name,
+		&tgt_dev->sess->tgt->tgt_name,
+		sizeof(ucmd->user_cmd.sess.target_name)-1);
+	ucmd->user_cmd.sess.target_name[
+		sizeof(ucmd->user_cmd.sess.target_name)-1] = '\0';
 
 	TRACE_MGMT_DBG("Preparing ATTACH_SESS %p (h %d, sess_h %llx, LUN %llx, "
 		"threads_num %d, rd_only_flag %d, initiator %s, target %s)",

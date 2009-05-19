@@ -958,10 +958,16 @@ struct scst_tgt {
 	/* Device number in /proc */
 	int proc_num;
 
+	/* Name of the target */
+	char *tgt_name;
+
 	/* Name on the default security group ("Default_target_name") */
 	char *default_group_name;
 
-	struct kobject *tgt_kobj; /* kobject for this struct. */
+	struct kobject tgt_kobj; /* main kobject for this struct. */
+	struct kobject *tgt_sess_kobj;
+	struct kobject *tgt_luns_kobj;
+	struct kobject *tgt_ini_grp_kobj;
 };
 
 /* Hash size and hash fn for hash based lun translation */

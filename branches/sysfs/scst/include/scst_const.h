@@ -129,6 +129,11 @@ enum scst_cmd_queue_type {
 #define SCST_DEFAULT_ACG_NAME			"Default"
 
 /*************************************************************
+ ** Default suffix for targets with NULL names
+ *************************************************************/
+#define SCST_DEFAULT_TGT_NAME_SUFFIX		"_target_"
+
+/*************************************************************
  ** Sense manipulation and examination
  *************************************************************/
 #define SCST_LOAD_SENSE(key_asc_ascq) key_asc_ascq
