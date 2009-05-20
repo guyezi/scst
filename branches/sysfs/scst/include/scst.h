@@ -964,6 +964,8 @@ struct scst_tgt {
 	/* Name on the default security group ("Default_target_name") */
 	char *default_group_name;
 
+	unsigned int tgt_sysfs_initialized:1;
+
 	struct kobject tgt_kobj; /* main kobject for this struct. */
 	struct kobject *tgt_sess_kobj;
 	struct kobject *tgt_luns_kobj;

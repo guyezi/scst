@@ -50,7 +50,9 @@ static void scst_tgt_free(struct kobject *kobj)
 	TRACE_ENTRY();
 
 	tgt = container_of(kobj, struct scst_tgt, tgt_kobj);
-	kfree(tgt);
+
+	if (tgt->tgt_sysfs_initialized)
+		kfree(tgt);
 
 	TRACE_EXIT();
 	return;
@@ -93,6 +95,8 @@ int scst_create_tgt_sysfs(struct scst_tgt *tgt)
 		goto ini_grp_kobj_err;
 	}
 
+	tgt->tgt_sysfs_initialized = 1;
+
 out:
 	TRACE_EXIT_RES(retval);
 	return retval;
@@ -107,6 +111,7 @@ luns_kobj_err:
 
 out_sess_obj_err:
 	kobject_del(&tgt->tgt_kobj);
+	kobject_put(&tgt->tgt_kobj);
 	retval = -ENOMEM;
 	goto out;
 }
