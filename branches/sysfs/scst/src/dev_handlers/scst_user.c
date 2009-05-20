@@ -2485,7 +2485,7 @@ static int dev_user_attach_tgt(struct scst_tgt_dev *tgt_dev)
 	ucmd->user_cmd.sess.initiator_name[
 		sizeof(ucmd->user_cmd.sess.initiator_name)-1] = '\0';
 	strncpy(ucmd->user_cmd.sess.target_name,
-		&tgt_dev->sess->tgt->tgt_name,
+		tgt_dev->sess->tgt->tgt_name,
 		sizeof(ucmd->user_cmd.sess.target_name)-1);
 	ucmd->user_cmd.sess.target_name[
 		sizeof(ucmd->user_cmd.sess.target_name)-1] = '\0';

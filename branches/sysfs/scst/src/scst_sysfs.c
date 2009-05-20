@@ -39,6 +39,7 @@ int scst_create_tgtt_sysfs(struct scst_tgt_template *tgtt)
 
 void scst_cleanup_tgtt_sysfs(struct scst_tgt_template *tgtt)
 {
+	kobject_del(tgtt->tgtt_kobj);
 	kobject_put(tgtt->tgtt_kobj);
 }
 
@@ -97,9 +98,11 @@ out:
 	return retval;
 
 ini_grp_kobj_err:
+	kobject_del(tgt->tgt_luns_kobj);
 	kobject_put(tgt->tgt_luns_kobj);
 
 luns_kobj_err:
+	kobject_del(tgt->tgt_sess_kobj);
 	kobject_put(tgt->tgt_sess_kobj);
 
 out_sess_obj_err:
@@ -111,9 +114,16 @@ out_sess_obj_err:
 /* tgt can be dead upon exit from this function! */
 void scst_cleanup_tgt_sysfs_put_tgt(struct scst_tgt *tgt)
 {
+	kobject_del(tgt->tgt_sess_kobj);
 	kobject_put(tgt->tgt_sess_kobj);
+
+	kobject_del(tgt->tgt_luns_kobj);
 	kobject_put(tgt->tgt_luns_kobj);
+
+	kobject_del(tgt->tgt_ini_grp_kobj);
 	kobject_put(tgt->tgt_ini_grp_kobj);
+
+	kobject_del(&tgt->tgt_kobj);
 	kobject_put(&tgt->tgt_kobj);
 	return;
 }
@@ -340,15 +350,19 @@ out:
 	return retval;
 
 back_drivers_kobj_error:
+	kobject_del(scst_sgv_kobj);
 	kobject_put(scst_sgv_kobj);
 
 sgv_kobj_error:
+	kobject_del(scst_devices_kobj);
 	kobject_put(scst_devices_kobj);
 
 devices_kobj_error:
+	kobject_del(scst_targets_kobj);
 	kobject_put(scst_targets_kobj);
 
 targets_kobj_error:
+	kobject_del(&scst_sysfs_root->kobj);
 	kobject_put(&scst_sysfs_root->kobj);
 
 sysfs_root_kobj_error:
@@ -363,10 +377,19 @@ void __exit scst_sysfs_cleanup(void)
 {
 	TRACE_ENTRY();
 
+	kobject_del(scst_sgv_kobj);
 	kobject_put(scst_sgv_kobj);
+
+	kobject_del(scst_devices_kobj);
 	kobject_put(scst_devices_kobj);
+
+	kobject_del(scst_targets_kobj);
 	kobject_put(scst_targets_kobj);
+
+	kobject_del(scst_back_drivers_kobj);
 	kobject_put(scst_back_drivers_kobj);
+
+	kobject_del(&scst_sysfs_root->kobj);
 	kobject_put(&scst_sysfs_root->kobj);
 
 	TRACE_EXIT();
