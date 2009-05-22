@@ -3562,7 +3562,7 @@ out_unlock:
 			struct scst_tgt_dev *tgt_dev;
 			list_for_each_entry_reverse(tgt_dev, sess_tgt_dev_list_head,
 					sess_tgt_dev_list_entry) {
-				spin_unlock_bh(&tgt_dev->tgt_dev_lock);
+				spin_unlock(&tgt_dev->tgt_dev_lock);
 			}
 		}
 
