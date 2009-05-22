@@ -108,11 +108,9 @@ struct sgv_pool {
 	struct mm_struct *owner_mm;
 
 	struct list_head sgv_pools_list_entry;
-};
 
-int sgv_pool_init(struct sgv_pool *pool, const char *name,
-	enum sgv_clustering_types clustering_type);
-void sgv_pool_deinit(struct sgv_pool *pool);
+	struct kobject sgv_kobj;
+};
 
 static inline struct scatterlist *sgv_pool_sg(struct sgv_pool_obj *obj)
 {
@@ -123,6 +121,11 @@ extern int scst_sgv_pools_init(unsigned long mem_hwmark,
 			       unsigned long mem_lwmark);
 extern void scst_sgv_pools_deinit(void);
 extern int sgv_procinfo_show(struct seq_file *seq, void *v);
+
+extern ssize_t sgv_sysfs_stat_show(struct kobject *kobj,
+	struct kobj_attribute *attr, char *buf);
+extern ssize_t sgv_sysfs_global_stat_show(struct kobject *kobj,
+	struct kobj_attribute *attr, char *buf);
 
 void scst_sgv_pool_use_norm(struct scst_tgt_dev *tgt_dev);
 void scst_sgv_pool_use_norm_clust(struct scst_tgt_dev *tgt_dev);

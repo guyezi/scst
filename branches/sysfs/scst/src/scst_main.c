@@ -325,6 +325,7 @@ struct scst_tgt *scst_register(struct scst_tgt_template *vtt,
 {
 	struct scst_tgt *tgt;
 	int rc = 0;
+	bool indirect_free = false;
 
 	TRACE_ENTRY();
 
@@ -401,6 +402,8 @@ struct scst_tgt *scst_register(struct scst_tgt_template *vtt,
 	if (rc < 0)
 		goto out_clean_proc;
 
+	indirect_free = true;
+
 	list_add_tail(&tgt->tgt_list_entry, &vtt->tgt_list);
 
 	mutex_unlock(&scst_mutex);
@@ -429,7 +432,10 @@ out_resume_free:
 	scst_resume_activity();
 
 out_free_tgt_err:
-	kfree(tgt);
+	if (indirect_free)
+		kobject_put(&tgt->tgt_kobj);
+	else
+		kfree(tgt);
 	tgt = NULL;
 
 out_err:
@@ -495,7 +501,7 @@ again:
 
 	del_timer_sync(&tgt->retry_timer);
 
-	scst_cleanup_tgt_sysfs_put_tgt(tgt);
+	scst_cleanup_tgt_sysfs_put(tgt);
 	/* tgt can be dead here! */
 
 	PRINT_INFO("Target %p for template %s unregistered successfully",
@@ -1856,6 +1862,10 @@ static int __init init_scst(void)
 		goto out_destroy_sense_mempool;
 	}
 
+	res = scst_sysfs_init();
+	if (res != 0)
+		goto out_destroy_aen_mempool;
+
 	if (scst_max_cmd_mem == 0) {
 		struct sysinfo si;
 		si_meminfo(&si);
@@ -1883,7 +1893,7 @@ static int __init init_scst(void)
 	res = scst_sgv_pools_init(
 		((uint64_t)scst_max_cmd_mem << 10) >> (PAGE_SHIFT - 10), 0);
 	if (res != 0)
-		goto out_destroy_aen_mempool;
+		goto out_sysfs_cleanup;
 
 	scst_default_acg = scst_alloc_add_acg(SCST_DEFAULT_ACG_NAME);
 	if (scst_default_acg == NULL) {
@@ -1916,11 +1926,6 @@ static int __init init_scst(void)
 	if (res != 0)
 		goto out_thread_free;
 
-	res = scst_sysfs_init();
-	if (res != 0)
-		goto out_proc_free;
-
-
 	PRINT_INFO("SCST version %s loaded successfully (max mem for "
 		"commands %dMB, per device %dMB)", SCST_VERSION_STRING,
 		scst_max_cmd_mem, scst_max_dev_cmd_mem);
@@ -1930,9 +1935,6 @@ static int __init init_scst(void)
 out:
 	TRACE_EXIT_RES(res);
 	return res;
-
-out_proc_free:
-	scst_proc_cleanup_module();
 
 out_thread_free:
 	scst_stop_all_threads();
@@ -1944,6 +1946,9 @@ out_free_acg:
 
 out_destroy_sgv_pool:
 	scst_sgv_pools_deinit();
+
+out_sysfs_cleanup:
+	scst_sysfs_cleanup();
 
 out_destroy_aen_mempool:
 	mempool_destroy(scst_aen_mempool);

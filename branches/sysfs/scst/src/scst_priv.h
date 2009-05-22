@@ -389,7 +389,9 @@ void scst_sysfs_cleanup(void);
 int scst_create_tgtt_sysfs(struct scst_tgt_template *vtt);
 void scst_cleanup_tgtt_sysfs(struct scst_tgt_template *vtt);
 int scst_create_tgt_sysfs(struct scst_tgt *tgt);
-void scst_cleanup_tgt_sysfs_put_tgt(struct scst_tgt *tgt);
+void scst_cleanup_tgt_sysfs_put(struct scst_tgt *tgt);
+int scst_create_sgv_sysfs(struct sgv_pool *pool);
+void scst_cleanup_sgv_sysfs_put(struct sgv_pool *pool);
 
 int scst_get_cdb_len(const uint8_t *cdb);
 

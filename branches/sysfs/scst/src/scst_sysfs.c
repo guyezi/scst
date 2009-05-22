@@ -13,15 +13,15 @@
 
 static DEFINE_MUTEX(scst_sysfs_mutex);
 
-struct scst_sysfs_root {
-	struct kobject kobj;
-};
-
-static struct scst_sysfs_root *scst_sysfs_root;
+static struct kobject *scst_sysfs_root_kobj;
 static struct kobject *scst_targets_kobj;
 static struct kobject *scst_devices_kobj;
 static struct kobject *scst_sgv_kobj;
 static struct kobject *scst_back_drivers_kobj;
+
+static struct sysfs_ops scst_sysfs_ops;
+
+static void scst_sysfs_release(struct kobject *kobj);
 
 int scst_create_tgtt_sysfs(struct scst_tgt_template *tgtt)
 {
@@ -51,8 +51,7 @@ static void scst_tgt_free(struct kobject *kobj)
 
 	tgt = container_of(kobj, struct scst_tgt, tgt_kobj);
 
-	if (tgt->tgt_sysfs_initialized)
-		kfree(tgt);
+	kfree(tgt);
 
 	TRACE_EXIT();
 	return;
@@ -95,8 +94,6 @@ int scst_create_tgt_sysfs(struct scst_tgt *tgt)
 		goto ini_grp_kobj_err;
 	}
 
-	tgt->tgt_sysfs_initialized = 1;
-
 out:
 	TRACE_EXIT_RES(retval);
 	return retval;
@@ -111,13 +108,12 @@ luns_kobj_err:
 
 out_sess_obj_err:
 	kobject_del(&tgt->tgt_kobj);
-	kobject_put(&tgt->tgt_kobj);
 	retval = -ENOMEM;
 	goto out;
 }
 
 /* tgt can be dead upon exit from this function! */
-void scst_cleanup_tgt_sysfs_put_tgt(struct scst_tgt *tgt)
+void scst_cleanup_tgt_sysfs_put(struct scst_tgt *tgt)
 {
 	kobject_del(tgt->tgt_sess_kobj);
 	kobject_put(tgt->tgt_sess_kobj);
@@ -132,6 +128,74 @@ void scst_cleanup_tgt_sysfs_put_tgt(struct scst_tgt *tgt)
 	kobject_put(&tgt->tgt_kobj);
 	return;
 }
+
+struct kobj_attribute sgv_stat_attr = 
+	__ATTR(stats, S_IRUGO, sgv_sysfs_stat_show, NULL);
+
+static struct attribute *sgv_attrs[] = {
+	&sgv_stat_attr.attr,
+	NULL,
+};
+
+static void sgv_release(struct kobject *kobj)
+{
+	struct sgv_pool *pool;
+
+	TRACE_ENTRY();
+
+	pool = container_of(kobj, struct sgv_pool, sgv_kobj);
+
+	kfree(pool);
+
+	TRACE_EXIT();
+	return;
+}
+
+static struct kobj_type sgv_pool_ktype = {
+	.sysfs_ops = &scst_sysfs_ops,
+	.release = sgv_release,
+	.default_attrs = sgv_attrs,
+};
+
+int scst_create_sgv_sysfs(struct sgv_pool *pool)
+{
+	int retval;
+
+	TRACE_ENTRY();
+
+	retval = kobject_init_and_add(&pool->sgv_kobj, &sgv_pool_ktype,
+			scst_sgv_kobj, pool->name);
+	if (retval != 0) {
+		PRINT_ERROR("Can't add sgv pool %s to sysfs", pool->name);
+		goto out;
+	}
+
+out:
+	TRACE_EXIT_RES(retval);
+	return retval;
+}
+
+/* pool can be dead upon exit from this function! */
+void scst_cleanup_sgv_sysfs_put(struct sgv_pool *pool)
+{
+	kobject_del(&pool->sgv_kobj);
+	kobject_put(&pool->sgv_kobj);
+	return;
+}
+
+struct kobj_attribute sgv_global_stat_attr = 
+	__ATTR(global_stats, S_IRUGO, sgv_sysfs_global_stat_show, NULL);
+
+static struct attribute *sgv_default_attrs[] = {
+	&sgv_global_stat_attr.attr,
+	NULL,
+};
+
+static struct kobj_type sgv_ktype = {
+	.sysfs_ops = &scst_sysfs_ops,
+	.release = scst_sysfs_release,
+	.default_attrs = sgv_default_attrs,
+};
 
 static ssize_t scst_threads_show(struct kobject *kobj, struct kobj_attribute *attr,
 				 char *buf)
@@ -272,7 +336,6 @@ struct kobj_attribute scst_trace_level_attr =
 
 struct kobj_attribute scst_version_attr = 
 	__ATTR(version, S_IRUGO, scst_version_show, NULL);
-
 	
 static struct attribute *scst_sysfs_root_default_attrs[] = {
 	&scst_threads_attr.attr,
@@ -281,9 +344,9 @@ static struct attribute *scst_sysfs_root_default_attrs[] = {
 	NULL,
 };
 
-static void scst_sysfs_root_release(struct kobject *kobj)
+static void scst_sysfs_release(struct kobject *kobj)
 {
-	kfree(scst_sysfs_root);
+	kfree(kobj);
 }
 
 static ssize_t scst_show(struct kobject *kobj, struct attribute *attr,
@@ -304,16 +367,17 @@ static ssize_t scst_store(struct kobject *kobj, struct attribute *attr,
 	return kobj_attr->store(kobj, kobj_attr, buf, count);
 }
 
-struct sysfs_ops scst_sysfs_root_kobj_ops = {
+static struct sysfs_ops scst_sysfs_ops = {
         .show = scst_show,
         .store = scst_store,
 };
 
 static struct kobj_type scst_sysfs_root_ktype = {
-	.sysfs_ops = &scst_sysfs_root_kobj_ops,
-	.release = scst_sysfs_root_release,
+	.sysfs_ops = &scst_sysfs_ops,
+	.release = scst_sysfs_release,
 	.default_attrs = scst_sysfs_root_default_attrs,
 };
+
 
 int __init scst_sysfs_init(void)
 {
@@ -321,31 +385,37 @@ int __init scst_sysfs_init(void)
 
 	TRACE_ENTRY();
 
-	scst_sysfs_root = kzalloc(sizeof(*scst_sysfs_root), GFP_KERNEL);
-	if (!scst_sysfs_root)
+	scst_sysfs_root_kobj = kzalloc(sizeof(*scst_sysfs_root_kobj),
+					GFP_KERNEL);
+	if (!scst_sysfs_root_kobj)
 		goto sysfs_root_error;
 
-	retval = kobject_init_and_add(&scst_sysfs_root->kobj,
+	retval = kobject_init_and_add(scst_sysfs_root_kobj,
 			&scst_sysfs_root_ktype, kernel_kobj, "%s", "scst_tgt");
-	if (retval) 
-		goto sysfs_root_kobj_error;
+	if (retval != 0)
+		goto sysfs_root_add_error;
 
 	scst_targets_kobj = kobject_create_and_add("targets",
-						   &scst_sysfs_root->kobj);
+				scst_sysfs_root_kobj);
 	if (!scst_targets_kobj)
 		goto targets_kobj_error;
 
 	scst_devices_kobj = kobject_create_and_add("devices",
-						   &scst_sysfs_root->kobj);
+				scst_sysfs_root_kobj);
 	if (!scst_devices_kobj)
 		goto devices_kobj_error;
 
-	scst_sgv_kobj = kobject_create_and_add("sgv", &scst_sysfs_root->kobj);
+	scst_sgv_kobj = kzalloc(sizeof(*scst_sgv_kobj), GFP_KERNEL);
 	if (!scst_sgv_kobj)
 		goto sgv_kobj_error;
 
+	retval = kobject_init_and_add(scst_sgv_kobj, &sgv_ktype,
+			scst_sysfs_root_kobj, "%s", "sgv");
+	if (retval != 0)
+		goto sgv_kobj_add_error;
+
 	scst_back_drivers_kobj = kobject_create_and_add("back_drivers",
-							&scst_sysfs_root->kobj);
+					scst_sysfs_root_kobj);
 	if (!scst_back_drivers_kobj)
 		goto back_drivers_kobj_error;
 
@@ -356,6 +426,8 @@ out:
 
 back_drivers_kobj_error:
 	kobject_del(scst_sgv_kobj);
+
+sgv_kobj_add_error:
 	kobject_put(scst_sgv_kobj);
 
 sgv_kobj_error:
@@ -367,14 +439,14 @@ devices_kobj_error:
 	kobject_put(scst_targets_kobj);
 
 targets_kobj_error:
-	kobject_del(&scst_sysfs_root->kobj);
-	kobject_put(&scst_sysfs_root->kobj);
+	kobject_del(scst_sysfs_root_kobj);
 
-sysfs_root_kobj_error:
-	kfree(scst_sysfs_root);
+sysfs_root_add_error:
+	kobject_put(scst_sysfs_root_kobj);
 
 sysfs_root_error:
-	retval = -EINVAL;
+	if (retval == 0)
+		retval = -EINVAL;
 	goto out;
 }
 
@@ -394,8 +466,8 @@ void __exit scst_sysfs_cleanup(void)
 	kobject_del(scst_back_drivers_kobj);
 	kobject_put(scst_back_drivers_kobj);
 
-	kobject_del(&scst_sysfs_root->kobj);
-	kobject_put(&scst_sysfs_root->kobj);
+	kobject_del(scst_sysfs_root_kobj);
+	kobject_put(scst_sysfs_root_kobj);
 
 	TRACE_EXIT();
 	return;
