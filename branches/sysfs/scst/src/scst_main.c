@@ -398,11 +398,11 @@ struct scst_tgt *scst_register(struct scst_tgt_template *vtt,
 	if (rc < 0)
 		goto out_free_tgt_name;
 
+	indirect_free = true;
+
 	rc = scst_create_tgt_sysfs(tgt);
 	if (rc < 0)
 		goto out_clean_proc;
-
-	indirect_free = true;
 
 	list_add_tail(&tgt->tgt_list_entry, &vtt->tgt_list);
 
