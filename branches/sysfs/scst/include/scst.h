@@ -757,7 +757,12 @@ struct scst_tgt_template {
 	/* The pointer to the /proc directory entry */
 	struct proc_dir_entry *proc_tgt_root;
 
-	struct kobject *tgtt_kobj; /* kobject for this struct. */
+	/* Set if tgtt_kobj was initialized */
+	unsigned int tgtt_kobj_initialized:1;
+
+	struct kobject tgtt_kobj; /* kobject for this struct */
+
+	struct completion tgtt_kobj_release_cmpl;
 
 	/* Device number in /proc */
 	int proc_dev_num;
@@ -931,6 +936,8 @@ struct scst_tgt {
 
 	struct scst_tgt_template *tgtt;	/* corresponding target template */
 
+	struct scst_acg *default_acg; /* The default acg for this target. */
+
 	/*
 	 * Maximum SG table size. Needed here, since different cards on the
 	 * same target template can have different SG table limitations.
@@ -964,10 +971,13 @@ struct scst_tgt {
 	/* Name on the default security group ("Default_target_name") */
 	char *default_group_name;
 
+	/* Set if tgt_kobj was initialized */
+	unsigned int tgt_kobj_initialized:1;
+
 	struct kobject tgt_kobj; /* main kobject for this struct */
-	struct kobject *tgt_sess_kobj;
-	struct kobject *tgt_luns_kobj;
-	struct kobject *tgt_ini_grp_kobj;
+	struct kobject *tgt_sess_kobj; /* target/sessions/ */
+	struct kobject *tgt_luns_kobj; /* target/luns/ */
+	struct kobject *tgt_ini_grp_kobj; /* target/ini_groups/ */
 };
 
 /* Hash size and hash fn for hash based lun translation */
@@ -1045,6 +1055,11 @@ struct scst_session {
 
 	/* Used if scst_unregister_session() called in wait mode */
 	struct completion *shutdown_compl;
+
+	/* Set if sess_kobj was initialized */
+	unsigned int sess_kobj_initialized:1;
+
+	struct kobject sess_kobj; /* kobject for this struct */
 
 	/*
 	 * Functions and data for user callbacks from scst_register_session()
@@ -1625,15 +1640,25 @@ struct scst_tgt_dev {
  */
 struct scst_acg_dev {
 	struct scst_device *dev; /* corresponding device */
-	uint64_t lun;		/* device's LUN in this acg */
-	unsigned int rd_only:1; /* if != 0, then read only */
-	struct scst_acg *acg;	/* parent acg */
 
-	/* list entry in dev->dev_acg_dev_list */
+	uint64_t lun; /* device's LUN in this acg */
+
+	/* If set, the corresponding LU is read only */
+	unsigned int rd_only:1;
+
+	/* Set if acg_dev_kobj was initialized */
+	unsigned int acg_dev_kobj_initialized:1;
+
+	struct scst_acg *acg; /* parent acg */
+
+	/* List entry in dev->dev_acg_dev_list */
 	struct list_head dev_acg_dev_list_entry;
 
-	/* list entry in acg->acg_dev_list */
+	/* List entry in acg->acg_dev_list */
 	struct list_head acg_dev_list_entry;
+
+	/* kobject for this structure */
+	struct kobject acg_dev_kobj;
 };
 
 /*

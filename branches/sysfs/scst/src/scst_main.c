@@ -206,15 +206,15 @@ int __scst_register_target_template(struct scst_tgt_template *vtt,
 		goto out_err;
 	}
 
-	res = scst_create_tgtt_sysfs(vtt);
-	if (res)
-		goto out_err;
-
 	if (!vtt->no_proc_entry) {
 		res = scst_build_proc_target_dir_entries(vtt);
 		if (res < 0)
-			goto out_sysfs_err;
+			goto out_err;
 	}
+
+	res = scst_create_tgtt_sysfs(vtt);
+	if (res)
+		goto out_proc_err;
 
 	if (vtt->rdy_to_xfer == NULL)
 		vtt->rdy_to_xfer_atomic = 1;
@@ -260,11 +260,10 @@ out:
 out_m_err:
 	mutex_unlock(&m);
 
-out_sysfs_err:
-	scst_cleanup_tgtt_sysfs(vtt);
-
 out_proc_err:
 	scst_cleanup_proc_target_dir_entries(vtt);
+
+	scst_release_tgtt_sysfs(vtt);
 
 out_err:
 	PRINT_ERROR("Failed to register target template %s", vtt->name);
@@ -306,7 +305,7 @@ restart:
 
 	scst_cleanup_proc_target_dir_entries(vtt);
 
-	scst_cleanup_tgtt_sysfs(vtt);
+	scst_release_tgtt_sysfs(vtt);
 
 	PRINT_INFO("Target template %s unregistered successfully", vtt->name);
 
@@ -325,7 +324,6 @@ struct scst_tgt *scst_register(struct scst_tgt_template *vtt,
 {
 	struct scst_tgt *tgt;
 	int rc = 0;
-	bool indirect_free = false;
 
 	TRACE_ENTRY();
 
@@ -379,7 +377,7 @@ struct scst_tgt *scst_register(struct scst_tgt_template *vtt,
 		}
 		strcpy(tgt->tgt_name, target_name);
 	} else {
-		static int tgt_num;
+		static int tgt_num; /* protected by scst_mutex */
 		int len = strlen(vtt->name) +
 			strlen(SCST_DEFAULT_TGT_NAME_SUFFIX) + 11 + 1;
 
@@ -390,15 +388,17 @@ struct scst_tgt *scst_register(struct scst_tgt_template *vtt,
 			rc = -ENOMEM;
 			goto out_free_def_name;
 		}
-		sprintf(tgt->tgt_name, "%s%s%d", target_name,
+		sprintf(tgt->tgt_name, "%s%s%d", vtt->name,
 			SCST_DEFAULT_TGT_NAME_SUFFIX, tgt_num++);
 	}
 
-	rc = scst_build_proc_target_entries(tgt);
-	if (rc < 0)
+	tgt->default_acg = scst_alloc_add_acg(tgt->tgt_name);
+	if (tgt->default_acg == NULL)
 		goto out_free_tgt_name;
 
-	indirect_free = true;
+	rc = scst_build_proc_target_entries(tgt);
+	if (rc < 0)
+		goto out_free_acg;
 
 	rc = scst_create_tgt_sysfs(tgt);
 	if (rc < 0)
@@ -419,6 +419,9 @@ out:
 out_clean_proc:
 	scst_cleanup_proc_target_entries(tgt);
 
+out_free_acg:
+	scst_destroy_acg(tgt->default_acg);
+
 out_free_tgt_name:
 	kfree(tgt->tgt_name);
 
@@ -432,7 +435,7 @@ out_resume_free:
 	scst_resume_activity();
 
 out_free_tgt_err:
-	if (indirect_free)
+	if (tgt->tgt_kobj_initialized)
 		kobject_put(&tgt->tgt_kobj);
 	else
 		kfree(tgt);
@@ -499,10 +502,11 @@ again:
 	kfree(tgt->tgt_name);
 	kfree(tgt->default_group_name);
 
+	scst_destroy_acg(tgt->default_acg);
+
 	del_timer_sync(&tgt->retry_timer);
 
-	scst_cleanup_tgt_sysfs_put(tgt);
-	/* tgt can be dead here! */
+	scst_release_sysfs_and_tgt(tgt);
 
 	PRINT_INFO("Target %p for template %s unregistered successfully",
 		tgt, vtt->name);

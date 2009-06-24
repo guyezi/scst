@@ -5280,7 +5280,7 @@ out:
 
 static int scst_init_session(struct scst_session *sess)
 {
-	int res = 0;
+	int res = 0, rc;
 	struct scst_acg *acg = NULL;
 	struct scst_cmd *cmd;
 	struct scst_mgmt_cmd *mcmd, *tm;
@@ -5294,8 +5294,12 @@ static int scst_init_session(struct scst_session *sess)
 		acg = scst_find_acg(sess->initiator_name);
 	if ((acg == NULL) && (sess->tgt->default_group_name != NULL))
 		acg = scst_find_acg_by_name(sess->tgt->default_group_name);
-	if (acg == NULL)
-		acg = scst_default_acg;
+	if (acg == NULL) {
+		if (list_empty(&sess->tgt->default_acg->acg_dev_list))
+			acg = scst_default_acg;
+		else
+			acg = sess->tgt->default_acg;
+	}
 
 	PRINT_INFO("Using security group \"%s\" for initiator \"%s\"",
 		acg->acg_name, sess->initiator_name);
@@ -5308,6 +5312,11 @@ static int scst_init_session(struct scst_session *sess)
 	list_add_tail(&sess->sess_list_entry, &sess->tgt->sess_list);
 
 	res = scst_sess_alloc_tgt_devs(sess);
+
+	/* Let's always create session's sysfs to simplify error recovery */
+	rc = scst_create_sess_sysfs(sess);
+	if (res == 0)
+		res = rc;
 
 	mutex_unlock(&scst_mutex);
 
@@ -5357,6 +5366,7 @@ restart:
 			&scst_active_mgmt_cmd_list);
 		mwake = 1;
 	}
+
 	spin_unlock(&scst_mcmd_lock);
 	sess->init_phase = SCST_SESS_IPH_READY;
 	spin_unlock_irq(&sess->sess_list_lock);

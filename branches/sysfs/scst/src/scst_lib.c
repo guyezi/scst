@@ -45,7 +45,6 @@ static void scst_alloc_set_UA(struct scst_tgt_dev *tgt_dev,
 	const uint8_t *sense, int sense_len, int flags);
 static void scst_free_all_UA(struct scst_tgt_dev *tgt_dev);
 static void scst_release_space(struct scst_cmd *cmd);
-static void scst_sess_free_tgt_devs(struct scst_session *sess);
 static void scst_unblock_cmds(struct scst_device *dev);
 
 #ifdef CONFIG_SCST_DEBUG_TM
@@ -920,6 +919,16 @@ out:
 	return res;
 }
 
+void __scst_acg_dev_free(struct scst_acg_dev *acg_dev)
+{
+	TRACE_ENTRY();
+
+	kmem_cache_free(scst_acgd_cachep, acg_dev);
+
+	TRACE_EXIT();
+	return;
+}
+
 /* The activity supposed to be suspended and scst_mutex held */
 static void scst_free_acg_dev(struct scst_acg_dev *acg_dev)
 {
@@ -930,7 +939,10 @@ static void scst_free_acg_dev(struct scst_acg_dev *acg_dev)
 	list_del(&acg_dev->acg_dev_list_entry);
 	list_del(&acg_dev->dev_acg_dev_list_entry);
 
-	kmem_cache_free(scst_acgd_cachep, acg_dev);
+	if (acg_dev->acg_dev_kobj_initialized)
+		kobject_put(&acg_dev->acg_dev_kobj);
+	else
+		__scst_acg_dev_free(acg_dev);
 
 	TRACE_EXIT();
 	return;
@@ -1314,7 +1326,7 @@ out_free:
  * scst_mutex supposed to be held, there must not be parallel activity in this
  * session.
  */
-static void scst_sess_free_tgt_devs(struct scst_session *sess)
+void scst_sess_free_tgt_devs(struct scst_session *sess)
 {
 	int i;
 	struct scst_tgt_dev *tgt_dev, *t;
@@ -1899,12 +1911,12 @@ void scst_free_session(struct scst_session *sess)
 
 	scst_sess_free_tgt_devs(sess);
 
+	/* Called under lock to protect from too early tgt release */
 	wake_up_all(&sess->tgt->unreg_waitQ);
 
 	mutex_unlock(&scst_mutex);
 
-	kfree(sess->initiator_name);
-	kmem_cache_free(scst_sess_cachep, sess);
+	scst_release_sysfs_and_sess(sess);
 
 	TRACE_EXIT();
 	return;

@@ -290,7 +290,10 @@ void scst_free_device(struct scst_device *dev);
 struct scst_acg *scst_alloc_add_acg(const char *acg_name);
 int scst_destroy_acg(struct scst_acg *acg);
 
+void __scst_acg_dev_free(struct scst_acg_dev *acg_dev);
+
 int scst_sess_alloc_tgt_devs(struct scst_session *sess);
+void scst_sess_free_tgt_devs(struct scst_session *sess);
 void scst_nexus_loss(struct scst_tgt_dev *tgt_dev, bool queue_UA);
 
 int scst_acg_add_dev(struct scst_acg *acg, struct scst_device *dev,
@@ -387,9 +390,11 @@ void scst_cleanup_proc_dev_handler_dir_entries(struct scst_dev_type *dev_type);
 int scst_sysfs_init(void);
 void scst_sysfs_cleanup(void);
 int scst_create_tgtt_sysfs(struct scst_tgt_template *vtt);
-void scst_cleanup_tgtt_sysfs(struct scst_tgt_template *vtt);
+void scst_release_tgtt_sysfs(struct scst_tgt_template *vtt);
 int scst_create_tgt_sysfs(struct scst_tgt *tgt);
-void scst_cleanup_tgt_sysfs_put(struct scst_tgt *tgt);
+void scst_release_sysfs_and_tgt(struct scst_tgt *tgt);
+int scst_create_sess_sysfs(struct scst_session *sess);
+void scst_release_sysfs_and_sess(struct scst_session *sess);
 int scst_create_sgv_sysfs(struct sgv_pool *pool);
 void scst_cleanup_sgv_sysfs_put(struct sgv_pool *pool);
 
