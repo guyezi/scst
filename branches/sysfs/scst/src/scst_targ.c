@@ -2044,7 +2044,8 @@ static int scst_do_local_exec(struct scst_cmd *cmd)
 	TRACE_ENTRY();
 
 	/* Check READ_ONLY device status */
-	if (((tgt_dev->acg_dev->rd_only_flag) || cmd->dev->swp) &&
+	if ((tgt_dev->acg_dev->rd_only || cmd->dev->swp ||
+	     cmd->dev->rd_only) &&
 	    (cmd->cdb[0] == WRITE_6 ||  /* ToDo: full list of the modify cmds */
 	     cmd->cdb[0] == WRITE_10 ||
 	     cmd->cdb[0] == WRITE_12 ||
@@ -2456,7 +2457,8 @@ static int scst_pre_dev_done(struct scst_cmd *cmd)
 		unsigned char type = cmd->dev->handler->type;
 		if (unlikely((cmd->cdb[0] == MODE_SENSE ||
 			      cmd->cdb[0] == MODE_SENSE_10)) &&
-		    cmd->tgt_dev->acg_dev->rd_only_flag &&
+		    (cmd->tgt_dev->acg_dev->rd_only || cmd->dev->swp ||
+		     cmd->dev->rd_only) &&
 		    (type == TYPE_DISK ||
 		     type == TYPE_WORM ||
 		     type == TYPE_MOD ||
