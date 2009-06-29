@@ -746,7 +746,7 @@ struct scst_tgt_template {
 	 */
 	int threads_num;
 
-	/* Private, must be inited to 0 by memset() */
+	/** Private, must be inited to 0 by memset() **/
 
 	/* List of targets per template, protected by scst_mutex */
 	struct list_head tgt_list;
@@ -916,15 +916,38 @@ struct scst_dev_type {
 	 */
 	int threads_num;
 
+	/* Optional default log flags */
+	unsigned long default_trace_flags;
+
+	/* Optional pointer to trace flags */
+	unsigned long *trace_flags;
+
+	/* Optional local trace table */
+	struct scst_trace_log *trace_tbl;
+
+	/* Optional sysfs attributes */
+	struct attribute **attrs;
+
+	/* Pointer to scst_dev_type's private to dev handler data */
+	void *devt_priv;
+
 	struct module *module;
 
-	/* private: */
+	/** Private, must be inited to 0 by memset() **/
 
 	/* list entry in scst_dev_type_list */
 	struct list_head dev_type_list_entry;
 
 	/* The pointer to the /proc directory entry */
 	struct proc_dir_entry *proc_dev_type_root;
+
+	unsigned int devt_kobj_initialized:1;
+
+	struct kobj_type devt_ktype;
+	struct kobject devt_kobj; /* main back_drivers/driver */
+
+	/* To wait until devt_kobj released */
+	struct completion devt_kobj_release_compl;
 };
 
 struct scst_tgt {
@@ -974,7 +997,7 @@ struct scst_tgt {
 	/* Set if tgt_kobj was initialized */
 	unsigned int tgt_kobj_initialized:1;
 
-	struct kobject tgt_kobj; /* main kobject for this struct */
+	struct kobject tgt_kobj; /* main targets/target kobject */
 	struct kobject *tgt_sess_kobj; /* target/sessions/ */
 	struct kobject *tgt_luns_kobj; /* target/luns/ */
 	struct kobject *tgt_ini_grp_kobj; /* target/ini_groups/ */
@@ -2879,22 +2902,22 @@ static inline struct proc_dir_entry *scst_proc_get_dev_type_root(
  ** that use scst_debug.* facilities manage "trace_level" /proc entry.
  ** The functions service "standard" log levels and allow to work
  ** with driver specific levels, which should be passed inside as
- ** NULL-terminated array of struct scst_proc_log's, where:
+ ** NULL-terminated array of struct scst_trace_log's, where:
  **   - val - the level's numeric value
  **   - token - its string representation
  **/
 
-struct scst_proc_log {
+struct scst_trace_log {
 	unsigned int val;
 	const char *token;
 };
 
 int scst_proc_log_entry_read(struct seq_file *seq, unsigned long log_level,
-	const struct scst_proc_log *tbl);
+	const struct scst_trace_log *tbl);
 
 int scst_proc_log_entry_write(struct file *file, const char __user *buf,
 	unsigned long length, unsigned long *log_level,
-	unsigned long default_level, const struct scst_proc_log *tbl);
+	unsigned long default_level, const struct scst_trace_log *tbl);
 
 /*
  * helper data structure and function to create proc entry.

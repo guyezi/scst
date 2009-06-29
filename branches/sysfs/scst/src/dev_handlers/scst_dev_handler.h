@@ -69,14 +69,20 @@ static int scst_dev_handler_build_std_proc(struct scst_dev_type *dev_type)
 
 	root = scst_proc_get_dev_type_root(dev_type);
 	if (root) {
-		/* create the proc file entry for the device */
-		dev_handler_log_proc_data.data = (void *)dev_type->name;
+		/* Create the proc file entry for the device */
+		/* Workaround to keep /proc ABI intact */
+		const char *name;
+		if (strcmp(dev_type->name, "vdisk_fileio") == 0)
+			name = "vdisk";
+		else
+			name = dev_type->name;
+		dev_handler_log_proc_data.data = (void *)name;
 		p = scst_create_proc_entry(root, DEV_HANDLER_LOG_ENTRY_NAME,
 					   &dev_handler_log_proc_data);
 		if (p == NULL) {
 			PRINT_ERROR("Not enough memory to register dev "
 			     "handler %s entry %s in /proc",
-			      dev_type->name, DEV_HANDLER_LOG_ENTRY_NAME);
+			     name, DEV_HANDLER_LOG_ENTRY_NAME);
 			res = -ENOMEM;
 			goto out;
 		}

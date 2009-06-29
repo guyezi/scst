@@ -33,31 +33,6 @@
 # define DISK_NAME           "dev_disk"
 # define DISK_PERF_NAME      "dev_disk_perf"
 
-#define DISK_TYPE {          				\
-	.name =			DISK_NAME,		\
-	.type =			TYPE_DISK,		\
-	.parse_atomic =		1,       		\
-	.dev_done_atomic =	1,       		\
-	.exec_atomic =		1,       		\
-	.attach =		disk_attach,		\
-	.detach =		disk_detach,		\
-	.parse =		disk_parse,		\
-	.dev_done =		disk_done,		\
-}
-
-#define DISK_PERF_TYPE {     				\
-	.name =			DISK_PERF_NAME,		\
-	.type =			TYPE_DISK,		\
-	.parse_atomic =		1,       		\
-	.dev_done_atomic =	1,       		\
-	.exec_atomic =		1,       		\
-	.attach =		disk_attach,		\
-	.detach =		disk_detach,		\
-	.parse =		disk_parse,		\
-	.dev_done =		disk_done,		\
-	.exec =			disk_exec,		\
-}
-
 #define DISK_DEF_BLOCK_SHIFT	9
 
 struct disk_params {
@@ -70,8 +45,38 @@ static int disk_parse(struct scst_cmd *cmd);
 static int disk_done(struct scst_cmd *cmd);
 static int disk_exec(struct scst_cmd *cmd);
 
-static struct scst_dev_type disk_devtype = DISK_TYPE;
-static struct scst_dev_type disk_devtype_perf = DISK_PERF_TYPE;
+static struct scst_dev_type disk_devtype = {
+	.name =			DISK_NAME,
+	.type =			TYPE_DISK,
+	.parse_atomic =		1,
+	.dev_done_atomic =	1,
+	.exec_atomic =		1,
+	.attach =		disk_attach,
+	.detach =		disk_detach,
+	.parse =		disk_parse,
+	.dev_done =		disk_done,
+#if defined(CONFIG_SCST_DEBUG) || defined(CONFIG_SCST_TRACING)
+	.default_trace_flags = SCST_DEFAULT_DEV_LOG_FLAGS,
+	.trace_flags = &trace_flag,
+#endif
+};
+
+static struct scst_dev_type disk_devtype_perf = {
+	.name =			DISK_PERF_NAME,
+	.type =			TYPE_DISK,
+	.parse_atomic =		1,
+	.dev_done_atomic =	1,
+	.exec_atomic =		1,
+	.attach =		disk_attach,
+	.detach =		disk_detach,
+	.parse =		disk_parse,
+	.dev_done =		disk_done,
+	.exec =			disk_exec,
+#if defined(CONFIG_SCST_DEBUG) || defined(CONFIG_SCST_TRACING)
+	.default_trace_flags =	SCST_DEFAULT_DEV_LOG_FLAGS,
+	.trace_flags =		&trace_flag,
+#endif
+};
 
 static int __init init_scst_disk_driver(void)
 {

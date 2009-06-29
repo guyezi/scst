@@ -3062,14 +3062,16 @@ static int dev_usr_parse(struct scst_cmd *cmd)
 	return SCST_CMD_STATE_DEFAULT;
 }
 
-/* Needed only for /proc support */
-#define USR_TYPE {			\
-	.name =		DEV_USER_NAME,	\
-	.type =		-1,		\
-	.parse =	dev_usr_parse,	\
-}
-
-static struct scst_dev_type dev_user_devtype = USR_TYPE;
+/* Needed only for sysfs */
+static struct scst_dev_type dev_user_devtype = {
+	.name =		DEV_USER_NAME,
+	.type =		-1,
+	.parse =	dev_usr_parse,
+#if defined(CONFIG_SCST_DEBUG) || defined(CONFIG_SCST_TRACING)
+	.default_trace_flags = SCST_DEFAULT_DEV_LOG_FLAGS,
+	.trace_flags = &trace_flag,
+#endif
+};
 
 static int dev_user_release(struct inode *inode, struct file *file)
 {

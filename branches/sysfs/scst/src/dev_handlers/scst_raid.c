@@ -27,26 +27,28 @@
 
 #define RAID_NAME	"dev_raid"
 
-#define RAID_TYPE {				\
-	.name =			RAID_NAME,	\
-	.type =			TYPE_RAID,	\
-	.parse_atomic =		1,		\
-/*	.dev_done_atomic =	1,*/		\
-	.attach =		raid_attach,	\
-/*	.detach =		raid_detach,*/	\
-	.parse =		raid_parse,	\
-/*	.dev_done =		raid_done*/	\
-}
-
-#define RAID_RETRIES       2
-#define READ_CAP_LEN          8
+#define RAID_RETRIES		2
+#define READ_CAP_LEN		8
 
 static int raid_attach(struct scst_device *);
 /* static void raid_detach(struct scst_device *); */
 static int raid_parse(struct scst_cmd *);
 /* static int raid_done(struct scst_cmd *); */
 
-static struct scst_dev_type raid_devtype = RAID_TYPE;
+static struct scst_dev_type raid_devtype = {
+	.name =			RAID_NAME,
+	.type =			TYPE_RAID,
+	.parse_atomic =		1,
+/*	.dev_done_atomic =	1,*/
+	.attach =		raid_attach,
+/*	.detach =		raid_detach,*/
+	.parse =		raid_parse,
+/*	.dev_done =		raid_done,*/
+#if defined(CONFIG_SCST_DEBUG) || defined(CONFIG_SCST_TRACING)
+	.default_trace_flags =	SCST_DEFAULT_DEV_LOG_FLAGS,
+	.trace_flags =		&trace_flag,
+#endif
+};
 
 /**************************************************************
  *  Function:  raid_attach

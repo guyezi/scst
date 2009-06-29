@@ -33,37 +33,12 @@
 # define TAPE_NAME           "dev_tape"
 # define TAPE_PERF_NAME      "dev_tape_perf"
 
-#define TAPE_TYPE {				\
-	.name =			TAPE_NAME,	\
-	.type =			TYPE_TAPE,	\
-	.parse_atomic =		1,		\
-	.dev_done_atomic =	1,		\
-	.exec_atomic =		1,		\
-	.attach =		tape_attach,	\
-	.detach =		tape_detach,	\
-	.parse =		tape_parse,	\
-	.dev_done =		tape_done,	\
-}
-
-#define TAPE_PERF_TYPE {			\
-	.name =			TAPE_PERF_NAME,	\
-	.type =			TYPE_TAPE,	\
-	.parse_atomic =		1,		\
-	.dev_done_atomic =	1,		\
-	.exec_atomic =		1,		\
-	.attach =		tape_attach,	\
-	.detach =		tape_detach,	\
-	.parse =		tape_parse,	\
-	.dev_done =		tape_done,	\
-	.exec =			tape_exec,	\
-}
-
-#define TAPE_RETRIES        2
+#define TAPE_RETRIES		2
 
 #define TAPE_DEF_BLOCK_SIZE	512
 
 /* The fixed bit in READ/WRITE/VERIFY */
-#define SILI_BIT            2
+#define SILI_BIT		2
 
 struct tape_params {
 	int block_size;
@@ -75,8 +50,38 @@ static int tape_parse(struct scst_cmd *);
 static int tape_done(struct scst_cmd *);
 static int tape_exec(struct scst_cmd *);
 
-static struct scst_dev_type tape_devtype = TAPE_TYPE;
-static struct scst_dev_type tape_devtype_perf = TAPE_PERF_TYPE;
+static struct scst_dev_type tape_devtype = {
+	.name =			TAPE_NAME,
+	.type =			TYPE_TAPE,
+	.parse_atomic =		1,
+	.dev_done_atomic =	1,
+	.exec_atomic =		1,
+	.attach =		tape_attach,
+	.detach =		tape_detach,
+	.parse =		tape_parse,
+	.dev_done =		tape_done,
+#if defined(CONFIG_SCST_DEBUG) || defined(CONFIG_SCST_TRACING)
+	.default_trace_flags =	SCST_DEFAULT_DEV_LOG_FLAGS,
+	.trace_flags =		&trace_flag,
+#endif
+};
+
+static struct scst_dev_type tape_devtype_perf = {
+	.name =			TAPE_PERF_NAME,
+	.type =			TYPE_TAPE,
+	.parse_atomic =		1,
+	.dev_done_atomic =	1,
+	.exec_atomic =		1,
+	.attach =		tape_attach,
+	.detach =		tape_detach,
+	.parse =		tape_parse,
+	.dev_done =		tape_done,
+	.exec =			tape_exec,
+#if defined(CONFIG_SCST_DEBUG) || defined(CONFIG_SCST_TRACING)
+	.default_trace_flags =	SCST_DEFAULT_DEV_LOG_FLAGS,
+	.trace_flags =		&trace_flag,
+#endif
+};
 
 static int __init init_scst_tape_driver(void)
 {

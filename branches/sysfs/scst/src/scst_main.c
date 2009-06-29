@@ -930,8 +930,7 @@ void scst_unregister_virtual_device(int id)
 	list_del(&dev->dev_list_entry);
 
 	list_for_each_entry_safe(acg_dev, aa, &dev->dev_acg_dev_list,
-				 dev_acg_dev_list_entry)
-	{
+				 dev_acg_dev_list_entry) {
 		scst_acg_remove_dev(acg_dev->acg, dev);
 	}
 
@@ -1005,9 +1004,15 @@ int __scst_register_dev_driver(struct scst_dev_type *dev_type,
 	if (exist)
 		goto out_up;
 
-	res = scst_build_proc_dev_handler_dir_entries(dev_type);
+	if (!dev_type->no_proc) {
+		res = scst_build_proc_dev_handler_dir_entries(dev_type);
+		if (res < 0)
+			goto out_up;
+	}
+
+	res = scst_create_devt_sysfs(dev_type);
 	if (res < 0)
-		goto out_up;
+		goto out_free;
 
 	list_add_tail(&dev_type->dev_type_list_entry, &scst_dev_type_list);
 
@@ -1029,6 +1034,12 @@ int __scst_register_dev_driver(struct scst_dev_type *dev_type,
 out:
 	TRACE_EXIT_RES(res);
 	return res;
+
+out_free:
+	if (!dev_type->no_proc)
+		scst_cleanup_proc_dev_handler_dir_entries(dev_type);
+
+	scst_cleanup_devt_sysfs(dev_type);
 
 out_up:
 	mutex_unlock(&scst_mutex);
@@ -1080,6 +1091,8 @@ void scst_unregister_dev_driver(struct scst_dev_type *dev_type)
 
 	scst_cleanup_proc_dev_handler_dir_entries(dev_type);
 
+	scst_cleanup_devt_sysfs(dev_type);
+
 	PRINT_INFO("Device handler \"%s\" for type %d unloaded",
 		   dev_type->name, dev_type->type);
 
@@ -1118,6 +1131,10 @@ int __scst_register_virtual_dev_driver(struct scst_dev_type *dev_type,
 			goto out_err;
 	}
 
+	res = scst_create_devt_sysfs(dev_type);
+	if (res < 0)
+		goto out_free;
+
 	if (dev_type->type != -1) {
 		PRINT_INFO("Virtual device handler %s for type %d "
 			"registered successfully", dev_type->name,
@@ -1130,6 +1147,12 @@ int __scst_register_virtual_dev_driver(struct scst_dev_type *dev_type,
 out:
 	TRACE_EXIT_RES(res);
 	return res;
+
+out_free:
+	if (!dev_type->no_proc)
+		scst_cleanup_proc_dev_handler_dir_entries(dev_type);
+
+	scst_cleanup_devt_sysfs(dev_type);
 
 out_err:
 	PRINT_ERROR("Failed to register virtual device handler \"%s\"",
@@ -1144,6 +1167,8 @@ void scst_unregister_virtual_dev_driver(struct scst_dev_type *dev_type)
 
 	if (!dev_type->no_proc)
 		scst_cleanup_proc_dev_handler_dir_entries(dev_type);
+
+	scst_cleanup_devt_sysfs(dev_type);
 
 	PRINT_INFO("Device handler \"%s\" unloaded", dev_type->name);
 

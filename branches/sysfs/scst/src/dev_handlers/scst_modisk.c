@@ -33,31 +33,6 @@
 # define MODISK_NAME           "dev_modisk"
 # define MODISK_PERF_NAME      "dev_modisk_perf"
 
-#define MODISK_TYPE {				\
-	.name =			MODISK_NAME,	\
-	.type =			TYPE_MOD,	\
-	.parse_atomic =		1,		\
-	.dev_done_atomic =	1,		\
-	.exec_atomic =		1,		\
-	.attach =		modisk_attach,	\
-	.detach =		modisk_detach,	\
-	.parse =		modisk_parse,	\
-	.dev_done =		modisk_done,	\
-}
-
-#define MODISK_PERF_TYPE {				\
-	.name =			MODISK_PERF_NAME,	\
-	.type =			TYPE_MOD,		\
-	.parse_atomic =		1,			\
-	.dev_done_atomic =	1,			\
-	.exec_atomic =		1,			\
-	.attach =		modisk_attach,		\
-	.detach =		modisk_detach,		\
-	.parse =		modisk_parse,		\
-	.dev_done =		modisk_done,		\
-	.exec =			modisk_exec,		\
-}
-
 #define MODISK_DEF_BLOCK_SHIFT    10
 
 struct modisk_params {
@@ -70,8 +45,38 @@ static int modisk_parse(struct scst_cmd *);
 static int modisk_done(struct scst_cmd *);
 static int modisk_exec(struct scst_cmd *);
 
-static struct scst_dev_type modisk_devtype = MODISK_TYPE;
-static struct scst_dev_type modisk_devtype_perf = MODISK_PERF_TYPE;
+static struct scst_dev_type modisk_devtype = {
+	.name =			MODISK_NAME,
+	.type =			TYPE_MOD,
+	.parse_atomic =		1,
+	.dev_done_atomic =	1,
+	.exec_atomic =		1,
+	.attach =		modisk_attach,
+	.detach =		modisk_detach,
+	.parse =		modisk_parse,
+	.dev_done =		modisk_done,
+#if defined(CONFIG_SCST_DEBUG) || defined(CONFIG_SCST_TRACING)
+	.default_trace_flags =	SCST_DEFAULT_DEV_LOG_FLAGS,
+	.trace_flags =		&trace_flag,
+#endif
+};
+
+static struct scst_dev_type modisk_devtype_perf = {
+	.name =			MODISK_PERF_NAME,
+	.type =			TYPE_MOD,
+	.parse_atomic =		1,
+	.dev_done_atomic =	1,
+	.exec_atomic =		1,
+	.attach =		modisk_attach,
+	.detach =		modisk_detach,
+	.parse =		modisk_parse,
+	.dev_done =		modisk_done,
+	.exec =			modisk_exec,
+#if defined(CONFIG_SCST_DEBUG) || defined(CONFIG_SCST_TRACING)
+	.default_trace_flags =	SCST_DEFAULT_DEV_LOG_FLAGS,
+	.trace_flags =		&trace_flag,
+#endif
+};
 
 static int __init init_scst_modisk_driver(void)
 {

@@ -27,17 +27,6 @@
 
 #define CHANGER_NAME	"dev_changer"
 
-#define CHANGER_TYPE {				\
-	.name =	CHANGER_NAME,   		\
-	.type =	TYPE_MEDIUM_CHANGER,		\
-	.parse_atomic =	1,      		\
-/*	.dev_done_atomic =	1, */		\
-	.attach =	changer_attach, 	\
-/*	.detach =	changer_detach, */	\
-	.parse =	changer_parse,  	\
-/*	.dev_done =	changer_done */		\
-}
-
 #define CHANGER_RETRIES       2
 #define READ_CAP_LEN          8
 
@@ -46,7 +35,20 @@ static int changer_attach(struct scst_device *);
 static int changer_parse(struct scst_cmd *);
 /* static int changer_done(struct scst_cmd *); */
 
-static struct scst_dev_type changer_devtype = CHANGER_TYPE;
+static struct scst_dev_type changer_devtype = {
+	.name =	CHANGER_NAME,
+	.type =	TYPE_MEDIUM_CHANGER,
+	.parse_atomic =	1,
+/*	.dev_done_atomic =	1, */
+	.attach =	changer_attach,
+/*	.detach =	changer_detach, */
+	.parse =	changer_parse,
+/*	.dev_done =	changer_done */
+#if defined(CONFIG_SCST_DEBUG) || defined(CONFIG_SCST_TRACING)
+	.default_trace_flags =	SCST_DEFAULT_DEV_LOG_FLAGS,
+	.trace_flags =		&trace_flag,
+#endif
+};
 
 /**************************************************************
  *  Function:  changer_attach

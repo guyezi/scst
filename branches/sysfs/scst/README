@@ -1043,4 +1043,8 @@ Thanks to:
 
  * Bart Van Assche <bart.vanassche@gmail.com> for a lot of help
 
+ * Daniel Debonzi <debonzi@linux.vnet.ibm.com> for a big part of SCST sysfs tree
+   implementation
+ 
+
 Vladislav Bolkhovitin <vst@vlnb.net>, http://scst.sourceforge.net

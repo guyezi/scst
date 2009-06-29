@@ -337,4 +337,9 @@ static inline int scst_is_ua_sense(const uint8_t *sense)
 
 #define SCST_MAX_OTHER_TIMEOUT			(14000 * HZ)
 
+/*************************************************************
+ ** Misc constants
+ *************************************************************/
+#define SCST_SYSFS_BLOCK_SIZE (PAGE_SIZE - 64)
+
 #endif /* __SCST_CONST_H */

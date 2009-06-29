@@ -28,17 +28,6 @@
 
 #define CDROM_NAME	"dev_cdrom"
 
-#define CDROM_TYPE {				\
-	.name = 		CDROM_NAME,	\
-	.type =			TYPE_ROM,	\
-	.parse_atomic =		1,		\
-	.dev_done_atomic = 	1,		\
-	.attach = 		cdrom_attach,	\
-	.detach = 		cdrom_detach,	\
-	.parse = 		cdrom_parse,	\
-	.dev_done = 		cdrom_done,	\
-}
-
 #define CDROM_DEF_BLOCK_SHIFT	11
 
 struct cdrom_params {
@@ -50,7 +39,20 @@ static void cdrom_detach(struct scst_device *);
 static int cdrom_parse(struct scst_cmd *);
 static int cdrom_done(struct scst_cmd *);
 
-static struct scst_dev_type cdrom_devtype = CDROM_TYPE;
+static struct scst_dev_type cdrom_devtype = {
+	.name = 		CDROM_NAME,
+	.type =			TYPE_ROM,
+	.parse_atomic =		1,
+	.dev_done_atomic = 	1,
+	.attach = 		cdrom_attach,
+	.detach = 		cdrom_detach,
+	.parse = 		cdrom_parse,
+	.dev_done = 		cdrom_done,
+#if defined(CONFIG_SCST_DEBUG) || defined(CONFIG_SCST_TRACING)
+	.default_trace_flags =	SCST_DEFAULT_DEV_LOG_FLAGS,
+	.trace_flags =		&trace_flag,
+#endif
+};
 
 /**************************************************************
  *  Function:  cdrom_attach
