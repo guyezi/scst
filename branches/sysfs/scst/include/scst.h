@@ -931,6 +931,9 @@ struct scst_dev_type {
 	/* Pointer to scst_dev_type's private to dev handler data */
 	void *devt_priv;
 
+	/* Pointer to parent dev type in the sysfs hierarchy */
+	struct scst_dev_type *parent;
+
 	struct module *module;
 
 	/** Private, must be inited to 0 by memset() **/

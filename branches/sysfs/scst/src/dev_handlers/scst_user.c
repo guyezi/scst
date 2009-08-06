@@ -197,6 +197,8 @@ static long dev_user_ioctl(struct file *file, unsigned int cmd,
 	unsigned long arg);
 static int dev_user_release(struct inode *inode, struct file *file);
 
+static int dev_usr_parse(struct scst_cmd *cmd);
+
 /** Data **/
 
 static struct kmem_cache *user_cmd_cachep;
@@ -211,6 +213,16 @@ static const struct file_operations dev_user_fops = {
 	.compat_ioctl	= dev_user_ioctl,
 #endif
 	.release	= dev_user_release,
+};
+
+static struct scst_dev_type dev_user_devtype = {
+	.name =		DEV_USER_NAME,
+	.type =		-1,
+	.parse =	dev_usr_parse,
+#if defined(CONFIG_SCST_DEBUG) || defined(CONFIG_SCST_TRACING)
+	.default_trace_flags = SCST_DEFAULT_DEV_LOG_FLAGS,
+	.trace_flags = &trace_flag,
+#endif
 };
 
 static struct class *dev_user_sysfs_class;
@@ -2742,6 +2754,8 @@ static int dev_user_register_dev(struct file *file,
 	dev->devtype.on_free_cmd = dev_user_on_free_cmd;
 	dev->devtype.task_mgmt_fn = dev_user_task_mgmt_fn;
 
+	dev->devtype.parent = &dev_user_devtype;
+
 	init_completion(&dev->cleanup_cmpl);
 	dev->block = block;
 	dev->def_block = block;
@@ -3061,17 +3075,6 @@ static int dev_usr_parse(struct scst_cmd *cmd)
 	sBUG();
 	return SCST_CMD_STATE_DEFAULT;
 }
-
-/* Needed only for sysfs */
-static struct scst_dev_type dev_user_devtype = {
-	.name =		DEV_USER_NAME,
-	.type =		-1,
-	.parse =	dev_usr_parse,
-#if defined(CONFIG_SCST_DEBUG) || defined(CONFIG_SCST_TRACING)
-	.default_trace_flags = SCST_DEFAULT_DEV_LOG_FLAGS,
-	.trace_flags = &trace_flag,
-#endif
-};
 
 static int dev_user_release(struct inode *inode, struct file *file)
 {

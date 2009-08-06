@@ -1192,6 +1192,7 @@ int scst_create_devt_sysfs(struct scst_dev_type *devt)
 	struct attribute **attrs = NULL;
 	int count = 2; /* 1st for type, 2d for the end zero entry */
 	int curr;
+	struct kobject *parent;
 
 	TRACE_ENTRY();
 
@@ -1214,8 +1215,7 @@ int scst_create_devt_sysfs(struct scst_dev_type *devt)
 
 	TRACE_DBG("Allocating %d attrs", count-1);
 
-	attrs = kzalloc(sizeof(attrs[0]) * count,
-			GFP_KERNEL);
+	attrs = kzalloc(sizeof(attrs[0]) * count, GFP_KERNEL);
 	if (attrs == NULL) {
 		PRINT_ERROR("Unable to allocate devt_attrs "
 			"array for %d entries", count);
@@ -1252,8 +1252,13 @@ int scst_create_devt_sysfs(struct scst_dev_type *devt)
 
 	devt->devt_kobj_initialized = 1;
 
+	if (devt->parent != NULL)
+		parent = &devt->parent->devt_kobj;
+	else
+		parent = scst_back_drivers_kobj;
+
 	retval = kobject_init_and_add(&devt->devt_kobj, &devt->devt_ktype,
-			scst_back_drivers_kobj, devt->name);
+			parent, devt->name);
 	if (retval != 0) {
 		PRINT_ERROR("Can't add devt %s to sysfs", devt->name);
 		goto out;
