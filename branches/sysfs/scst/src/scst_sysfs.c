@@ -595,11 +595,9 @@ static ssize_t scst_luns_mgmt_store(struct kobject *kobj,
 		}
 
 
-		res = scst_acg_add_dev(acg, dev, virt_lun, read_only);
-		if (res != 0) {
-			PRINT_ERROR("scst_acg_add_dev() returned %d", res);
+		res = scst_acg_add_dev(acg, dev, virt_lun, read_only, true);
+		if (res != 0)
 			goto out_free_up;
-		}
 
 		res = scst_create_acg_dev_sysfs(acg, virt_lun, kobj);
 		if (res != 0) {
@@ -608,11 +606,9 @@ static ssize_t scst_luns_mgmt_store(struct kobject *kobj,
 		}
 		break;
 	case SCST_LUN_ACTION_DEL:
-		res = scst_acg_remove_dev(acg, dev);
-		if (res != 0) {
-			PRINT_ERROR("scst_acg_remove_dev() returned %d", res);
+		res = scst_acg_remove_dev(acg, dev, true);
+		if (res != 0)
 			goto out_free_up;
-		}
 		break;
 	}
 
@@ -632,7 +628,7 @@ out:
 	return res;
 
 out_remove_acg_dev:
-	scst_acg_remove_dev(acg, dev);
+	scst_acg_remove_dev(acg, dev, true);
 	goto out_free_up;
 
 #undef SCST_LUN_ACTION_ADD

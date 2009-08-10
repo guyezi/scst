@@ -301,8 +301,9 @@ void scst_sess_free_tgt_devs(struct scst_session *sess);
 void scst_nexus_loss(struct scst_tgt_dev *tgt_dev, bool queue_UA);
 
 int scst_acg_add_dev(struct scst_acg *acg, struct scst_device *dev,
-		     uint64_t lun, int read_only);
-int scst_acg_remove_dev(struct scst_acg *acg, struct scst_device *dev);
+	uint64_t lun, int read_only, bool gen_scst_report_luns_changed);
+int scst_acg_remove_dev(struct scst_acg *acg, struct scst_device *dev,
+	bool gen_scst_report_luns_changed);
 
 int scst_acg_add_name(struct scst_acg *acg, const char *name);
 int scst_acg_remove_name(struct scst_acg *acg, const char *name, bool reassign);
@@ -449,7 +450,13 @@ void scst_process_reset(struct scst_device *dev,
 	struct scst_session *originator, struct scst_cmd *exclude_cmd,
 	struct scst_mgmt_cmd *mcmd, bool setUA);
 
-static inline int scst_is_ua_command(struct scst_cmd *cmd)
+bool scst_is_ua_global(const uint8_t *sense, int len);
+void scst_requeue_ua(struct scst_cmd *cmd);
+
+void scst_gen_aen_or_ua(struct scst_tgt_dev *tgt_dev,
+	int key, int asc, int ascq);
+
+static inline bool scst_is_ua_command(struct scst_cmd *cmd)
 {
 	return (cmd->cdb[0] != INQUIRY) &&
 	       (cmd->cdb[0] != REQUEST_SENSE) &&

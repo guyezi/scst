@@ -258,6 +258,31 @@ out:
 }
 EXPORT_SYMBOL(scst_analyze_sense);
 
+bool scst_is_ua_sense(const uint8_t *sense, int len)
+{
+	if (SCST_SENSE_VALID(sense))
+		return scst_analyze_sense(sense, len,
+			SCST_SENSE_KEY_VALID, UNIT_ATTENTION, 0, 0);
+	else
+		return false;
+}
+EXPORT_SYMBOL(scst_is_ua_sense);
+
+bool scst_is_ua_global(const uint8_t *sense, int len)
+{
+	bool res;
+
+	/* Changing it don't forget to change scst_requeue_ua() as well!! */
+
+	if (scst_analyze_sense(sense, len, SCST_SENSE_ALL_VALID,
+			SCST_LOAD_SENSE(scst_sense_reported_luns_data_changed)))
+		res = true;
+	else
+		res = false;
+
+	return res;
+}
+
 void scst_check_convert_sense(struct scst_cmd *cmd)
 {
 	bool d_sense;
@@ -384,7 +409,8 @@ void scst_set_initial_UA(struct scst_session *sess, int key, int asc, int ascq)
 }
 EXPORT_SYMBOL(scst_set_initial_UA);
 
-static struct scst_aen *scst_alloc_aen(struct scst_tgt_dev *tgt_dev)
+static struct scst_aen *scst_alloc_aen(struct scst_session *sess,
+	uint64_t unpacked_lun)
 {
 	struct scst_aen *aen;
 
@@ -394,15 +420,15 @@ static struct scst_aen *scst_alloc_aen(struct scst_tgt_dev *tgt_dev)
 	if (aen == NULL) {
 		PRINT_ERROR("AEN memory allocation failed. Corresponding "
 			"event notification will not be performed (initiator "
-			"%s)", tgt_dev->sess->initiator_name);
+			"%s)", sess->initiator_name);
 		goto out;
 	}
 	memset(aen, 0, sizeof(*aen));
 
-	aen->sess = tgt_dev->sess;
-	scst_sess_get(aen->sess);
+	aen->sess = sess;
+	scst_sess_get(sess);
 
-	aen->lun = scst_pack_lun(tgt_dev->lun);
+	aen->lun = scst_pack_lun(unpacked_lun);
 
 out:
 	TRACE_EXIT_HRES((unsigned long)aen);
@@ -420,11 +446,55 @@ static void scst_free_aen(struct scst_aen *aen)
 	return;
 };
 
+/* Must be called unded scst_mutex */
+void scst_gen_aen_or_ua(struct scst_tgt_dev *tgt_dev,
+	int key, int asc, int ascq)
+{
+	struct scst_tgt_template *tgtt = tgt_dev->sess->tgt->tgtt;
+	uint8_t sense_buffer[SCST_STANDARD_SENSE_LEN];
+
+	TRACE_ENTRY();
+
+	if (tgtt->report_aen != NULL) {
+		struct scst_aen *aen;
+		int rc;
+
+		aen = scst_alloc_aen(tgt_dev->sess, tgt_dev->lun);
+		if (aen == NULL)
+			goto queue_ua;
+
+		aen->event_fn = SCST_AEN_SCSI;
+		aen->aen_sense_len = SCST_STANDARD_SENSE_LEN;
+		scst_set_sense(aen->aen_sense, aen->aen_sense_len,
+			tgt_dev->dev->d_sense, key, asc, ascq);
+
+		TRACE_DBG("Calling target's %s report_aen(%p)",
+			tgtt->name, aen);
+		rc = tgtt->report_aen(aen);
+		TRACE_DBG("Target's %s report_aen(%p) returned %d",
+			tgtt->name, aen, rc);
+		if (rc == SCST_AEN_RES_SUCCESS)
+			goto out;
+
+		scst_free_aen(aen);
+	}
+
+queue_ua:
+	TRACE_MGMT_DBG("AEN not supported, queuing plain UA (tgt_dev %p)",
+		tgt_dev);
+	scst_set_sense(sense_buffer, sizeof(sense_buffer),
+		tgt_dev->dev->d_sense, key, asc, ascq);
+	scst_check_set_UA(tgt_dev, sense_buffer, sizeof(sense_buffer), 0);
+
+out:
+	TRACE_EXIT();
+	return;
+}
+
 /* No locks */
 void scst_capacity_data_changed(struct scst_device *dev)
 {
 	struct scst_tgt_dev *tgt_dev;
-	uint8_t sense_buffer[SCST_STANDARD_SENSE_LEN];
 
 	TRACE_ENTRY();
 
@@ -440,40 +510,8 @@ void scst_capacity_data_changed(struct scst_device *dev)
 
 	list_for_each_entry(tgt_dev, &dev->dev_tgt_dev_list,
 			    dev_tgt_dev_list_entry) {
-		struct scst_tgt_template *tgtt = tgt_dev->sess->tgt->tgtt;
-
-		if (tgtt->report_aen != NULL) {
-			struct scst_aen *aen;
-			int rc;
-
-			aen = scst_alloc_aen(tgt_dev);
-			if (aen == NULL)
-				goto queue_ua;
-
-			aen->event_fn = SCST_AEN_SCSI;
-			aen->aen_sense_len = SCST_STANDARD_SENSE_LEN;
-			scst_set_sense(aen->aen_sense, aen->aen_sense_len,
-				tgt_dev->dev->d_sense,
-				SCST_LOAD_SENSE(scst_sense_capacity_data_changed));
-
-			TRACE_DBG("Calling target's %s report_aen(%p)",
-				tgtt->name, aen);
-			rc = tgtt->report_aen(aen);
-			TRACE_DBG("Target's %s report_aen(%p) returned %d",
-				tgtt->name, aen, rc);
-			if (rc == SCST_AEN_RES_SUCCESS)
-				continue;
-
-			scst_free_aen(aen);
-		}
-queue_ua:
-		TRACE_MGMT_DBG("Queuing CAPACITY DATA CHANGED UA (tgt_dev %p)",
-			tgt_dev);
-		scst_set_sense(sense_buffer, sizeof(sense_buffer),
-			tgt_dev->dev->d_sense,
+		scst_gen_aen_or_ua(tgt_dev,
 			SCST_LOAD_SENSE(scst_sense_capacity_data_changed));
-		scst_check_set_UA(tgt_dev, sense_buffer,
-			sizeof(sense_buffer), 0);
 	}
 
 	mutex_unlock(&scst_mutex);
@@ -568,41 +606,43 @@ static void scst_queue_report_luns_changed_UA(struct scst_session *sess,
 static void scst_report_luns_changed_sess(struct scst_session *sess)
 {
 	int i;
-	struct list_head *shead;
-	struct scst_tgt_dev *tgt_dev;
 	struct scst_tgt_template *tgtt = sess->tgt->tgtt;
+	int d_sense = 0;
+	uint64_t lun = 0;
 
 	TRACE_ENTRY();
 
 	TRACE_DBG("REPORTED LUNS DATA CHANGED (sess %p)", sess);
 
 	for (i = 0; i < TGT_DEV_HASH_SIZE; i++) {
+		struct list_head *shead;
+		struct scst_tgt_dev *tgt_dev;
+
 		shead = &sess->sess_tgt_dev_list_hash[i];
 
 		list_for_each_entry(tgt_dev, shead,
 				sess_tgt_dev_list_entry) {
 			if (scst_is_report_luns_changed_type(
-					tgt_dev->dev->type))
+					tgt_dev->dev->type)) {
+				lun = tgt_dev->lun;
+				d_sense = tgt_dev->dev->d_sense;
 				goto found;
+			}
 		}
 	}
-	TRACE_MGMT_DBG("Not found a device capable REPORTED "
-		"LUNS DATA CHANGED UA (sess %p)", sess);
-	goto out;
 
 found:
 	if (tgtt->report_aen != NULL) {
 		struct scst_aen *aen;
 		int rc;
 
-		aen = scst_alloc_aen(tgt_dev);
+		aen = scst_alloc_aen(sess, lun);
 		if (aen == NULL)
 			goto queue_ua;
 
 		aen->event_fn = SCST_AEN_SCSI;
 		aen->aen_sense_len = SCST_STANDARD_SENSE_LEN;
-		scst_set_sense(aen->aen_sense, aen->aen_sense_len,
-			tgt_dev->dev->d_sense,
+		scst_set_sense(aen->aen_sense, aen->aen_sense_len, d_sense,
 			SCST_LOAD_SENSE(scst_sense_reported_luns_data_changed));
 
 		TRACE_DBG("Calling target's %s report_aen(%p)",
@@ -664,10 +704,7 @@ void scst_aen_done(struct scst_aen *aen)
 		scst_queue_report_luns_changed_UA(aen->sess,
 			SCST_SET_UA_FLAG_AT_HEAD);
 		mutex_unlock(&scst_mutex);
-	} else if (scst_analyze_sense(aen->aen_sense, aen->aen_sense_len,
-			SCST_SENSE_ALL_VALID,
-			SCST_LOAD_SENSE(scst_sense_capacity_data_changed))) {
-		/* tgt_dev might get dead, so we need to reseek it */
+	} else {
 		struct list_head *shead;
 		struct scst_tgt_dev *tgt_dev;
 		uint64_t lun;
@@ -676,12 +713,13 @@ void scst_aen_done(struct scst_aen *aen)
 
 		mutex_lock(&scst_mutex);
 
+		/* tgt_dev might get dead, so we need to reseek it */
 		shead = &aen->sess->sess_tgt_dev_list_hash[HASH_VAL(lun)];
 		list_for_each_entry(tgt_dev, shead,
 				sess_tgt_dev_list_entry) {
 			if (tgt_dev->lun == lun) {
-				TRACE_MGMT_DBG("Queuing CAPACITY DATA CHANGED "
-					"UA (tgt_dev %p)", tgt_dev);
+				TRACE_MGMT_DBG("Requeuing failed AEN UA for "
+					"tgt_dev %p", tgt_dev);
 				scst_check_set_UA(tgt_dev, aen->aen_sense,
 					aen->aen_sense_len,
 					SCST_SET_UA_FLAG_AT_HEAD);
@@ -690,8 +728,7 @@ void scst_aen_done(struct scst_aen *aen)
 		}
 
 		mutex_unlock(&scst_mutex);
-	} else
-		PRINT_ERROR("%s", "Unknown SCSI AEN");
+	}
 
 out_free:
 	scst_free_aen(aen);
@@ -700,6 +737,29 @@ out_free:
 	return;
 }
 EXPORT_SYMBOL(scst_aen_done);
+
+void scst_requeue_ua(struct scst_cmd *cmd)
+{
+	TRACE_ENTRY();
+
+	if (scst_analyze_sense(cmd->sense, cmd->sense_bufflen,
+			SCST_SENSE_ALL_VALID,
+			SCST_LOAD_SENSE(scst_sense_reported_luns_data_changed))) {
+		TRACE_MGMT_DBG("Requeuing REPORTED LUNS DATA CHANGED UA "
+			"for delivery failed cmd %p", cmd);
+		mutex_lock(&scst_mutex);
+		scst_queue_report_luns_changed_UA(cmd->sess,
+			SCST_SET_UA_FLAG_AT_HEAD);
+		mutex_unlock(&scst_mutex);
+	} else {
+		TRACE_MGMT_DBG("Requeuing UA for delivery failed cmd %p", cmd);
+		scst_check_set_UA(cmd->tgt_dev, cmd->sense,
+			cmd->sense_bufflen, SCST_SET_UA_FLAG_AT_HEAD);
+	}
+
+	TRACE_EXIT();
+	return;
+}
 
 /* The activity supposed to be suspended and scst_mutex held */
 static void scst_check_reassign_sess(struct scst_session *sess)
@@ -710,7 +770,7 @@ static void scst_check_reassign_sess(struct scst_session *sess)
 	struct list_head *shead;
 	struct scst_tgt_dev *tgt_dev;
 	bool luns_changed = false;
-	bool add_failed, something_freed;
+	bool add_failed, something_freed, not_needed_freed = false;
 
 	TRACE_ENTRY();
 
@@ -732,6 +792,8 @@ static void scst_check_reassign_sess(struct scst_session *sess)
 retry_add:
 	add_failed = false;
 	list_for_each_entry(acg_dev, &acg->acg_dev_list, acg_dev_list_entry) {
+		unsigned int inq_changed_ua_needed = 0;
+
 		for (i = 0; i < TGT_DEV_HASH_SIZE; i++) {
 			shead = &sess->sess_tgt_dev_list_hash[i];
 
@@ -746,7 +808,8 @@ retry_add:
 						(unsigned long long)tgt_dev->lun);
 					tgt_dev->acg_dev = acg_dev;
 					goto next;
-				}
+				} else if (tgt_dev->lun == acg_dev->lun)
+					inq_changed_ua_needed = 1;
 			}
 		}
 
@@ -760,11 +823,15 @@ retry_add:
 			add_failed = true;
 			break;
 		}
+
+		tgt_dev->inq_changed_ua_needed = inq_changed_ua_needed ||
+						 not_needed_freed;
 next:
 		continue;
 	}
 
 	something_freed = false;
+	not_needed_freed = true;
 	for (i = 0; i < TGT_DEV_HASH_SIZE; i++) {
 		struct scst_tgt_dev *t;
 		shead = &sess->sess_tgt_dev_list_hash[i];
@@ -794,8 +861,27 @@ next:
 		old_acg->acg_name, acg->acg_name);
 	list_move_tail(&sess->acg_sess_list_entry, &acg->acg_sess_list);
 
-	if (luns_changed)
+	if (luns_changed) {
 		scst_report_luns_changed_sess(sess);
+
+		for (i = 0; i < TGT_DEV_HASH_SIZE; i++) {
+			shead = &sess->sess_tgt_dev_list_hash[i];
+
+			list_for_each_entry(tgt_dev, shead,
+					sess_tgt_dev_list_entry) {
+				if (tgt_dev->inq_changed_ua_needed) {
+					TRACE_MGMT_DBG("sess %p: Setting "
+						"INQUIRY DATA HAS CHANGED UA "
+						"(tgt_dev %p)", sess, tgt_dev);
+
+					tgt_dev->inq_changed_ua_needed = 0;
+
+					scst_gen_aen_or_ua(tgt_dev,
+						SCST_LOAD_SENSE(scst_sense_inquery_data_changed));
+				}
+			}
+		}
+	}
 
 out:
 	TRACE_EXIT();
@@ -1492,7 +1578,7 @@ void scst_sess_free_tgt_devs(struct scst_session *sess)
 
 /* The activity supposed to be suspended and scst_mutex held */
 int scst_acg_add_dev(struct scst_acg *acg, struct scst_device *dev,
-		     uint64_t lun, int read_only)
+	uint64_t lun, int read_only, bool gen_scst_report_luns_changed)
 {
 	int res = 0;
 	struct scst_acg_dev *acg_dev;
@@ -1503,17 +1589,6 @@ int scst_acg_add_dev(struct scst_acg *acg, struct scst_device *dev,
 	TRACE_ENTRY();
 
 	INIT_LIST_HEAD(&tmp_tgt_dev_list);
-
-#ifdef CONFIG_SCST_EXTRACHECKS
-	list_for_each_entry(acg_dev, &acg->acg_dev_list, acg_dev_list_entry) {
-		if (acg_dev->dev == dev) {
-			PRINT_ERROR("Device is already in group %s",
-				acg->acg_name);
-			res = -EINVAL;
-			goto out;
-		}
-	}
-#endif
 
 	acg_dev = scst_alloc_acg_dev(acg, dev, lun);
 	if (acg_dev == NULL) {
@@ -1537,7 +1612,8 @@ int scst_acg_add_dev(struct scst_acg *acg, struct scst_device *dev,
 			      &tmp_tgt_dev_list);
 	}
 
-	scst_report_luns_changed(acg);
+	if (gen_scst_report_luns_changed)
+		scst_report_luns_changed(acg);
 
 	if (dev->virt_name != NULL) {
 		PRINT_INFO("Added device %s to group %s (LUN %lld, "
@@ -1568,7 +1644,8 @@ out_free:
 }
 
 /* The activity supposed to be suspended and scst_mutex held */
-int scst_acg_remove_dev(struct scst_acg *acg, struct scst_device *dev)
+int scst_acg_remove_dev(struct scst_acg *acg, struct scst_device *dev,
+	bool gen_scst_report_luns_changed)
 {
 	int res = 0;
 	struct scst_acg_dev *acg_dev = NULL, *a;
@@ -1596,7 +1673,8 @@ int scst_acg_remove_dev(struct scst_acg *acg, struct scst_device *dev)
 	}
 	scst_free_acg_dev(acg_dev);
 
-	scst_report_luns_changed(acg);
+	if (gen_scst_report_luns_changed)
+		scst_report_luns_changed(acg);
 
 	if (dev->virt_name != NULL) {
 		PRINT_INFO("Removed device %s from group %s",
@@ -3428,7 +3506,7 @@ static void scst_check_internal_sense(struct scst_device *dev, int result,
 			SCST_LOAD_SENSE(scst_sense_reset_UA));
 		scst_dev_check_set_UA(dev, NULL, sense, sense_len);
 	} else if ((status_byte(result) == CHECK_CONDITION) &&
-		   SCST_SENSE_VALID(sense) && scst_is_ua_sense(sense))
+		   scst_is_ua_sense(sense, sense_len))
 		scst_dev_check_set_UA(dev, NULL, sense, sense_len);
 
 	TRACE_EXIT();
