@@ -794,10 +794,13 @@ static ssize_t scst_trace_level_show(struct kobject *kobj,
 	pos += sprintf(&buf[pos], "\n\n\nUsage:\n"
 		"	echo \"all|none|default\" >trace_level\n"
 		"	echo \"value DEC|0xHEX|0OCT\" >trace_level\n"
-		"	echo \"set|add|clear|del TOKEN\" >trace_level\n"
-		"\nwhere TOKEN is one of [debug,function,line,pid,entryexit,\n"
-		"			buff,mem,sg,out_of_mem,retry,\n"
-		"			scsi_serializing,special,scsi,mgmt,minor,...]");
+		"	echo \"add|del TOKEN\" >trace_level\n"
+		"\nwhere TOKEN is one of [debug, function, line, pid,\n"
+		"		       entryexit, buff, mem, sg, out_of_mem,\n"
+		"		       special, scsi, mgmt, minor,\n"
+		"		       mgmt_minor, mgmt_dbg, scsi_serializing,\n"
+		"		       retry, recv_bot, send_bot, recv_top,\n"
+		"		       send_top]");
 
 	return pos;
 }
@@ -815,14 +818,9 @@ static int scst_write_trace(const char *buf, size_t length,
 #define SCST_TRACE_ACTION_ALL		1
 #define SCST_TRACE_ACTION_NONE		2
 #define SCST_TRACE_ACTION_DEFAULT	3
-#define SCST_TRACE_ACTION_SET		4
-#define SCST_TRACE_ACTION_ADD		5
-#define SCST_TRACE_ACTION_CLEAR		6
-#define SCST_TRACE_ACTION_DEL		7
-#define SCST_TRACE_ACTION_VALUE		8
-#define SCST_TRACE_ACTION_ASSIGN	9
-#define SCST_TRACE_ACTION_ADD_GROUP	10
-#define SCST_TRACE_ACTION_DEL_GROUP	11
+#define SCST_TRACE_ACTION_ADD		4
+#define SCST_TRACE_ACTION_DEL		5
+#define SCST_TRACE_ACTION_VALUE		6
 
 	TRACE_ENTRY();
 
@@ -848,9 +846,6 @@ static int scst_write_trace(const char *buf, size_t length,
 		action = SCST_TRACE_ACTION_NONE;
 	} else if (!strncasecmp("default", p, 7)) {
 		action = SCST_TRACE_ACTION_DEFAULT;
-	} else if (!strncasecmp("set", p, 3)) {
-		p += 3;
-		action = SCST_TRACE_ACTION_SET;
 	} else if (!strncasecmp("add", p, 3)) {
 		p += 3;
 		action = SCST_TRACE_ACTION_ADD;
@@ -869,7 +864,6 @@ static int scst_write_trace(const char *buf, size_t length,
 	}
 
 	switch (action) {
-	case SCST_TRACE_ACTION_SET:
 	case SCST_TRACE_ACTION_ADD:
 	case SCST_TRACE_ACTION_DEL:
 	case SCST_TRACE_ACTION_VALUE:
@@ -890,7 +884,6 @@ static int scst_write_trace(const char *buf, size_t length,
 	case SCST_TRACE_ACTION_NONE:
 		level = TRACE_NULL;
 		break;
-	case SCST_TRACE_ACTION_SET:
 	case SCST_TRACE_ACTION_ADD:
 	case SCST_TRACE_ACTION_DEL:
 		while (isspace(*p) && *p != '\0')
@@ -958,14 +951,9 @@ out:
 #undef SCST_TRACE_ACTION_ALL
 #undef SCST_TRACE_ACTION_NONE
 #undef SCST_TRACE_ACTION_DEFAULT
-#undef SCST_TRACE_ACTION_SET
 #undef SCST_TRACE_ACTION_ADD
-#undef SCST_TRACE_ACTION_CLEAR
 #undef SCST_TRACE_ACTION_DEL
 #undef SCST_TRACE_ACTION_VALUE
-#undef SCST_TRACE_ACTION_ASSIGN
-#undef SCST_TRACE_ACTION_ADD_GROUP
-#undef SCST_TRACE_ACTION_DEL_GROUP
 }
 
 static ssize_t scst_trace_level_store(struct kobject *kobj,
