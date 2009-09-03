@@ -787,7 +787,7 @@ static ssize_t scst_trace_level_show(struct kobject *kobj,
 	struct kobj_attribute *attr, char *buf)
 {
 	int pos = 0;
-	
+
 	scst_read_trace_tlb(scst_trace_tbl, buf, trace_flag, &pos);
 	scst_read_trace_tlb(scst_local_trace_tbl, buf, trace_flag, &pos);
 
@@ -1082,8 +1082,8 @@ static ssize_t scst_store(struct kobject *kobj, struct attribute *attr,
 }
 
 static struct sysfs_ops scst_sysfs_ops = {
-        .show = scst_show,
-        .store = scst_store,
+	.show = scst_show,
+	.store = scst_store,
 };
 
 static struct kobj_type scst_sysfs_root_ktype = {
@@ -1162,7 +1162,7 @@ static ssize_t scst_devt_type_show(struct kobject *kobj,
 
 	pos = sprintf(buf, "%d - %s\n", devt->type,
 		(unsigned)devt->type > ARRAY_SIZE(scst_dev_handler_types) ?
-		   	"unknown" : scst_dev_handler_types[devt->type]);
+			"unknown" : scst_dev_handler_types[devt->type]);
 
 	return pos;
 }

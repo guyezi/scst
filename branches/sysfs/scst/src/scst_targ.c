@@ -287,7 +287,7 @@ void scst_cmd_init_done(struct scst_cmd *cmd,
 		goto active;
 	}
 
-	/* 
+	/*
 	 * Cmd must be inited here to preserve the order. In case if cmd
 	 * already preliminary completed by target driver we need to init
 	 * cmd anyway to find out in which format we should return sense.
@@ -3033,8 +3033,6 @@ static int scst_finish_cmd(struct scst_cmd *cmd)
 
 		scst_finish_cmd_mgmt(cmd);
 	}
-
-	
 
 	__scst_cmd_put(cmd);
 

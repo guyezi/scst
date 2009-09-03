@@ -359,7 +359,7 @@ static ssize_t vdisk_mgmt_show(struct kobject *kobj,
 static ssize_t vdisk_mgmt_store(struct kobject *kobj,
 	struct kobj_attribute *attr, const char *buf, size_t count);
 
-struct kobj_attribute vdisk_mgmt_attr = 
+struct kobj_attribute vdisk_mgmt_attr =
 	__ATTR(mgmt, S_IRUGO | S_IWUSR, vdisk_mgmt_show, vdisk_mgmt_store);
 
 static struct attribute *vdisk_attrs[] = {
@@ -3058,7 +3058,6 @@ static int vdev_open(struct vdev_type *vdt, char *p, const char *name)
 	int res = 0;
 	char *file_name;
 	struct scst_vdisk_dev *virt_dev;
-	
 	size_t len;
 
 	TRACE_ENTRY();
@@ -3692,7 +3691,7 @@ out:
 }
 
 static int vdisk_proc_mgmt_cmd(const char *buffer, int length,
-        struct scst_dev_type *dev_type)
+			       struct scst_dev_type *dev_type)
 {
 	int res = 0, action;
 	char *p, *name, *file_name, *i_buf;

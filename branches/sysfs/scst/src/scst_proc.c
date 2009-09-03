@@ -1145,7 +1145,6 @@ int scst_build_proc_dev_handler_dir_entries(struct scst_dev_type *dev_type)
 	int res = 0;
 	struct proc_dir_entry *p;
 	const char *name; /* workaround to keep /proc ABI intact */
-	
 
 	TRACE_ENTRY();
 

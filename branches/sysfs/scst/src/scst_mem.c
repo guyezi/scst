@@ -1477,7 +1477,6 @@ out_err_unlock_put:
 	mutex_unlock(&sgv_pools_mutex);
 	sgv_pool_deinit_put(pool, false);
 	goto out;
-	
 }
 EXPORT_SYMBOL(sgv_pool_create);
 
