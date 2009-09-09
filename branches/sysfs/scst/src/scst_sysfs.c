@@ -261,6 +261,171 @@ void scst_release_sysfs_and_tgt(struct scst_tgt *tgt)
 }
 
 /*
+ * Devices directory implementation
+ */
+
+ssize_t scst_device_sysfs_type_show(struct kobject *kobj,
+			    struct kobj_attribute *attr, char *buf)
+{
+	int pos = 0;
+
+	struct scst_device *dev;
+
+	dev = container_of(kobj, struct scst_device, dev_kobj);
+
+	pos = sprintf(buf, "%d - %s\n", dev->type,
+		(unsigned)dev->type > ARRAY_SIZE(scst_dev_handler_types) ?
+		      "unknown" : scst_dev_handler_types[dev->type]);
+
+	return pos;
+}
+
+static struct kobj_attribute device_type_attr =
+	__ATTR(type, S_IRUGO, scst_device_sysfs_type_show, NULL);
+
+static struct attribute *scst_device_attrs[] = {
+	&device_type_attr.attr,
+	NULL,
+};
+
+void __scst_device_release(struct scst_device *dev)
+{
+	scst_free_device(dev);
+}
+
+static void scst_device_release(struct kobject *kobj)
+{
+	struct scst_device *dev;
+
+	TRACE_ENTRY();
+
+	dev = container_of(kobj, struct scst_device, dev_kobj);
+
+	__scst_device_release(dev);
+
+	TRACE_EXIT();
+	return;
+}
+
+int scst_create_devt_dev_sysfs(struct scst_device *dev)
+{
+	int retval = 0;
+
+	TRACE_ENTRY();
+
+	if (dev->handler == &scst_null_devtype)
+		goto out;
+
+	sBUG_ON(!dev->handler->devt_kobj_initialized);
+
+	retval = sysfs_create_link(&dev->dev_kobj,
+			&dev->handler->devt_kobj, "handler");
+	if (retval != 0) {
+		PRINT_ERROR("Can't create handler link for dev handler %s",
+			dev->handler->name);
+		goto out;
+	}
+
+	if (dev->handler->dev_attrs_group != NULL) {
+		retval = sysfs_create_group(&dev->dev_kobj,
+				dev->handler->dev_attrs_group);
+		if (retval != 0) {
+			PRINT_ERROR("Can't add dev attrs for dev handler %s",
+				dev->handler->name);
+			goto out_remove;
+		}
+	}
+
+out:
+	TRACE_EXIT_RES(retval);
+	return retval;
+
+out_remove:
+	sysfs_remove_link(&dev->dev_kobj, "handler");
+	goto out;
+}
+
+void scst_remove_devt_dev_sysfs(struct scst_device *dev)
+{
+	TRACE_ENTRY();
+
+	if (dev->handler == &scst_null_devtype)
+		goto out;
+
+	sBUG_ON(!dev->handler->devt_kobj_initialized);
+
+	if (dev->handler->dev_attrs_group != NULL) {
+		sysfs_remove_group(&dev->dev_kobj,
+				dev->handler->dev_attrs_group);
+	}
+
+	sysfs_remove_link(&dev->dev_kobj, "handler");
+
+out:
+	TRACE_EXIT();
+	return;
+}
+
+static struct kobj_type scst_device_ktype = {
+	.sysfs_ops = &scst_sysfs_ops,
+	.release = scst_device_release,
+	.default_attrs = scst_device_attrs,
+};
+
+int scst_create_device_sysfs(struct scst_device *dev)
+{
+	int retval = 0;
+	char dev_name[25]; /* XXXXX:XXXXX:XXXXX:XXXXX */
+	const char *name;
+
+	TRACE_ENTRY();
+
+	if (dev->scsi_dev != NULL) {
+		snprintf(dev_name, sizeof(dev_name), "%d:%d:%d:%d",
+			dev->scsi_dev->host->host_no, dev->scsi_dev->channel,
+			dev->scsi_dev->id, dev->scsi_dev->lun);
+		name = dev_name;
+	} else
+		name = dev->virt_name;
+
+	retval = kobject_init_and_add(&dev->dev_kobj, &scst_device_ktype,
+				      scst_devices_kobj, name);
+	if (retval != 0) {
+		PRINT_ERROR("Can't add device %s to sysfs", name);
+		goto out;
+	}
+
+	dev->dev_kobj_initialized = 1;
+
+	dev->dev_exp_kobj = kobject_create_and_add("exported",
+						   &dev->dev_kobj);
+	if (dev->dev_exp_kobj == NULL) {
+		PRINT_ERROR("Can't create exported link for device %s", name);
+		retval = -ENOMEM;
+		goto out;
+	}
+
+out:
+	TRACE_EXIT_RES(retval);
+	return retval;
+}
+
+void scst_release_sysfs_and_device(struct scst_device *dev)
+{
+	TRACE_ENTRY();
+
+	if (dev->dev_kobj_initialized) {
+		if (dev->dev_exp_kobj != NULL)
+			kobject_put(dev->dev_exp_kobj);
+		kobject_put(&dev->dev_kobj);
+	} else
+		__scst_device_release(dev);
+
+	TRACE_EXIT();
+	return;
+}
+
+/*
  * Target sessions directory implementation
  */
 
@@ -319,8 +484,6 @@ int scst_create_sess_sysfs(struct scst_session *sess)
 
 	TRACE_ENTRY();
 
-	sess->sess_kobj_initialized = 1;
-
 	retval = kobject_init_and_add(&sess->sess_kobj, &scst_session_ktype,
 			      sess->tgt->tgt_sess_kobj, sess->initiator_name);
 	if (retval != 0) {
@@ -328,6 +491,8 @@ int scst_create_sess_sysfs(struct scst_session *sess)
 			    sess->initiator_name);
 		goto out;
 	}
+
+	sess->sess_kobj_initialized = 1;
 
 out:
 	TRACE_EXIT_RES(retval);
@@ -393,10 +558,11 @@ static struct kobj_type acg_dev_ktype = {
 };
 
 int scst_create_acg_dev_sysfs(struct scst_acg *acg, unsigned int virt_lun,
-			  struct kobject *parent)
+	struct kobject *parent)
 {
 	int retval;
 	struct scst_acg_dev *acg_dev = NULL, *acg_dev_tmp;
+	char str[10];
 
 	TRACE_ENTRY();
 
@@ -407,12 +573,13 @@ int scst_create_acg_dev_sysfs(struct scst_acg *acg, unsigned int virt_lun,
 			break;
 		}
 	}
-
 	if (acg_dev == NULL) {
 		PRINT_ERROR("%s", "acg_dev lookup for kobject creation failed");
 		retval = -EINVAL;
 		goto out;
 	}
+
+	snprintf(str, sizeof(str), "%u", acg_dev->dev->dev_exported_lun_num++);
 
 	acg_dev->acg_dev_kobj_initialized = 1;
 	retval = kobject_init_and_add(&acg_dev->acg_dev_kobj, &acg_dev_ktype,
@@ -422,10 +589,15 @@ int scst_create_acg_dev_sysfs(struct scst_acg *acg, unsigned int virt_lun,
 		goto out;
 	}
 
-/* 	XXX: change the second parameter to the kobject where */
-/* 	the link will point to. */
+	retval = sysfs_create_link(acg_dev->dev->dev_exp_kobj,
+				   &acg_dev->acg_dev_kobj, str);
+	if (retval != 0) {
+		PRINT_ERROR("Can't create acg %s LUN link", acg->acg_name);
+		goto out;
+	}
+
 	retval = sysfs_create_link(&acg_dev->acg_dev_kobj,
-			&acg_dev->acg_dev_kobj, "device");
+			&acg_dev->dev->dev_kobj, "device");
 	if (retval != 0) {
 		PRINT_ERROR("Can't create acg %s device link", acg->acg_name);
 		goto out;
@@ -594,14 +766,13 @@ static ssize_t scst_luns_mgmt_store(struct kobject *kobj,
 			goto out_free_up;
 		}
 
-
 		res = scst_acg_add_dev(acg, dev, virt_lun, read_only, true);
 		if (res != 0)
 			goto out_free_up;
 
 		res = scst_create_acg_dev_sysfs(acg, virt_lun, kobj);
 		if (res != 0) {
-			PRINT_ERROR("%s", "creation of acg_dev kobject failed");
+			PRINT_ERROR("%s", "Creation of acg_dev kobject failed");
 			goto out_remove_acg_dev;
 		}
 		break;

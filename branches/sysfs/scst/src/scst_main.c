@@ -720,6 +720,10 @@ static int scst_register_device(struct scsi_device *scsidp)
 
 	list_add_tail(&dev->dev_list_entry, &scst_dev_list);
 
+	res = scst_create_device_sysfs(dev);
+	if (res != 0)
+		goto out_free;
+
 	list_for_each_entry(dt, &scst_dev_type_list, dev_type_list_entry) {
 		if (dt->type == scsidp->type) {
 			res = scst_assign_dev_handler(dev, dt);
@@ -754,7 +758,7 @@ out_free:
 	put_disk(dev->rq_disk);
 
 out_free_dev:
-	scst_free_device(dev);
+	scst_release_sysfs_and_device(dev);
 	goto out_up;
 }
 
@@ -790,7 +794,7 @@ static void scst_unregister_device(struct scsi_device *scsidp)
 	scst_assign_dev_handler(dev, &scst_null_devtype);
 
 	put_disk(dev->rq_disk);
-	scst_free_device(dev);
+	scst_release_sysfs_and_device(dev);
 
 	PRINT_INFO("Detached from scsi%d, channel %d, id %d, lun %d, type %d",
 		scsidp->host->host_no, scsidp->channel, scsidp->id,
@@ -878,6 +882,12 @@ int scst_register_virtual_device(struct scst_dev_type *dev_handler,
 
 	res = dev->virt_id;
 
+	rc = scst_create_device_sysfs(dev);
+	if (rc != 0) {
+		res = rc;
+		goto out_free_del;
+	}
+
 	rc = scst_assign_dev_handler(dev, dev_handler);
 	if (rc != 0) {
 		res = rc;
@@ -902,7 +912,7 @@ out:
 
 out_free_del:
 	list_del(&dev->dev_list_entry);
-	scst_free_device(dev);
+	scst_release_sysfs_and_device(dev);
 	goto out_up;
 }
 EXPORT_SYMBOL(scst_register_virtual_device);
@@ -941,7 +951,7 @@ void scst_unregister_virtual_device(int id)
 	PRINT_INFO("Detached from virtual device %s (id %d)",
 		dev->virt_name, dev->virt_id);
 
-	scst_free_device(dev);
+	scst_release_sysfs_and_device(dev);
 
 out_unblock:
 	mutex_unlock(&scst_mutex);
@@ -1357,7 +1367,10 @@ int scst_assign_dev_handler(struct scst_device *dev,
 	if (dev->handler == handler)
 		goto out;
 
-	if (dev->handler && dev->handler->detach_tgt) {
+	if (dev->handler == NULL)
+		goto assign;
+
+	if (dev->handler->detach_tgt) {
 		list_for_each_entry(tgt_dev, &dev->dev_tgt_dev_list,
 				dev_tgt_dev_list_entry) {
 			TRACE_DBG("Calling dev handler's detach_tgt(%p)",
@@ -1367,7 +1380,7 @@ int scst_assign_dev_handler(struct scst_device *dev,
 		}
 	}
 
-	if (dev->handler && dev->handler->detach) {
+	if (dev->handler->detach) {
 		TRACE_DBG("%s", "Calling dev handler's detach()");
 		dev->handler->detach(dev);
 		TRACE_DBG("%s", "Old handler's detach() returned");
@@ -1375,26 +1388,34 @@ int scst_assign_dev_handler(struct scst_device *dev,
 
 	scst_stop_dev_threads(dev);
 
+	scst_remove_devt_dev_sysfs(dev);
+
+assign:
 	dev->handler = handler;
 
-	if (handler) {
-		res = scst_create_dev_threads(dev);
-		if (res != 0)
-			goto out_null;
-	}
+	if (handler == NULL)
+		goto out;
 
-	if (handler && handler->attach) {
+	res = scst_create_devt_dev_sysfs(dev);
+	if (res != 0)
+		goto out_null;
+
+	res = scst_create_dev_threads(dev);
+	if (res != 0)
+		goto out_remove_sysfs;
+
+	if (handler->attach) {
 		TRACE_DBG("Calling new dev handler's attach(%p)", dev);
 		res = handler->attach(dev);
 		TRACE_DBG("New dev handler's attach() returned %d", res);
 		if (res != 0) {
 			PRINT_ERROR("New device handler's %s attach() "
 				"failed: %d", handler->name, res);
+			goto out_thr_null;
 		}
-		goto out_thr_null;
 	}
 
-	if (handler && handler->attach_tgt) {
+	if (handler->attach_tgt) {
 		list_for_each_entry(tgt_dev, &dev->dev_tgt_dev_list,
 				dev_tgt_dev_list_entry) {
 			TRACE_DBG("Calling dev handler's attach_tgt(%p)",
@@ -1411,14 +1432,6 @@ int scst_assign_dev_handler(struct scst_device *dev,
 		}
 	}
 
-out_thr_null:
-	if (res != 0)
-		scst_stop_dev_threads(dev);
-
-out_null:
-	if (res != 0)
-		dev->handler = &scst_null_devtype;
-
 out:
 	TRACE_EXIT_RES(res);
 	return res;
@@ -1426,8 +1439,7 @@ out:
 out_err_detach_tgt:
 	if (handler && handler->detach_tgt) {
 		list_for_each_entry(tgt_dev, &attached_tgt_devs,
-				 extra_tgt_dev_list_entry)
-		{
+				 extra_tgt_dev_list_entry) {
 			TRACE_DBG("Calling handler's detach_tgt(%p)",
 				tgt_dev);
 			handler->detach_tgt(tgt_dev);
@@ -1439,7 +1451,16 @@ out_err_detach_tgt:
 		handler->detach(dev);
 		TRACE_DBG("%s", "Handler's detach() returned");
 	}
-	goto out_null;
+
+out_thr_null:
+	scst_stop_dev_threads(dev);
+
+out_remove_sysfs:
+	scst_remove_devt_dev_sysfs(dev);
+
+out_null:
+	dev->handler = &scst_null_devtype;
+	goto out;
 }
 
 int scst_global_threads_count(void)

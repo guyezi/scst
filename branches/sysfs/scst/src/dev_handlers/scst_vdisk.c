@@ -367,6 +367,98 @@ static struct attribute *vdisk_attrs[] = {
 	NULL,
 };
 
+static ssize_t vdisk_sysfs_size_show(struct kobject *kobj,
+	struct kobj_attribute *attr, char *buf);
+static ssize_t vdisk_sysfs_blocksize_show(struct kobject *kobj,
+	struct kobj_attribute *attr, char *buf);
+static ssize_t vdisk_sysfs_rd_only_show(struct kobject *kobj,
+	struct kobj_attribute *attr, char *buf);
+static ssize_t vdisk_sysfs_wt_show(struct kobject *kobj,
+	struct kobj_attribute *attr, char *buf);
+static ssize_t vdisk_sysfs_nv_cache_show(struct kobject *kobj,
+	struct kobj_attribute *attr, char *buf);
+static ssize_t vdisk_sysfs_o_direct_show(struct kobject *kobj,
+	struct kobj_attribute *attr, char *buf);
+static ssize_t vdisk_sysfs_removable_show(struct kobject *kobj,
+	struct kobj_attribute *attr, char *buf);
+static ssize_t vdisk_sysfs_filename_show(struct kobject *kobj,
+	struct kobj_attribute *attr, char *buf);
+static ssize_t vdisk_sysfs_resync_size_store(struct kobject *kobj,
+	struct kobj_attribute *attr, const char *buf, size_t count);
+
+static struct kobj_attribute vdisk_size_attr =
+	__ATTR(size, S_IRUGO, vdisk_sysfs_size_show, NULL);
+static struct kobj_attribute vdisk_blocksize_attr =
+	__ATTR(block_size, S_IRUGO, vdisk_sysfs_blocksize_show, NULL);
+static struct kobj_attribute vdisk_rd_only_attr =
+	__ATTR(rd_only, S_IRUGO, vdisk_sysfs_rd_only_show, NULL);
+static struct kobj_attribute vdisk_wt_attr =
+	__ATTR(write_through, S_IRUGO, vdisk_sysfs_wt_show, NULL);
+static struct kobj_attribute vdisk_nv_cache_attr =
+	__ATTR(nv_cache, S_IRUGO, vdisk_sysfs_nv_cache_show, NULL);
+static struct kobj_attribute vdisk_o_direct_attr =
+	__ATTR(o_direct, S_IRUGO, vdisk_sysfs_o_direct_show, NULL);
+static struct kobj_attribute vdisk_removable_attr =
+	__ATTR(removable, S_IRUGO, vdisk_sysfs_removable_show, NULL);
+static struct kobj_attribute vdisk_filename_attr =
+	__ATTR(filename, S_IRUGO, vdisk_sysfs_filename_show, NULL);
+static struct kobj_attribute vdisk_resync_size_attr =
+	__ATTR(resync_size, S_IWUSR, NULL, vdisk_sysfs_resync_size_store);
+
+static struct attribute *vdisk_fileio_attrs[] = {
+	&vdisk_size_attr.attr,
+	&vdisk_blocksize_attr.attr,
+	&vdisk_rd_only_attr.attr,
+	&vdisk_wt_attr.attr,
+	&vdisk_nv_cache_attr.attr,
+	&vdisk_o_direct_attr.attr,
+	&vdisk_removable_attr.attr,
+	&vdisk_filename_attr.attr,
+	&vdisk_resync_size_attr.attr,
+	NULL,
+};
+
+static struct attribute_group vdisk_fileio_attr_grp = {
+	.attrs = vdisk_fileio_attrs,
+};
+
+static struct attribute *vdisk_blockio_attrs[] = {
+	&vdisk_size_attr.attr,
+	&vdisk_blocksize_attr.attr,
+	&vdisk_rd_only_attr.attr,
+	&vdisk_removable_attr.attr,
+	&vdisk_filename_attr.attr,
+	&vdisk_resync_size_attr.attr,
+	NULL,
+};
+
+static struct attribute_group vdisk_blockio_attr_grp = {
+	.attrs = vdisk_blockio_attrs,
+};
+
+static struct attribute *vdisk_nullio_attrs[] = {
+	&vdisk_size_attr.attr,
+	&vdisk_blocksize_attr.attr,
+	&vdisk_rd_only_attr.attr,
+	&vdisk_removable_attr.attr,
+	NULL,
+};
+
+static struct attribute_group vdisk_nullio_attr_grp = {
+	.attrs = vdisk_nullio_attrs,
+};
+
+static struct attribute *vcdrom_attrs[] = {
+	&vdisk_size_attr.attr,
+	&vdisk_removable_attr.attr,
+	&vdisk_filename_attr.attr,
+	NULL,
+};
+
+static struct attribute_group vcdrom_attr_grp = {
+	.attrs = vcdrom_attrs,
+};
+
 static DEFINE_MUTEX(scst_vdisk_mutex);
 static LIST_HEAD(vdisk_dev_list);
 static LIST_HEAD(vcdrom_dev_list);
@@ -398,6 +490,7 @@ static struct scst_dev_type vdisk_file_devtype = {
 	.task_mgmt_fn =		vdisk_task_mgmt_fn,
 	.trace_tbl =		vdisk_local_trace_tbl,
 	.attrs =		vdisk_attrs,
+	.dev_attrs_group =	&vdisk_fileio_attr_grp,
 #if defined(CONFIG_SCST_DEBUG) || defined(CONFIG_SCST_TRACING)
 	.default_trace_flags =	SCST_DEFAULT_DEV_LOG_FLAGS,
 	.trace_flags =		&trace_flag,
@@ -424,6 +517,7 @@ static struct scst_dev_type vdisk_blk_devtype = {
 	.task_mgmt_fn =		vdisk_task_mgmt_fn,
 	.trace_tbl =		vdisk_local_trace_tbl,
 	.attrs =		vdisk_attrs,
+	.dev_attrs_group =	&vdisk_blockio_attr_grp,
 #if defined(CONFIG_SCST_DEBUG) || defined(CONFIG_SCST_TRACING)
 	.default_trace_flags =	SCST_DEFAULT_DEV_LOG_FLAGS,
 	.trace_flags =		&trace_flag,
@@ -448,6 +542,7 @@ static struct scst_dev_type vdisk_null_devtype = {
 	.task_mgmt_fn =		vdisk_task_mgmt_fn,
 	.trace_tbl =		vdisk_local_trace_tbl,
 	.attrs =		vdisk_attrs,
+	.dev_attrs_group =	&vdisk_nullio_attr_grp,
 #if defined(CONFIG_SCST_DEBUG) || defined(CONFIG_SCST_TRACING)
 	.default_trace_flags =	SCST_DEFAULT_DEV_LOG_FLAGS,
 	.trace_flags =		&trace_flag,
@@ -474,6 +569,7 @@ static struct scst_dev_type vcdrom_devtype = {
 	.task_mgmt_fn =		vdisk_task_mgmt_fn,
 	.trace_tbl =		vdisk_local_trace_tbl,
 	.attrs =		vdisk_attrs,
+	.dev_attrs_group =	&vcdrom_attr_grp,
 #if defined(CONFIG_SCST_DEBUG) || defined(CONFIG_SCST_TRACING)
 	.default_trace_flags =	SCST_DEFAULT_DEV_LOG_FLAGS,
 	.trace_flags =		&trace_flag,
@@ -3614,6 +3710,181 @@ static ssize_t vdisk_mgmt_store(struct kobject *kobj,
 
 	res = vdisk_mgmt_cmd(buf, count, (struct vdev_type *)devt->devt_priv);
 
+	return res;
+}
+
+static ssize_t vdisk_sysfs_size_show(struct kobject *kobj,
+	struct kobj_attribute *attr, char *buf)
+{
+	int pos = 0;
+	struct scst_device *dev;
+	struct scst_vdisk_dev *virt_dev;
+
+	TRACE_ENTRY();
+
+	dev = container_of(kobj, struct scst_device, dev_kobj);
+	virt_dev = (struct scst_vdisk_dev *)dev->dh_priv;
+
+	pos = sprintf(buf, "%lld\n", virt_dev->file_size);
+
+	TRACE_EXIT_RES(pos);
+	return pos;
+}
+
+static ssize_t vdisk_sysfs_blocksize_show(struct kobject *kobj,
+	struct kobj_attribute *attr, char *buf)
+{
+	int pos = 0;
+	struct scst_device *dev;
+	struct scst_vdisk_dev *virt_dev;
+
+	TRACE_ENTRY();
+
+	dev = container_of(kobj, struct scst_device, dev_kobj);
+	virt_dev = (struct scst_vdisk_dev *)dev->dh_priv;
+
+	pos = sprintf(buf, "%d\n", (int)virt_dev->block_size);
+
+	TRACE_EXIT_RES(pos);
+	return pos;
+}
+
+static ssize_t vdisk_sysfs_rd_only_show(struct kobject *kobj,
+	struct kobj_attribute *attr, char *buf)
+{
+	int pos = 0;
+	struct scst_device *dev;
+	struct scst_vdisk_dev *virt_dev;
+
+	TRACE_ENTRY();
+
+	dev = container_of(kobj, struct scst_device, dev_kobj);
+	virt_dev = (struct scst_vdisk_dev *)dev->dh_priv;
+
+	pos = sprintf(buf, "%d\n", virt_dev->rd_only ? 1 : 0);
+
+	TRACE_EXIT_RES(pos);
+	return pos;
+}
+
+static ssize_t vdisk_sysfs_wt_show(struct kobject *kobj,
+	struct kobj_attribute *attr, char *buf)
+{
+	int pos = 0;
+	struct scst_device *dev;
+	struct scst_vdisk_dev *virt_dev;
+
+	TRACE_ENTRY();
+
+	dev = container_of(kobj, struct scst_device, dev_kobj);
+	virt_dev = (struct scst_vdisk_dev *)dev->dh_priv;
+
+	pos = sprintf(buf, "%d\n", virt_dev->wt_flag ? 1 : 0);
+
+	TRACE_EXIT_RES(pos);
+	return pos;
+}
+
+static ssize_t vdisk_sysfs_nv_cache_show(struct kobject *kobj,
+	struct kobj_attribute *attr, char *buf)
+{
+	int pos = 0;
+	struct scst_device *dev;
+	struct scst_vdisk_dev *virt_dev;
+
+	TRACE_ENTRY();
+
+	dev = container_of(kobj, struct scst_device, dev_kobj);
+	virt_dev = (struct scst_vdisk_dev *)dev->dh_priv;
+
+	pos = sprintf(buf, "%d\n", virt_dev->nv_cache ? 1 : 0);
+
+	TRACE_EXIT_RES(pos);
+	return pos;
+}
+
+static ssize_t vdisk_sysfs_o_direct_show(struct kobject *kobj,
+	struct kobj_attribute *attr, char *buf)
+{
+	int pos = 0;
+	struct scst_device *dev;
+	struct scst_vdisk_dev *virt_dev;
+
+	TRACE_ENTRY();
+
+	dev = container_of(kobj, struct scst_device, dev_kobj);
+	virt_dev = (struct scst_vdisk_dev *)dev->dh_priv;
+
+	pos = sprintf(buf, "%d\n", virt_dev->o_direct_flag ? 1 : 0);
+
+	TRACE_EXIT_RES(pos);
+	return pos;
+}
+
+static ssize_t vdisk_sysfs_removable_show(struct kobject *kobj,
+	struct kobj_attribute *attr, char *buf)
+{
+	int pos = 0;
+	struct scst_device *dev;
+	struct scst_vdisk_dev *virt_dev;
+
+	TRACE_ENTRY();
+
+	dev = container_of(kobj, struct scst_device, dev_kobj);
+	virt_dev = (struct scst_vdisk_dev *)dev->dh_priv;
+
+	pos = sprintf(buf, "%d\n", virt_dev->removable ? 1 : 0);
+
+	TRACE_EXIT_RES(pos);
+	return pos;
+}
+
+static ssize_t vdisk_sysfs_filename_show(struct kobject *kobj,
+	struct kobj_attribute *attr, char *buf)
+{
+	int pos = 0;
+	struct scst_device *dev;
+	struct scst_vdisk_dev *virt_dev;
+
+	TRACE_ENTRY();
+
+	dev = container_of(kobj, struct scst_device, dev_kobj);
+	virt_dev = (struct scst_vdisk_dev *)dev->dh_priv;
+
+	pos = sprintf(buf, "%s\n", virt_dev->file_name);
+
+	TRACE_EXIT_RES(pos);
+	return pos;
+}
+
+static ssize_t vdisk_sysfs_resync_size_store(struct kobject *kobj,
+	struct kobj_attribute *attr, const char *buf, size_t count)
+{
+	int res;
+	struct scst_device *dev;
+	struct scst_vdisk_dev *virt_dev;
+
+	TRACE_ENTRY();
+
+	dev = container_of(kobj, struct scst_device, dev_kobj);
+	virt_dev = (struct scst_vdisk_dev *)dev->dh_priv;
+
+	if (mutex_lock_interruptible(&scst_vdisk_mutex) != 0) {
+		res = -EINTR;
+		goto out;
+	}
+
+	res = __vdisk_resync_size(virt_dev);
+	if (res != 0)
+		goto out_unlock;
+
+	res = count;
+
+out_unlock:
+	mutex_unlock(&scst_vdisk_mutex);
+
+out:
+	TRACE_EXIT_RES(res);
 	return res;
 }
 

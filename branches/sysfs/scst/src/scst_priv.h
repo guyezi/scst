@@ -419,6 +419,10 @@ int scst_create_sgv_sysfs(struct sgv_pool *pool);
 void scst_cleanup_sgv_sysfs_put(struct sgv_pool *pool);
 int scst_create_devt_sysfs(struct scst_dev_type *devt);
 void scst_cleanup_devt_sysfs(struct scst_dev_type *devt);
+int scst_create_device_sysfs(struct scst_device *dev);
+void scst_release_sysfs_and_device(struct scst_device *dev);
+int scst_create_devt_dev_sysfs(struct scst_device *dev);
+void scst_remove_devt_dev_sysfs(struct scst_device *dev);
 
 int scst_get_cdb_len(const uint8_t *cdb);
 

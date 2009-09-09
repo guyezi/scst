@@ -928,6 +928,9 @@ struct scst_dev_type {
 	/* Optional sysfs attributes */
 	struct attribute **attrs;
 
+	/* Optional sysfs device attributes */
+	const struct attribute_group *dev_attrs_group;
+
 	/* Pointer to scst_dev_type's private to dev handler data */
 	void *devt_priv;
 
@@ -1577,6 +1580,15 @@ struct scst_device {
 
 	/* Device number */
 	int dev_num;
+
+	/* Set if tgt_kobj was initialized */
+	unsigned int dev_kobj_initialized:1;
+
+	struct kobject dev_kobj; /* kobject for this struct */
+	struct kobject *dev_exp_kobj; /* exported groups */
+
+	/* Protected by scst_mutex */
+	int dev_exported_lun_num;
 };
 
 /*
