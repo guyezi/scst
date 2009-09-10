@@ -917,7 +917,7 @@ struct scst_dev_type {
 	int threads_num;
 
 	/* Optional default log flags */
-	unsigned long default_trace_flags;
+	const unsigned long default_trace_flags;
 
 	/* Optional pointer to trace flags */
 	unsigned long *trace_flags;
@@ -925,13 +925,16 @@ struct scst_dev_type {
 	/* Optional local trace table */
 	struct scst_trace_log *trace_tbl;
 
+	/* Optional local trace table help string */
+	const char *trace_tbl_help;
+
 	/* Optional sysfs attributes */
-	struct attribute **attrs;
+	const struct attribute_group *devt_attrs_group;
 
 	/* Optional sysfs device attributes */
 	const struct attribute_group *dev_attrs_group;
 
-	/* Pointer to scst_dev_type's private to dev handler data */
+	/* Pointer to dev handler's private data */
 	void *devt_priv;
 
 	/* Pointer to parent dev type in the sysfs hierarchy */
@@ -950,7 +953,7 @@ struct scst_dev_type {
 	unsigned int devt_kobj_initialized:1;
 
 	struct kobj_type devt_ktype;
-	struct kobject devt_kobj; /* main back_drivers/driver */
+	struct kobject devt_kobj; /* main handlers/driver */
 
 	/* To wait until devt_kobj released */
 	struct completion devt_kobj_release_compl;
@@ -1587,7 +1590,7 @@ struct scst_device {
 	struct kobject dev_kobj; /* kobject for this struct */
 	struct kobject *dev_exp_kobj; /* exported groups */
 
-	/* Protected by scst_mutex */
+	/* Export number in the dev's sysfs list. Protected by scst_mutex */
 	int dev_exported_lun_num;
 };
 

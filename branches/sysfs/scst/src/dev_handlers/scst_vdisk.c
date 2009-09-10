@@ -56,6 +56,8 @@ static struct scst_trace_log vdisk_local_trace_tbl[] =
 };
 #define trace_log_tbl			vdisk_local_trace_tbl
 
+#define VDISK_TRACE_TLB_HELP	", order"
+
 #endif
 
 #include "scst_dev_handler.h"
@@ -358,7 +360,7 @@ static int vcdrom_write_proc(char *buffer, char **start, off_t offset,
 static int vdisk_task_mgmt_fn(struct scst_mgmt_cmd *mcmd,
 	struct scst_tgt_dev *tgt_dev);
 
-/** sysfs **/
+/** SYSFS **/
 
 static ssize_t vdisk_mgmt_show(struct kobject *kobj,
 	struct kobj_attribute *attr, char *buf);
@@ -371,6 +373,10 @@ struct kobj_attribute vdisk_mgmt_attr =
 static struct attribute *vdisk_attrs[] = {
 	&vdisk_mgmt_attr.attr,
 	NULL,
+};
+
+static struct attribute_group vdisk_attrs_grp = {
+	.attrs = vdisk_attrs,
 };
 
 static ssize_t vdisk_sysfs_size_show(struct kobject *kobj,
@@ -424,7 +430,7 @@ static struct attribute *vdisk_fileio_attrs[] = {
 	NULL,
 };
 
-static struct attribute_group vdisk_fileio_attr_grp = {
+static struct attribute_group vdisk_fileio_attrs_grp = {
 	.attrs = vdisk_fileio_attrs,
 };
 
@@ -438,7 +444,7 @@ static struct attribute *vdisk_blockio_attrs[] = {
 	NULL,
 };
 
-static struct attribute_group vdisk_blockio_attr_grp = {
+static struct attribute_group vdisk_blockio_attrs_grp = {
 	.attrs = vdisk_blockio_attrs,
 };
 
@@ -450,7 +456,7 @@ static struct attribute *vdisk_nullio_attrs[] = {
 	NULL,
 };
 
-static struct attribute_group vdisk_nullio_attr_grp = {
+static struct attribute_group vdisk_nullio_attrs_grp = {
 	.attrs = vdisk_nullio_attrs,
 };
 
@@ -461,7 +467,7 @@ static struct attribute *vcdrom_attrs[] = {
 	NULL,
 };
 
-static struct attribute_group vcdrom_attr_grp = {
+static struct attribute_group vcdrom_attrs_grp = {
 	.attrs = vcdrom_attrs,
 };
 
@@ -496,12 +502,13 @@ static struct scst_dev_type vdisk_file_devtype = {
 	.read_proc =		vdisk_read_proc,
 	.write_proc =		vdisk_write_proc,
 	.task_mgmt_fn =		vdisk_task_mgmt_fn,
-	.trace_tbl =		vdisk_local_trace_tbl,
-	.attrs =		vdisk_attrs,
-	.dev_attrs_group =	&vdisk_fileio_attr_grp,
+	.devt_attrs_group =	&vdisk_attrs_grp,
+	.dev_attrs_group =	&vdisk_fileio_attrs_grp,
 #if defined(CONFIG_SCST_DEBUG) || defined(CONFIG_SCST_TRACING)
 	.default_trace_flags =	SCST_DEFAULT_DEV_LOG_FLAGS,
 	.trace_flags =		&trace_flag,
+	.trace_tbl =		vdisk_local_trace_tbl,
+	.trace_tbl_help =	VDISK_TRACE_TLB_HELP,
 #endif
 };
 
@@ -523,12 +530,13 @@ static struct scst_dev_type vdisk_blk_devtype = {
 	.parse =		vdisk_parse,
 	.exec =			vdisk_do_job,
 	.task_mgmt_fn =		vdisk_task_mgmt_fn,
-	.trace_tbl =		vdisk_local_trace_tbl,
-	.attrs =		vdisk_attrs,
-	.dev_attrs_group =	&vdisk_blockio_attr_grp,
+	.devt_attrs_group =	&vdisk_attrs_grp,
+	.dev_attrs_group =	&vdisk_blockio_attrs_grp,
 #if defined(CONFIG_SCST_DEBUG) || defined(CONFIG_SCST_TRACING)
 	.default_trace_flags =	SCST_DEFAULT_DEV_LOG_FLAGS,
 	.trace_flags =		&trace_flag,
+	.trace_tbl =		vdisk_local_trace_tbl,
+	.trace_tbl_help =	VDISK_TRACE_TLB_HELP,
 #endif
 };
 
@@ -548,12 +556,13 @@ static struct scst_dev_type vdisk_null_devtype = {
 	.parse =		vdisk_parse,
 	.exec =			vdisk_do_job,
 	.task_mgmt_fn =		vdisk_task_mgmt_fn,
-	.trace_tbl =		vdisk_local_trace_tbl,
-	.attrs =		vdisk_attrs,
-	.dev_attrs_group =	&vdisk_nullio_attr_grp,
+	.devt_attrs_group =	&vdisk_attrs_grp,
+	.dev_attrs_group =	&vdisk_nullio_attrs_grp,
 #if defined(CONFIG_SCST_DEBUG) || defined(CONFIG_SCST_TRACING)
 	.default_trace_flags =	SCST_DEFAULT_DEV_LOG_FLAGS,
 	.trace_flags =		&trace_flag,
+	.trace_tbl =		vdisk_local_trace_tbl,
+	.trace_tbl_help =	VDISK_TRACE_TLB_HELP,
 #endif
 };
 
@@ -575,12 +584,13 @@ static struct scst_dev_type vcdrom_devtype = {
 	.read_proc =		vcdrom_read_proc,
 	.write_proc =		vcdrom_write_proc,
 	.task_mgmt_fn =		vdisk_task_mgmt_fn,
-	.trace_tbl =		vdisk_local_trace_tbl,
-	.attrs =		vdisk_attrs,
-	.dev_attrs_group =	&vcdrom_attr_grp,
+	.devt_attrs_group =	&vdisk_attrs_grp,
+	.dev_attrs_group =	&vcdrom_attrs_grp,
 #if defined(CONFIG_SCST_DEBUG) || defined(CONFIG_SCST_TRACING)
 	.default_trace_flags =	SCST_DEFAULT_DEV_LOG_FLAGS,
 	.trace_flags =		&trace_flag,
+	.trace_tbl =		vdisk_local_trace_tbl,
+	.trace_tbl_help =	VDISK_TRACE_TLB_HELP,
 #endif
 };
 

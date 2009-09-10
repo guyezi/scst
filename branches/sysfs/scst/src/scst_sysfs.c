@@ -17,7 +17,7 @@ static struct kobject scst_sysfs_root_kobj;
 static struct kobject *scst_targets_kobj;
 static struct kobject *scst_devices_kobj;
 static struct kobject *scst_sgv_kobj;
-static struct kobject *scst_back_drivers_kobj;
+static struct kobject *scst_handlers_kobj;
 
 static struct sysfs_ops scst_sysfs_ops;
 
@@ -943,6 +943,9 @@ static void scst_read_trace_tlb(const struct scst_trace_log *tbl, char *buf,
 {
 	const struct scst_trace_log *t = tbl;
 
+	if (t == NULL)
+		goto out;
+
 	while (t->token) {
 		if (log_level & t->val) {
 			*pos += sprintf(&buf[*pos], "%s%s",
@@ -951,16 +954,17 @@ static void scst_read_trace_tlb(const struct scst_trace_log *tbl, char *buf,
 		}
 		t++;
 	}
+out:
 	return;
 }
 
-static ssize_t scst_trace_level_show(struct kobject *kobj,
-	struct kobj_attribute *attr, char *buf)
+static ssize_t scst_trace_level_show(const struct scst_trace_log *local_tbl,
+	unsigned long log_level, char *buf, const char *help)
 {
 	int pos = 0;
 
-	scst_read_trace_tlb(scst_trace_tbl, buf, trace_flag, &pos);
-	scst_read_trace_tlb(scst_local_trace_tbl, buf, trace_flag, &pos);
+	scst_read_trace_tlb(scst_trace_tbl, buf, log_level, &pos);
+	scst_read_trace_tlb(local_tbl, buf, log_level, &pos);
 
 	pos += sprintf(&buf[pos], "\n\n\nUsage:\n"
 		"	echo \"all|none|default\" >trace_level\n"
@@ -971,9 +975,16 @@ static ssize_t scst_trace_level_show(struct kobject *kobj,
 		"		       special, scsi, mgmt, minor,\n"
 		"		       mgmt_minor, mgmt_dbg, scsi_serializing,\n"
 		"		       retry, recv_bot, send_bot, recv_top,\n"
-		"		       send_top]");
+		"		       send_top%s]", help != NULL ? help : "");
 
 	return pos;
+}
+
+static ssize_t scst_main_trace_level_show(struct kobject *kobj,
+	struct kobj_attribute *attr, char *buf)
+{
+	return scst_trace_level_show(scst_local_trace_tbl, trace_flag,
+			buf, NULL);
 }
 
 static int scst_write_trace(const char *buf, size_t length,
@@ -1127,7 +1138,7 @@ out:
 #undef SCST_TRACE_ACTION_VALUE
 }
 
-static ssize_t scst_trace_level_store(struct kobject *kobj,
+static ssize_t scst_main_trace_level_store(struct kobject *kobj,
 	struct kobj_attribute *attr, const char *buf, size_t count)
 {
 	int res;
@@ -1213,8 +1224,8 @@ static struct kobj_attribute scst_threads_attr =
 
 #if defined(CONFIG_SCST_DEBUG) || defined(CONFIG_SCST_TRACING)
 static struct kobj_attribute scst_trace_level_attr =
-	__ATTR(trace_level, S_IRUGO | S_IWUSR, scst_trace_level_show,
-	       scst_trace_level_store);
+	__ATTR(trace_level, S_IRUGO | S_IWUSR, scst_main_trace_level_show,
+	       scst_main_trace_level_store);
 #endif
 
 static struct kobj_attribute scst_version_attr =
@@ -1271,31 +1282,24 @@ static void scst_devt_free(struct kobject *kobj)
 
 	devt = container_of(kobj, struct scst_dev_type, devt_kobj);
 
-	if (devt->devt_ktype.default_attrs != NULL) {
-		kfree(devt->devt_ktype.default_attrs);
-		devt->devt_ktype.default_attrs = NULL;
-	}
-
 	complete_all(&devt->devt_kobj_release_compl);
 
 	TRACE_EXIT();
 	return;
 }
 
+#if defined(CONFIG_SCST_DEBUG) || defined(CONFIG_SCST_TRACING)
+
 static ssize_t scst_devt_trace_level_show(struct kobject *kobj,
 	struct kobj_attribute *attr, char *buf)
 {
-	int pos = 0;
 	struct scst_dev_type *devt;
 
 	devt = container_of(kobj, struct scst_dev_type, devt_kobj);
 
-	scst_read_trace_tlb(scst_trace_tbl, buf, *devt->trace_flags, &pos);
-	if (devt->trace_tbl != NULL)
-		scst_read_trace_tlb(devt->trace_tbl, buf, *devt->trace_flags,
-					&pos);
-
-	return pos;
+	return scst_trace_level_show(devt->trace_tbl,
+		devt->trace_flags ? *devt->trace_flags : 0, buf,
+		devt->trace_tbl_help);
 }
 
 static ssize_t scst_devt_trace_level_store(struct kobject *kobj,
@@ -1323,6 +1327,12 @@ out:
 	return res;
 }
 
+static struct kobj_attribute devt_trace_attr =
+	__ATTR(trace_level, S_IRUGO | S_IWUSR,
+	       scst_devt_trace_level_show, scst_devt_trace_level_store);
+
+#endif /* #if defined(CONFIG_SCST_DEBUG) || defined(CONFIG_SCST_TRACING) */
+
 static ssize_t scst_devt_type_show(struct kobject *kobj,
 	struct kobj_attribute *attr, char *buf)
 {
@@ -1341,76 +1351,29 @@ static ssize_t scst_devt_type_show(struct kobject *kobj,
 static struct kobj_attribute scst_devt_type_attr =
 	__ATTR(type, S_IRUGO, scst_devt_type_show, NULL);
 
+static struct attribute *scst_devt_default_attrs[] = {
+	&scst_devt_type_attr.attr,
+	NULL,
+};
+
 int scst_create_devt_sysfs(struct scst_dev_type *devt)
 {
 	int retval;
-	struct attribute **attrs = NULL;
-	int count = 2; /* 1st for type, 2d for the end zero entry */
-	int curr;
 	struct kobject *parent;
 
 	TRACE_ENTRY();
 
 	init_completion(&devt->devt_kobj_release_compl);
 
-	if ((devt->trace_flags != NULL) || (devt->attrs != NULL)) {
-		if (devt->trace_flags != NULL) {
-			count++;
-			TRACE_DBG("trace_flags, count %d", count);
-		}
-
-		curr = 0;
-		if (devt->attrs != NULL) {
-			while (devt->attrs[curr] != NULL) {
-				count++;
-				curr++;
-			}
-		}
-	}
-
-	TRACE_DBG("Allocating %d attrs", count-1);
-
-	attrs = kzalloc(sizeof(attrs[0]) * count, GFP_KERNEL);
-	if (attrs == NULL) {
-		PRINT_ERROR("Unable to allocate devt_attrs "
-			"array for %d entries", count);
-		retval = -ENOMEM;
-		goto out;
-	}
-
-	curr = 0;
-
-	attrs[curr] = &scst_devt_type_attr.attr;
-	curr++;
-
-	if (devt->trace_flags != NULL) {
-		static struct kobj_attribute devtt_trace_attr =
-			__ATTR(trace_level, S_IRUGO | S_IWUSR,
-				scst_devt_trace_level_show,
-				scst_devt_trace_level_store);
-		attrs[curr] = &devtt_trace_attr.attr;
-		curr++;
-	}
-
-	if (devt->attrs != NULL) {
-		int i;
-		for (i = 0; devt->attrs[i] != NULL; i++, curr++)
-			attrs[curr] = devt->attrs[i];
-	}
-
-	/* attrs[count-1] set to NULL by kzalloc() */
-
 	memset(&devt->devt_ktype, 0, sizeof(devt->devt_ktype));
 	devt->devt_ktype.release = scst_devt_free;
 	devt->devt_ktype.sysfs_ops = &scst_sysfs_ops;
-	devt->devt_ktype.default_attrs = attrs;
-
-	devt->devt_kobj_initialized = 1;
+	devt->devt_ktype.default_attrs = scst_devt_default_attrs;
 
 	if (devt->parent != NULL)
 		parent = &devt->parent->devt_kobj;
 	else
-		parent = scst_back_drivers_kobj;
+		parent = scst_handlers_kobj;
 
 	retval = kobject_init_and_add(&devt->devt_kobj, &devt->devt_ktype,
 			parent, devt->name);
@@ -1418,6 +1381,30 @@ int scst_create_devt_sysfs(struct scst_dev_type *devt)
 		PRINT_ERROR("Can't add devt %s to sysfs", devt->name);
 		goto out;
 	}
+
+	devt->devt_kobj_initialized = 1;
+
+	if (devt->devt_attrs_group != NULL) {
+		retval = sysfs_create_group(&devt->devt_kobj,
+				devt->devt_attrs_group);
+		if (retval != 0) {
+			PRINT_ERROR("Can't add devt attrs for dev handler %s",
+				devt->name);
+			goto out;
+		}
+	}
+
+#if defined(CONFIG_SCST_DEBUG) || defined(CONFIG_SCST_TRACING)
+	if (devt->trace_flags != NULL) {
+		retval = sysfs_create_file(&devt->devt_kobj,
+				&devt_trace_attr.attr);
+		if (retval != 0) {
+			PRINT_ERROR("Can't add devt trace_flag for dev "
+				"handler %s", devt->name);
+			goto out;
+		}
+	}
+#endif
 
 out:
 	TRACE_EXIT_RES(retval);
@@ -1478,17 +1465,17 @@ int __init scst_sysfs_init(void)
 	if (retval != 0)
 		goto sgv_kobj_add_error;
 
-	scst_back_drivers_kobj = kobject_create_and_add("back_drivers",
+	scst_handlers_kobj = kobject_create_and_add("handlers",
 					&scst_sysfs_root_kobj);
-	if (scst_back_drivers_kobj == NULL)
-		goto back_drivers_kobj_error;
+	if (scst_handlers_kobj == NULL)
+		goto handlers_kobj_error;
 
 
 out:
 	TRACE_EXIT_RES(retval);
 	return retval;
 
-back_drivers_kobj_error:
+handlers_kobj_error:
 	kobject_del(scst_sgv_kobj);
 
 sgv_kobj_add_error:
@@ -1528,8 +1515,8 @@ void __exit scst_sysfs_cleanup(void)
 	kobject_del(scst_targets_kobj);
 	kobject_put(scst_targets_kobj);
 
-	kobject_del(scst_back_drivers_kobj);
-	kobject_put(scst_back_drivers_kobj);
+	kobject_del(scst_handlers_kobj);
+	kobject_put(scst_handlers_kobj);
 
 	kobject_del(&scst_sysfs_root_kobj);
 	kobject_put(&scst_sysfs_root_kobj);
