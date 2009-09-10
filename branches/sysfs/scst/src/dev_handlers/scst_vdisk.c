@@ -265,14 +265,18 @@ struct vdev_type_funcs {
 		struct scst_vdisk_dev *virt_dev);
 	void (*vdev_deinit) (struct scst_vdisk_dev *virt_dev);
 
+	/* Both supposed to be called under scst_vdisk_mutex */
 	int (*vdev_open) (struct vdev_type *vdt, char *p, const char *name);
 	int (*vdev_close) (struct vdev_type *vdt, const char *name);
 
+	/* All 3 supposed to be called under scst_vdisk_mutex */
 	void (*vdev_add) (struct scst_vdisk_dev *virt_dev);
 	void (*vdev_del) (struct scst_vdisk_dev *virt_dev);
 	struct scst_vdisk_dev *(*vdev_find) (const char *name);
 
 	int (*parse_cmd) (struct vdev_type *vdt, char *p, int *action);
+
+	/* Supposed to be called under scst_vdisk_mutex */
 	int (*perform_cmd) (struct vdev_type *vdt, int action, char *p,
 				char *name);
 
@@ -353,6 +357,8 @@ static int vcdrom_write_proc(char *buffer, char **start, off_t offset,
 	int length, int *eof, struct scst_dev_type *dev_type);
 static int vdisk_task_mgmt_fn(struct scst_mgmt_cmd *mcmd,
 	struct scst_tgt_dev *tgt_dev);
+
+/** sysfs **/
 
 static ssize_t vdisk_mgmt_show(struct kobject *kobj,
 	struct kobj_attribute *attr, char *buf);
@@ -460,6 +466,8 @@ static struct attribute_group vcdrom_attr_grp = {
 };
 
 static DEFINE_MUTEX(scst_vdisk_mutex);
+
+/* Both protected by scst_vdisk_mutex */
 static LIST_HEAD(vdisk_dev_list);
 static LIST_HEAD(vcdrom_dev_list);
 
@@ -2969,6 +2977,7 @@ out:
 	return res;
 }
 
+/* scst_vdisk_mutex supposed to be held */
 static int vdisk_resync_size(struct vdev_type *vdt, char *p, const char *name)
 {
 	struct scst_vdisk_dev *virt_dev;
@@ -3293,6 +3302,7 @@ out_free_vdev:
 	goto out;
 }
 
+/* scst_vdisk_mutex supposed to be held */
 static int vdev_close(struct vdev_type *vdt, const char *name)
 {
 	int res = 0;
@@ -3320,6 +3330,7 @@ out:
 	return res;
 }
 
+/* scst_vdisk_mutex supposed to be held */
 static void vdev_del(struct scst_vdisk_dev *virt_dev)
 {
 	TRACE_ENTRY();
@@ -3330,6 +3341,7 @@ static void vdev_del(struct scst_vdisk_dev *virt_dev)
 	return;
 }
 
+/* scst_vdisk_mutex supposed to be held */
 static void vdisk_add(struct scst_vdisk_dev *virt_dev)
 {
 	TRACE_ENTRY();
@@ -3340,6 +3352,7 @@ static void vdisk_add(struct scst_vdisk_dev *virt_dev)
 	return;
 }
 
+/* scst_vdisk_mutex supposed to be held */
 static struct scst_vdisk_dev *vdisk_find(const char *name)
 {
 	struct scst_vdisk_dev *res, *vv;
@@ -3358,6 +3371,7 @@ static struct scst_vdisk_dev *vdisk_find(const char *name)
 	return res;
 }
 
+/* scst_vdisk_mutex supposed to be held */
 static void vcdrom_add(struct scst_vdisk_dev *virt_dev)
 {
 	TRACE_ENTRY();
@@ -3368,6 +3382,7 @@ static void vcdrom_add(struct scst_vdisk_dev *virt_dev)
 	return;
 }
 
+/* scst_vdisk_mutex supposed to be held */
 static struct scst_vdisk_dev *vcdrom_find(const char *name)
 {
 	struct scst_vdisk_dev *res, *vv;
@@ -3402,6 +3417,7 @@ static int vdisk_parse_cmd(struct vdev_type *vdt, char *p, int *action)
 	return res;
 }
 
+/* scst_vdisk_mutex supposed to be held */
 static int vdisk_perform_cmd(struct vdev_type *vdt, int action, char *p,
 	char *name)
 {
@@ -3577,6 +3593,7 @@ static int vcdrom_parse_cmd(struct vdev_type *vdt, char *p, int *action)
 	return res;
 }
 
+/* scst_vdisk_mutex supposed to be held */
 static int vcdrom_perform_cmd(struct vdev_type *vdt, int action, char *p,
 	char *name)
 {
