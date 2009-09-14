@@ -652,7 +652,7 @@ static struct file *vdev_open_fd(const struct scst_vdisk_dev *virt_dev)
  *
  *  Description:
  *************************************************************/
-static int vdisk_get_check_file_size(const char *file_name, bool blockio,
+static int vdisk_get_file_size(const char *file_name, bool blockio,
 	loff_t *file_size)
 {
 	struct inode *inode;
@@ -769,7 +769,7 @@ static int vdisk_attach(struct scst_device *dev)
 		if (virt_dev->nullio)
 			err = VDISK_NULLIO_SIZE;
 		else {
-			res = vdisk_get_check_file_size(virt_dev->file_name,
+			res = vdisk_get_file_size(virt_dev->file_name,
 				virt_dev->blockio, &err);
 			if (res != 0)
 				goto out;
@@ -2950,22 +2950,28 @@ static void vdisk_report_registering(const struct scst_vdisk_dev *virt_dev)
 /* scst_vdisk_mutex supposed to be held */
 static int __vdisk_resync_size(struct scst_vdisk_dev *virt_dev)
 {
-	loff_t err;
+	loff_t file_size;
 	int res = 0;
 
 	if (!virt_dev->nullio) {
-		res = vdisk_get_check_file_size(virt_dev->file_name,
-				virt_dev->blockio, &err);
+		res = vdisk_get_file_size(virt_dev->file_name,
+				virt_dev->blockio, &file_size);
 		if (res != 0)
 			goto out;
 	} else
-		err = VDISK_NULLIO_SIZE;
+		file_size = VDISK_NULLIO_SIZE;
+
+	if (file_size == virt_dev->file_size) {
+		PRINT_INFO("Size of virtual disk %s remained the same",
+			virt_dev->name);
+		goto out;
+	}
 
 	res = scst_suspend_activity(true);
 	if (res != 0)
 		goto out;
 
-	virt_dev->file_size = err;
+	virt_dev->file_size = file_size;
 	virt_dev->nblocks = virt_dev->file_size >> virt_dev->block_shift;
 
 	scst_dev_del_all_thr_data(virt_dev->dev);
@@ -3527,7 +3533,7 @@ static int vcdrom_change(struct vdev_type *vdt, char *p, const char *name)
 		strncpy(fn, file_name, len);
 		virt_dev->file_name = fn;
 
-		res = vdisk_get_check_file_size(virt_dev->file_name,
+		res = vdisk_get_file_size(virt_dev->file_name,
 				virt_dev->blockio, &err);
 		if (res != 0)
 			goto out_free;
