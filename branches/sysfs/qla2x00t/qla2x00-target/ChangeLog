@@ -1,3 +1,24 @@
+Summary of changes between versions 1.0.2 and 2.0.0
+---------------------------------------------------
+
+ - Support for 24xx/25xx added
+ 
+ - Disable by default initiator mode if target mode enabled. It can be changed
+   using .config option CONFIG_SCSI_QLA2XXX_TARGET_DISABLE_INI_MODE.
+
+
+Summary of changes between versions 1.0.1 and 1.0.2
+---------------------------------------------------
+
+ - Failure of enabling target mode, if do it too fast, fixed
+   Based on work by sdrb <sdrb@onet.eu>
+
+ - Possible crash with too fast target mode enabling/disabling or
+   module unload fixed
+
+ - Implemented abort on timeout of stuck in the firmware commands
+ 
+
 Summary of changes between versions 1.0.0 and 1.0.1
 ---------------------------------------------------
 
