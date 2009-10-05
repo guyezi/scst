@@ -1,18 +1,18 @@
 /*
  *  qla2x_tgt.h
- *  
+ *
  *  Copyright (C) 2004 - 2009 Vladislav Bolkhovitin <vst@vlnb.net>
  *  Copyright (C) 2004 - 2005 Leonid Stoljar
  *  Copyright (C) 2006 Nathaniel Clark <nate@misrule.us>
  *  Copyright (C) 2007 - 2009  ID7 Ltd.
  *
  *  Additional file for the target driver support.
- *  
+ *
  *  This program is free software; you can redistribute it and/or
  *  modify it under the terms of the GNU General Public License
  *  as published by the Free Software Foundation; either version 2
  *  of the License, or (at your option) any later version.
- * 
+ *
  *  This program is distributed in the hope that it will be useful,
  *  but WITHOUT ANY WARRANTY; without even the implied warranty of
  *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
@@ -74,32 +74,32 @@ static inline bool qla_tgt_mode_enabled(scsi_qla_host_t *ha)
  * then reaquire.
  */
 static inline void
-__qla2x00_send_enable_lun(scsi_qla_host_t *ha, int enable) 
+__qla2x00_send_enable_lun(scsi_qla_host_t *ha, int enable)
 {
 	elun_entry_t *pkt;
 
 	BUG_ON(IS_FWI2_CAPABLE(ha));
 
-	if ((pkt = (elun_entry_t *)qla2x00_req_pkt(ha)) != NULL) {
+	pkt = (elun_entry_t *)qla2x00_req_pkt(ha);
+	if (pkt != NULL) {
 		pkt->entry_type = ENABLE_LUN_TYPE;
 		if (enable) {
 			pkt->command_count = QLA2X00_COMMAND_COUNT_INIT;
 			pkt->immed_notify_count = QLA2X00_IMMED_NOTIFY_COUNT_INIT;
 			pkt->timeout = 0xffff;
-		}
-		else {
+		} else {
 			pkt->command_count = 0;
 			pkt->immed_notify_count = 0;
 			pkt->timeout = 0;
 		}
-		DEBUG2(printk(KERN_DEBUG 
+		DEBUG2(printk(KERN_DEBUG
 			      "scsi%lu:ENABLE_LUN IOCB imm %u cmd %u timeout %u\n",
 			      ha->host_no, pkt->immed_notify_count,
 			      pkt->command_count, pkt->timeout));
 
 		/* Issue command to ISP */
 		qla2x00_isp_cmd(ha);
-		
+
 	} else
 		qla_clear_tgt_mode(ha);
 #if defined(QL_DEBUG_LEVEL_2) || defined(QL_DEBUG_LEVEL_3)
