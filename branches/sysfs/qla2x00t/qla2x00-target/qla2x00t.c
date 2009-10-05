@@ -98,18 +98,12 @@ static struct scst_tgt_template tgt2x_template = {
 	.xmit_response_atomic = 1,
 	.rdy_to_xfer_atomic = 1,
 #endif
-#if SCST_VERSION_CODE >= SCST_VERSION(1, 0, 2, 0)
-	.max_hw_pending_time = Q2T_MAX_HW_PENDING_TIME,
-#endif
 	.detect = q2x_target_detect,
 	.release = q2t_target_release,
 	.xmit_response = q2x_xmit_response,
 	.rdy_to_xfer = q2t_rdy_to_xfer,
 	.on_free_cmd = q2t_on_free_cmd,
 	.task_mgmt_fn_done = q2t_task_mgmt_fn_done,
-#if SCST_VERSION_CODE >= SCST_VERSION(1, 0, 2, 0)
-	.on_hw_pending_cmd_timeout = q2t_on_hw_pending_cmd_timeout,
-#endif
 };
 
 static struct scst_tgt_template tgt24_template = {
@@ -124,18 +118,12 @@ static struct scst_tgt_template tgt24_template = {
 	.xmit_response_atomic = 1,
 	.rdy_to_xfer_atomic = 1,
 #endif
-#if SCST_VERSION_CODE >= SCST_VERSION(1, 0, 2, 0)
-	.max_hw_pending_time = Q2T_MAX_HW_PENDING_TIME,
-#endif
 	.detect = q24_target_detect,
 	.release = q2t_target_release,
 	.xmit_response = q24_xmit_response,
 	.rdy_to_xfer = q2t_rdy_to_xfer,
 	.on_free_cmd = q2t_on_free_cmd,
 	.task_mgmt_fn_done = q2t_task_mgmt_fn_done,
-#if SCST_VERSION_CODE >= SCST_VERSION(1, 0, 2, 0)
-	.on_hw_pending_cmd_timeout = q2t_on_hw_pending_cmd_timeout,
-#endif
 };
 
 #if defined(CONFIG_SCST_DEBUG) || defined(CONFIG_SCST_TRACING)
