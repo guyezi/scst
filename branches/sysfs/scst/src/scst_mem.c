@@ -1376,7 +1376,7 @@ void sgv_pool_flush(struct sgv_pool *pool)
 }
 EXPORT_SYMBOL(sgv_pool_flush);
 
-static void sgv_pool_deinit_put(struct sgv_pool *pool, bool normal)
+static void sgv_pool_deinit_put(struct sgv_pool *pool)
 {
 	int i;
 
@@ -1398,10 +1398,8 @@ static void sgv_pool_deinit_put(struct sgv_pool *pool, bool normal)
 		pool->caches[i] = NULL;
 	}
 
-	if (normal)
-		scst_cleanup_sgv_sysfs_put(pool);
-	else
-		kobject_put(&pool->sgv_kobj);
+	scst_sgv_sysfs_put(pool);
+
 	/* pool can be dead here */
 
 	TRACE_EXIT();
@@ -1475,7 +1473,7 @@ out_err_unlock:
 
 out_err_unlock_put:
 	mutex_unlock(&sgv_pools_mutex);
-	sgv_pool_deinit_put(pool, false);
+	sgv_pool_deinit_put(pool);
 	goto out;
 }
 EXPORT_SYMBOL(sgv_pool_create);
@@ -1493,7 +1491,7 @@ static void sgv_pool_put(struct sgv_pool *pool)
 	TRACE_MEM("Decrementing sgv pool %p ref (new value %d)",
 		pool, atomic_read(&pool->sgv_pool_ref)-1);
 	if (atomic_dec_and_test(&pool->sgv_pool_ref))
-		sgv_pool_deinit_put(pool, true);
+		sgv_pool_deinit_put(pool);
 	return;
 }
 
@@ -1574,10 +1572,10 @@ out:
 	return res;
 
 out_free_clust:
-	sgv_pool_deinit_put(sgv_norm_clust_pool, true);
+	sgv_pool_deinit_put(sgv_norm_clust_pool);
 
 out_free_norm:
-	sgv_pool_deinit_put(sgv_norm_pool, true);
+	sgv_pool_deinit_put(sgv_norm_pool);
 
 out_err:
 	res = -ENOMEM;
@@ -1594,9 +1592,9 @@ void scst_sgv_pools_deinit(void)
 	unregister_shrinker(&sgv_shrinker);
 #endif
 
-	sgv_pool_deinit_put(sgv_dma_pool, true);
-	sgv_pool_deinit_put(sgv_norm_pool, true);
-	sgv_pool_deinit_put(sgv_norm_clust_pool, true);
+	sgv_pool_deinit_put(sgv_dma_pool);
+	sgv_pool_deinit_put(sgv_norm_pool);
+	sgv_pool_deinit_put(sgv_norm_clust_pool);
 
 	flush_scheduled_work();
 

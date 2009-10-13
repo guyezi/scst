@@ -409,20 +409,20 @@ void scst_cleanup_proc_dev_handler_dir_entries(struct scst_dev_type *dev_type);
 /* sysfs support  */
 int scst_sysfs_init(void);
 void scst_sysfs_cleanup(void);
-int scst_create_tgtt_sysfs(struct scst_tgt_template *vtt);
-void scst_release_tgtt_sysfs(struct scst_tgt_template *vtt);
+int scst_create_tgtt_sysfs(struct scst_tgt_template *tgtt);
+void scst_tgtt_sysfs_put(struct scst_tgt_template *tgtt);
 int scst_create_tgt_sysfs(struct scst_tgt *tgt);
-void scst_release_sysfs_and_tgt(struct scst_tgt *tgt);
+void scst_tgt_sysfs_put(struct scst_tgt *tgt);
 int scst_create_sess_sysfs(struct scst_session *sess);
-void scst_release_sysfs_and_sess(struct scst_session *sess);
+void scst_sess_sysfs_put(struct scst_session *sess);
 int scst_create_sgv_sysfs(struct sgv_pool *pool);
-void scst_cleanup_sgv_sysfs_put(struct sgv_pool *pool);
+void scst_sgv_sysfs_put(struct sgv_pool *pool);
 int scst_create_devt_sysfs(struct scst_dev_type *devt);
-void scst_cleanup_devt_sysfs(struct scst_dev_type *devt);
+void scst_devt_sysfs_put(struct scst_dev_type *devt);
 int scst_create_device_sysfs(struct scst_device *dev);
-void scst_release_sysfs_and_device(struct scst_device *dev);
+void scst_device_sysfs_put(struct scst_device *dev);
 int scst_create_devt_dev_sysfs(struct scst_device *dev);
-void scst_remove_devt_dev_sysfs(struct scst_device *dev);
+void scst_devt_dev_sysfs_put(struct scst_device *dev);
 
 int scst_get_cdb_len(const uint8_t *cdb);
 

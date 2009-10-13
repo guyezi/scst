@@ -103,9 +103,7 @@ static int changer_attach(struct scst_device *dev)
 	res = scst_obtain_device_parameters(dev);
 	if (res != 0) {
 		PRINT_ERROR("Failed to obtain control parameters for device "
-			"%d:%d:%d:%d", dev->scsi_dev->host->host_no,
-			dev->scsi_dev->channel, dev->scsi_dev->id,
-			dev->scsi_dev->lun);
+			"%s", dev->virt_name);
 		goto out;
 	}
 

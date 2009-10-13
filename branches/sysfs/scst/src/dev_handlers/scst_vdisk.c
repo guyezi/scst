@@ -370,13 +370,9 @@ static ssize_t vdisk_mgmt_store(struct kobject *kobj,
 struct kobj_attribute vdisk_mgmt_attr =
 	__ATTR(mgmt, S_IRUGO | S_IWUSR, vdisk_mgmt_show, vdisk_mgmt_store);
 
-static struct attribute *vdisk_attrs[] = {
+static const struct attribute *vdisk_attrs[] = {
 	&vdisk_mgmt_attr.attr,
 	NULL,
-};
-
-static struct attribute_group vdisk_attrs_grp = {
-	.attrs = vdisk_attrs,
 };
 
 static ssize_t vdisk_sysfs_size_show(struct kobject *kobj,
@@ -403,7 +399,7 @@ static struct kobj_attribute vdisk_size_attr =
 static struct kobj_attribute vdisk_blocksize_attr =
 	__ATTR(block_size, S_IRUGO, vdisk_sysfs_blocksize_show, NULL);
 static struct kobj_attribute vdisk_rd_only_attr =
-	__ATTR(rd_only, S_IRUGO, vdisk_sysfs_rd_only_show, NULL);
+	__ATTR(read_only, S_IRUGO, vdisk_sysfs_rd_only_show, NULL);
 static struct kobj_attribute vdisk_wt_attr =
 	__ATTR(write_through, S_IRUGO, vdisk_sysfs_wt_show, NULL);
 static struct kobj_attribute vdisk_nv_cache_attr =
@@ -417,7 +413,7 @@ static struct kobj_attribute vdisk_filename_attr =
 static struct kobj_attribute vdisk_resync_size_attr =
 	__ATTR(resync_size, S_IWUSR, NULL, vdisk_sysfs_resync_size_store);
 
-static struct attribute *vdisk_fileio_attrs[] = {
+static const struct attribute *vdisk_fileio_attrs[] = {
 	&vdisk_size_attr.attr,
 	&vdisk_blocksize_attr.attr,
 	&vdisk_rd_only_attr.attr,
@@ -430,11 +426,7 @@ static struct attribute *vdisk_fileio_attrs[] = {
 	NULL,
 };
 
-static struct attribute_group vdisk_fileio_attrs_grp = {
-	.attrs = vdisk_fileio_attrs,
-};
-
-static struct attribute *vdisk_blockio_attrs[] = {
+static const struct attribute *vdisk_blockio_attrs[] = {
 	&vdisk_size_attr.attr,
 	&vdisk_blocksize_attr.attr,
 	&vdisk_rd_only_attr.attr,
@@ -444,11 +436,7 @@ static struct attribute *vdisk_blockio_attrs[] = {
 	NULL,
 };
 
-static struct attribute_group vdisk_blockio_attrs_grp = {
-	.attrs = vdisk_blockio_attrs,
-};
-
-static struct attribute *vdisk_nullio_attrs[] = {
+static const struct attribute *vdisk_nullio_attrs[] = {
 	&vdisk_size_attr.attr,
 	&vdisk_blocksize_attr.attr,
 	&vdisk_rd_only_attr.attr,
@@ -456,19 +444,11 @@ static struct attribute *vdisk_nullio_attrs[] = {
 	NULL,
 };
 
-static struct attribute_group vdisk_nullio_attrs_grp = {
-	.attrs = vdisk_nullio_attrs,
-};
-
-static struct attribute *vcdrom_attrs[] = {
+static const struct attribute *vcdrom_attrs[] = {
 	&vdisk_size_attr.attr,
 	&vdisk_removable_attr.attr,
 	&vdisk_filename_attr.attr,
 	NULL,
-};
-
-static struct attribute_group vcdrom_attrs_grp = {
-	.attrs = vcdrom_attrs,
 };
 
 static DEFINE_MUTEX(scst_vdisk_mutex);
@@ -502,8 +482,8 @@ static struct scst_dev_type vdisk_file_devtype = {
 	.read_proc =		vdisk_read_proc,
 	.write_proc =		vdisk_write_proc,
 	.task_mgmt_fn =		vdisk_task_mgmt_fn,
-	.devt_attrs_group =	&vdisk_attrs_grp,
-	.dev_attrs_group =	&vdisk_fileio_attrs_grp,
+	.devt_attrs =		vdisk_attrs,
+	.dev_attrs =		vdisk_fileio_attrs,
 #if defined(CONFIG_SCST_DEBUG) || defined(CONFIG_SCST_TRACING)
 	.default_trace_flags =	SCST_DEFAULT_DEV_LOG_FLAGS,
 	.trace_flags =		&trace_flag,
@@ -530,8 +510,8 @@ static struct scst_dev_type vdisk_blk_devtype = {
 	.parse =		vdisk_parse,
 	.exec =			vdisk_do_job,
 	.task_mgmt_fn =		vdisk_task_mgmt_fn,
-	.devt_attrs_group =	&vdisk_attrs_grp,
-	.dev_attrs_group =	&vdisk_blockio_attrs_grp,
+	.devt_attrs =		vdisk_attrs,
+	.dev_attrs =		vdisk_blockio_attrs,
 #if defined(CONFIG_SCST_DEBUG) || defined(CONFIG_SCST_TRACING)
 	.default_trace_flags =	SCST_DEFAULT_DEV_LOG_FLAGS,
 	.trace_flags =		&trace_flag,
@@ -556,8 +536,8 @@ static struct scst_dev_type vdisk_null_devtype = {
 	.parse =		vdisk_parse,
 	.exec =			vdisk_do_job,
 	.task_mgmt_fn =		vdisk_task_mgmt_fn,
-	.devt_attrs_group =	&vdisk_attrs_grp,
-	.dev_attrs_group =	&vdisk_nullio_attrs_grp,
+	.devt_attrs =		vdisk_attrs,
+	.dev_attrs =		vdisk_nullio_attrs,
 #if defined(CONFIG_SCST_DEBUG) || defined(CONFIG_SCST_TRACING)
 	.default_trace_flags =	SCST_DEFAULT_DEV_LOG_FLAGS,
 	.trace_flags =		&trace_flag,
@@ -584,8 +564,8 @@ static struct scst_dev_type vcdrom_devtype = {
 	.read_proc =		vcdrom_read_proc,
 	.write_proc =		vcdrom_write_proc,
 	.task_mgmt_fn =		vdisk_task_mgmt_fn,
-	.devt_attrs_group =	&vdisk_attrs_grp,
-	.dev_attrs_group =	&vcdrom_attrs_grp,
+	.devt_attrs =		vdisk_attrs,
+	.dev_attrs =		vcdrom_attrs,
 #if defined(CONFIG_SCST_DEBUG) || defined(CONFIG_SCST_TRACING)
 	.default_trace_flags =	SCST_DEFAULT_DEV_LOG_FLAGS,
 	.trace_flags =		&trace_flag,

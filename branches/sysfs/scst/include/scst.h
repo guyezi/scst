@@ -733,6 +733,25 @@ struct scst_tgt_template {
 		int length, int *eof, struct scst_tgt *tgt);
 
 	/*
+	 * This function allows to enable or disable particular target.
+	 * A disabled target doesn't receive and process any SCSI commands.
+	 *
+	 * SHOULD HAVE to avoid race when there are connected initiators,
+	 * while target not yet completed the initial configuration. In this
+	 * case the too early connected initiators would see not those devices,
+	 * which they intended to see.
+	 */
+	ssize_t (*enable_tgt) (struct scst_tgt *tgt, const char *buffer,
+			   size_t size);
+
+	/*
+	 * This function shows if particular target is enabled or not.
+	 *
+	 * SHOULD HAVE, see above why.
+	 */
+	bool (*is_tgt_enabled) (struct scst_tgt *tgt);
+
+	/*
 	 * Name of the template. Must be unique to identify
 	 * the template. MUST HAVE
 	 */
@@ -745,6 +764,24 @@ struct scst_tgt_template {
 	 * number of threads, are blocked in those functions at any time.
 	 */
 	int threads_num;
+
+	/* Optional default log flags */
+	const unsigned long default_trace_flags;
+
+	/* Optional pointer to trace flags */
+	unsigned long *trace_flags;
+
+	/* Optional local trace table */
+	struct scst_trace_log *trace_tbl;
+
+	/* Optional local trace table help string */
+	const char *trace_tbl_help;
+
+	/* Optional sysfs attributes */
+	const struct attribute **tgtt_attrs;
+
+	/* Optional sysfs target attributes */
+	const struct attribute **tgt_attrs;
 
 	/** Private, must be inited to 0 by memset() **/
 
@@ -929,10 +966,10 @@ struct scst_dev_type {
 	const char *trace_tbl_help;
 
 	/* Optional sysfs attributes */
-	const struct attribute_group *devt_attrs_group;
+	const struct attribute **devt_attrs;
 
 	/* Optional sysfs device attributes */
-	const struct attribute_group *dev_attrs_group;
+	const struct attribute **dev_attrs;
 
 	/* Pointer to dev handler's private data */
 	void *devt_priv;
@@ -952,7 +989,6 @@ struct scst_dev_type {
 
 	unsigned int devt_kobj_initialized:1;
 
-	struct kobj_type devt_ktype;
 	struct kobject devt_kobj; /* main handlers/driver */
 
 	/* To wait until devt_kobj released */
@@ -1564,7 +1600,7 @@ struct scst_device {
 	int virt_id;
 
 	/* Pointer to virtual device name, for convenience only */
-	const char *virt_name;
+	char *virt_name;
 
 	/* List entry in global devices list */
 	struct list_head dev_list_entry;
@@ -2904,7 +2940,7 @@ void scst_set_cmd_abnormal_done_state(struct scst_cmd *cmd);
 
 /*
  * Returns target driver's root entry in SCST's /proc hierarchy.
- * The driver can create own files/directoryes here, which should
+ * The driver can create own files/directories here, which should
  * be deleted in the driver's release().
  */
 static inline struct proc_dir_entry *scst_proc_get_tgt_root(
@@ -2915,7 +2951,7 @@ static inline struct proc_dir_entry *scst_proc_get_tgt_root(
 
 /*
  * Returns device handler's root entry in SCST's /proc hierarchy.
- * The driver can create own files/directoryes here, which should
+ * The driver can create own files/directories here, which should
  * be deleted in the driver's detach()/release().
  */
 static inline struct proc_dir_entry *scst_proc_get_dev_type_root(
@@ -2969,6 +3005,52 @@ struct proc_dir_entry *scst_create_proc_entry(struct proc_dir_entry *root,
 		.llseek         = seq_lseek,           \
 		.release        = single_release,      \
 	},
+
+/*
+ * Returns target driver's root sysfs kobject.
+ * The driver can create own files/directories/links here.
+ */
+static inline struct kobject *scst_sysfs_get_tgtt_kobj(
+	struct scst_tgt_template *tgtt)
+{
+	return &tgtt->tgtt_kobj;
+}
+
+/*
+ * Returns target's root sysfs kobject.
+ * The driver can create own files/directories/links here.
+ */
+static inline struct kobject *scst_sysfs_get_tgt_kobj(
+	struct scst_tgt *tgt)
+{
+	return &tgt->tgt_kobj;
+}
+
+/*
+ * Returns device handler's root sysfs kobject.
+ * The driver can create own files/directories/links here.
+ */
+static inline struct kobject *scst_sysfs_get_devt_kobj(
+	struct scst_dev_type *devt)
+{
+	return &devt->devt_kobj;
+}
+
+/*
+ * Returns device's root sysfs kobject.
+ * The driver can create own files/directories/links here.
+ */
+static inline struct kobject *scst_sysfs_get_dev_kobj(
+	struct scst_device *dev)
+{
+	return &dev->dev_kobj;
+}
+
+/* Returns target name */
+static inline const char *scst_get_tgt_name(const struct scst_tgt *tgt)
+{
+	return tgt->tgt_name;
+}
 
 /*
  * Adds and deletes (stops) num of global SCST's threads. Returns 0 on

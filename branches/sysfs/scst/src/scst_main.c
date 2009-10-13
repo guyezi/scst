@@ -185,21 +185,21 @@ int __scst_register_target_template(struct scst_tgt_template *vtt,
 	}
 
 	if (!vtt->detect) {
-		PRINT_ERROR("Target driver %s doesn't have a "
+		PRINT_ERROR("Target driver %s must have "
 			"detect() method.", vtt->name);
 		res = -EINVAL;
 		goto out_err;
 	}
 
 	if (!vtt->release) {
-		PRINT_ERROR("Target driver %s doesn't have a "
+		PRINT_ERROR("Target driver %s must have "
 			"release() method.", vtt->name);
 		res = -EINVAL;
 		goto out_err;
 	}
 
 	if (!vtt->xmit_response) {
-		PRINT_ERROR("Target driver %s doesn't have a "
+		PRINT_ERROR("Target driver %s must have "
 			"xmit_response() method.", vtt->name);
 		res = -EINVAL;
 		goto out_err;
@@ -211,6 +211,14 @@ int __scst_register_target_template(struct scst_tgt_template *vtt,
 			vtt->name);
 		res = -EINVAL;
 		goto out_err;
+	}
+
+	if (!vtt->enable_tgt || !vtt->is_tgt_enabled) {
+		PRINT_WARNING("Target driver %s doesn't have enable_tgt() "
+			"and/or is_tgt_enabled() method(s). This is unsafe "
+			"and can lead that initiators connected on the "
+			"initialization time can see an unexpected set of "
+			"devices or no devices at all!", vtt->name);
 	}
 
 	if (!vtt->no_proc_entry) {
@@ -270,7 +278,7 @@ out_m_err:
 out_proc_err:
 	scst_cleanup_proc_target_dir_entries(vtt);
 
-	scst_release_tgtt_sysfs(vtt);
+	scst_tgtt_sysfs_put(vtt);
 
 out_err:
 	PRINT_ERROR("Failed to register target template %s", vtt->name);
@@ -312,7 +320,7 @@ restart:
 
 	scst_cleanup_proc_target_dir_entries(vtt);
 
-	scst_release_tgtt_sysfs(vtt);
+	scst_tgtt_sysfs_put(vtt);
 
 	PRINT_INFO("Target template %s unregistered successfully", vtt->name);
 
@@ -442,10 +450,7 @@ out_resume_free:
 	scst_resume_activity();
 
 out_free_tgt_err:
-	if (tgt->tgt_kobj_initialized)
-		kobject_put(&tgt->tgt_kobj);
-	else
-		kfree(tgt);
+	scst_tgt_sysfs_put(tgt);
 	tgt = NULL;
 
 out_err:
@@ -506,14 +511,18 @@ again:
 	mutex_unlock(&scst_mutex);
 	scst_resume_activity();
 
+	/*
+	 * It should be before freeing of tgt_name, because acg_name
+	 * points to it.
+	 */
+	scst_destroy_acg(tgt->default_acg);
+
 	kfree(tgt->tgt_name);
 	kfree(tgt->default_group_name);
 
-	scst_destroy_acg(tgt->default_acg);
-
 	del_timer_sync(&tgt->retry_timer);
 
-	scst_release_sysfs_and_tgt(tgt);
+	scst_tgt_sysfs_put(tgt);
 
 	PRINT_INFO("Target %p for template %s unregistered successfully",
 		tgt, vtt->name);
@@ -709,9 +718,21 @@ static int scst_register_device(struct scsi_device *scsidp)
 
 	dev->type = scsidp->type;
 
+	dev->virt_name = kmalloc(50, GFP_KERNEL);
+	if (dev->virt_name == NULL) {
+		PRINT_ERROR("%s", "Unable to alloc device name");
+		res = -ENOMEM;
+		goto out_free_dev;
+	}
+	snprintf(dev->virt_name, 50, "%d:%d:%d:%d", scsidp->host->host_no,
+		scsidp->channel, scsidp->id, scsidp->lun);
+
 	dev->rq_disk = alloc_disk(1);
 	if (dev->rq_disk == NULL) {
+		PRINT_ERROR("Unable to alloc disk object for device %s",
+			dev->virt_name);
 		res = -ENOMEM;
+		/* virt_name will be freed in scst_free_dev() */
 		goto out_free_dev;
 	}
 	dev->rq_disk->major = SCST_MAJOR;
@@ -745,9 +766,9 @@ out_err:
 			"type %d", scsidp->host->host_no, scsidp->channel,
 			scsidp->id, scsidp->lun, scsidp->type);
 	} else {
-		PRINT_ERROR("Failed to to scsi%d, channel %d, id %d, lun %d, "
-			"type %d", scsidp->host->host_no, scsidp->channel,
-			scsidp->id, scsidp->lun, scsidp->type);
+		PRINT_ERROR("Failed to attach to scsi%d, channel %d, id %d, "
+			"lun %d, type %d", scsidp->host->host_no,
+			scsidp->channel, scsidp->id, scsidp->lun, scsidp->type);
 	}
 
 	TRACE_EXIT_RES(res);
@@ -758,7 +779,7 @@ out_free:
 	put_disk(dev->rq_disk);
 
 out_free_dev:
-	scst_release_sysfs_and_device(dev);
+	scst_device_sysfs_put(dev);
 	goto out_up;
 }
 
@@ -794,7 +815,7 @@ static void scst_unregister_device(struct scsi_device *scsidp)
 	scst_assign_dev_handler(dev, &scst_null_devtype);
 
 	put_disk(dev->rq_disk);
-	scst_release_sysfs_and_device(dev);
+	scst_device_sysfs_put(dev);
 
 	PRINT_INFO("Detached from scsi%d, channel %d, id %d, lun %d, type %d",
 		scsidp->host->host_no, scsidp->channel, scsidp->id,
@@ -813,7 +834,7 @@ static int scst_dev_handler_check(struct scst_dev_type *dev_handler)
 	int res = 0;
 
 	if (dev_handler->parse == NULL) {
-		PRINT_ERROR("scst dev_type driver %s doesn't have a "
+		PRINT_ERROR("scst dev handler %s must have "
 			"parse() method.", dev_handler->name);
 		res = -EINVAL;
 		goto out;
@@ -875,7 +896,13 @@ int scst_register_virtual_device(struct scst_dev_type *dev_handler,
 
 	dev->type = dev_handler->type;
 	dev->scsi_dev = NULL;
-	dev->virt_name = dev_name;
+	dev->virt_name = kstrdup(dev_name, GFP_KERNEL);
+	if (dev->virt_name == NULL) {
+		PRINT_ERROR("Unable to allocate virt_name for dev %s",
+			dev_name);
+		res = -ENOMEM;
+		goto out_release;
+	}
 	dev->virt_id = scst_virt_dev_last_id++;
 
 	list_add_tail(&dev->dev_list_entry, &scst_dev_list);
@@ -912,7 +939,9 @@ out:
 
 out_free_del:
 	list_del(&dev->dev_list_entry);
-	scst_release_sysfs_and_device(dev);
+
+out_release:
+	scst_device_sysfs_put(dev);
 	goto out_up;
 }
 EXPORT_SYMBOL(scst_register_virtual_device);
@@ -951,7 +980,7 @@ void scst_unregister_virtual_device(int id)
 	PRINT_INFO("Detached from virtual device %s (id %d)",
 		dev->virt_name, dev->virt_id);
 
-	scst_release_sysfs_and_device(dev);
+	scst_device_sysfs_put(dev);
 
 out_unblock:
 	mutex_unlock(&scst_mutex);
@@ -1063,7 +1092,7 @@ out_free:
 	if (!dev_type->no_proc)
 		scst_cleanup_proc_dev_handler_dir_entries(dev_type);
 
-	scst_cleanup_devt_sysfs(dev_type);
+	scst_devt_sysfs_put(dev_type);
 
 out_up:
 	mutex_unlock(&scst_mutex);
@@ -1115,7 +1144,7 @@ void scst_unregister_dev_driver(struct scst_dev_type *dev_type)
 
 	scst_cleanup_proc_dev_handler_dir_entries(dev_type);
 
-	scst_cleanup_devt_sysfs(dev_type);
+	scst_devt_sysfs_put(dev_type);
 
 	PRINT_INFO("Device handler \"%s\" for type %d unloaded",
 		   dev_type->name, dev_type->type);
@@ -1176,7 +1205,7 @@ out_free:
 	if (!dev_type->no_proc)
 		scst_cleanup_proc_dev_handler_dir_entries(dev_type);
 
-	scst_cleanup_devt_sysfs(dev_type);
+	scst_devt_sysfs_put(dev_type);
 
 out_err:
 	PRINT_ERROR("Failed to register virtual device handler \"%s\"",
@@ -1192,7 +1221,7 @@ void scst_unregister_virtual_dev_driver(struct scst_dev_type *dev_type)
 	if (!dev_type->no_proc)
 		scst_cleanup_proc_dev_handler_dir_entries(dev_type);
 
-	scst_cleanup_devt_sysfs(dev_type);
+	scst_devt_sysfs_put(dev_type);
 
 	PRINT_INFO("Device handler \"%s\" unloaded", dev_type->name);
 
@@ -1388,7 +1417,7 @@ int scst_assign_dev_handler(struct scst_device *dev,
 
 	scst_stop_dev_threads(dev);
 
-	scst_remove_devt_dev_sysfs(dev);
+	scst_devt_dev_sysfs_put(dev);
 
 assign:
 	dev->handler = handler;
@@ -1456,7 +1485,7 @@ out_thr_null:
 	scst_stop_dev_threads(dev);
 
 out_remove_sysfs:
-	scst_remove_devt_dev_sysfs(dev);
+	scst_devt_dev_sysfs_put(dev);
 
 out_null:
 	dev->handler = &scst_null_devtype;

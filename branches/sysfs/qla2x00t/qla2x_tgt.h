@@ -22,7 +22,6 @@
  * This should be included only from within qla2xxx module.
  */
 
-
 #ifndef __QLA2X_TGT_H
 #define __QLA2X_TGT_H
 
@@ -128,6 +127,8 @@ qla2x00_send_enable_lun(scsi_qla_host_t *ha, bool enable)
 		spin_unlock_irqrestore(&ha->hardware_lock, flags);
 	}
 }
+
+extern void qla2xxx_add_targets(void);
 
 #endif /* CONFIG_SCSI_QLA2XXX_TARGET */
 

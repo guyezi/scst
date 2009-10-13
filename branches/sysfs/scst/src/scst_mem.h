@@ -73,8 +73,9 @@ struct sgv_pool {
 
 	spinlock_t sgv_pool_lock; /* outer lock for sgv_pools_lock! */
 
-	/* Protected by sgv_pool_lock */
+	/* Protected by sgv_pool_lock, if necessary */
 	unsigned int purge_work_scheduled:1;
+	unsigned int sgv_kobj_initialized:1;
 
 	/* Protected by sgv_pool_lock */
 	struct list_head sorted_recycling_list;
