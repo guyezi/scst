@@ -24,12 +24,13 @@
 ########################
 
 function usage {
-  echo "Usage: $0 [-h] [-m] [-p <dir>] [-q] <kernel version>, where: "
+  echo "Usage: $0 [-h] [-m] [-n] [-p <dir>] [-u] <kernel version>, where: "
   echo "        -h - show this text"
   echo "        -m - add mpt target driver"
+  echo "        -n - do not delete code disabled via preprocessor statements"
   echo "        -p - generate multiple patches instead of one big patch into"\
        "the specified directory."
-  echo "        -q - add qla2x00t driver"
+  echo "        -u - enables #define GENERATING_UPSTREAM_PATCH."
 }
 
 # Convert an existing patch.
@@ -68,11 +69,19 @@ diff -uprN orig/linux-${kernel_version}/$2 linux-${kernel_version}/$2
 +++ linux-${kernel_version}/$2
 @@ -0,0 +1,$(wc -l "$1" | { read a b; echo $a; }) @@
 EOF
-    if [ "${2%.[ch]}" != "$2" ]; then
-      sed -e 's/sBUG(/BUG(/g' -e 's/sBUG_ON(/BUG_ON(/g' -e 's/^/+/' \
-          -e 's/^ \([^ ]*:\)$/\1/' < "$1"
+    # Insert a '+'-sign at the start of each line.
+    sed -e 's/^/+/' < "$1" | \
+    if [ "${replace_sbug_by_bug}" = "true" ]; then
+      sed -e 's/sBUG(\([^)]\)/BUG(\1/g' -e 's/sBUG_ON(\([^)]\)/BUG_ON(\1/g'
     else
-      sed -e 's/sBUG(/BUG(/g' -e 's/sBUG_ON(/BUG_ON(/g' -e 's/^/+/' < "$1"
+      cat
+    fi \
+    |  \
+    if [ "${2%.[ch]}" != "$2" ]; then
+      # Make sure that labels (goto-targets) are left-aligned.
+      sed -e 's/^ \([^ ]*:\)$/\1/'
+    else
+      cat
     fi
   fi
 }
@@ -89,6 +98,16 @@ diff -uprN orig/linux-${kernel_version}/$1 linux-${kernel_version}/$1
 EOF
 }
 
+# Run the script specialize_patch with appropriate options on the patch
+# passed via stdin and send the specialized patch to stdout.
+function specialize_patch {
+  "$(dirname $0)/specialize-patch" \
+       ${specialize_patch_options} \
+       -v kernel_version="${kernel_version}" \
+       -v SCSI_EXEC_REQ_FIFO_DEFINED="${scsi_exec_req_fifo_defined}" \
+       -v SCST_IO_CONTEXT="${scst_io_context}"
+}
+
 # Read a patch from stdin, specialize it for kernel version ${kernel_version}
 # and write the output either to stdout or to the file $1 (if not empty),
 # depending on the value of the variable ${multiple_patches}.
@@ -101,14 +120,14 @@ function process_patch {
     (
       echo "Signed-off-by: ${SIGNED_OFF_BY}"
       echo ""
-      "$(dirname $0)/specialize-patch" -v kernel_version="${kernel_version}"
+      specialize_patch
     ) >"${patchdir}/$1"
     else
       # echo "Discarded $(wc -l) lines."
       true
     fi
   else
-    "$(dirname $0)/specialize-patch" -v kernel_version="${kernel_version}" 
+    specialize_patch
   fi
 }
 
@@ -123,30 +142,41 @@ function in_separate_patch {
 # Argument verification #
 #########################
 
-qla2x00t="false"
-srpt="true"
+generating_upstream_patch="false"
 mpt_scst="false"
 multiple_patches="false"
 patchdir=""
+qla2x00t="true"
+replace_sbug_by_bug="true"
+specialize_patch_options="-v delete_disabled_code=1"
+srpt="true"
 
 if [ ! -e scst -o ! -e iscsi-scst -o ! -e srpt -o ! -e scst_local ]; then
   echo "Please run this script from inside the SCST subversion source tree."
   exit 1
 fi
 
-set -- $(/usr/bin/getopt hlmp:q "$@")
+set -- $(/usr/bin/getopt hlmnp:u "$@")
 while [ "$1" != "${1#-}" ]
 do
   case "$1" in
     '-h') usage; exit 1;;
     '-l') shift;;
     '-m') mpt_scst="true"; shift;;
+    '-n') specialize_patch_options="-v delete_disabled_code=0"
+          replace_sbug_by_bug="false"
+          shift
+          ;;
     '-p') multiple_patches="true"; patchdir="$2"; shift; shift;;
-    '-q') qla2x00t="true"; shift;;
+    '-u') generating_upstream_patch="true"; shift;;
     '--') shift;;
     *)    usage; exit 1;;
   esac
 done
+
+if [ "${generating_upstream_patch}" = "true" ]; then
+  specialize_patch_options="${specialize_patch_options} -v generating_upstream_patch_defined=1"
+fi
 
 if [ $# != 1 ]; then
   usage
@@ -170,6 +200,7 @@ fi
 # Strip patch level from the kernel version number.
 if [ "${1#[0-9]*.[0-9]*.[0-9]*.[0-9]*}" != "$1" ]; then
   kernel_version="${1%.[0-9]*}"
+  patch_level="${1%${kernel_version}}"
 else
   kernel_version="$1"
 fi
@@ -182,12 +213,28 @@ fi
 
 # General kernel patches.
 
-process_patch < "scst/kernel/scst_exec_req_fifo-${kernel_version}.patch" \
-    "scst_exec_req_fifo.diff"
-process_patch < "scst/kernel/io_context-${kernel_version}.patch" \
-    "export_alloc_io_context.diff"
-process_patch < "iscsi-scst/kernel/patches/put_page_callback-${kernel_version}.patch" \
-    "put_page_callback.diff"
+scsi_exec_req_fifo_defined=0
+scst_io_context=0
+for p in scst/kernel/*-${kernel_version}.patch \
+         iscsi-scst/kernel/patches/*-${kernel_version}.patch
+do
+  # Exclude the put_page_callback patch when command-line option -u has been
+  # specified since the current approach is not considered acceptable for
+  # upstream kernel inclusion. See also http://lkml.org/lkml/2008/12/11/213.
+  if [ "${generating_upstream_patch}" = "false" \
+       -o "${p#iscsi-scst/kernel/patches/put_page_callback}" = "$p" ]
+  then
+    if grep -q '^\+#define SCSI_EXEC_REQ_FIFO_DEFINED$' "${p}"; then
+      scsi_exec_req_fifo_defined=1
+    fi
+    if grep -q '^\+#define SCST_IO_CONTEXT$' "${p}"; then
+      scst_io_context=1
+    fi
+    diffname="${p#scst/kernel/}"
+    diffname="${p%-${kernel_version}.patch}.diff"
+    process_patch < "$p" "${diffname}"
+  fi
+done
 
 
 scst_debug="scst/include/scst_debug.h scst/src/scst_debug.c"
@@ -201,7 +248,7 @@ source_files_in_separate_patch="${scst_debug} ${scst_proc} ${scst_sgv} ${scst_us
 
 # Directory include/scst/
 
-for f in $(ls scst/include/*h)
+for f in $(ls scst/include/*h 2>/dev/null)
 do
   if ! in_separate_patch "${f}"; then
     add_file "${f}" "include/scst/${f#scst/include/}"
@@ -229,7 +276,7 @@ add_file "scst/kernel/in-tree/Kconfig.scst"  "drivers/scst/Kconfig"
 
 add_file "scst/kernel/in-tree/Makefile.scst" "drivers/scst/Makefile"
 
-for f in $(ls scst/src/*.[ch])
+for f in $(ls scst/src/*.[ch] 2>/dev/null)
 do
   if ! in_separate_patch "${f}"; then
     add_file "${f}" "drivers/scst/${f#scst/src/}"
@@ -264,7 +311,7 @@ add_file "scst/kernel/in-tree/Makefile.dev_handlers" \
          "drivers/scst/dev_handlers/Makefile" \
 | process_patch "dev_handlers_makefile.diff"
 
-for f in $(ls scst/src/dev_handlers/*.[ch])
+for f in $(ls scst/src/dev_handlers/*.[ch] 2>/dev/null)
 do
   if ! in_separate_patch "${f}"; then
     add_file "${f}" "drivers/scst/dev_handlers/${f#scst/src/dev_handlers/}"
@@ -280,7 +327,7 @@ done
 make -s -C iscsi-scst include/iscsi_scst_itf_ver.h
 
 (
-for f in $(ls iscsi-scst/include/*h)
+for f in $(ls iscsi-scst/include/*h 2>/dev/null)
 do
   if [ "${f}" != "iscsi-scst/include/iscsi_scst_itf_ver.h" ]; then
     add_file "${f}" "include/scst/${f#iscsi-scst/include/}"
@@ -294,7 +341,7 @@ add_file "iscsi-scst/kernel/Makefile.in-kernel" \
 
 add_file "iscsi-scst/kernel/Kconfig"  "drivers/scst/iscsi-scst/Kconfig"
 
-for f in $(ls iscsi-scst/kernel/*.[ch])
+for f in $(ls iscsi-scst/kernel/*.[ch] 2>/dev/null)
 do
   add_file "${f}" "drivers/scst/iscsi-scst/${f#iscsi-scst/kernel/}"
 done
@@ -309,16 +356,31 @@ add_file "iscsi-scst/README_in-tree" "Documentation/scst/README.iscsi" \
 
 if [ "${qla2x00t}" = "true" ]; then
 
+  if [ ! -e qla2x00t/qla2xxx-orig/$1 ]; then
+    ( cd qla2x00t && ./extract-qla2xxx-orig "$1" )
+  fi
+  ( cd qla2x00t && ./generate-in-tree-patches "$1" )
+
+  for f in $(ls qla2x00t/in-tree-patches/"$1"/*.patch 2>/dev/null)
+  do
+    g="${f#qla2x00t/in-tree-patches/$1/}"
+    g="${g%.patch}"
+    add_patch "${f}" "drivers/scsi/qla2xxx/${g}"
+  done
+
+  add_file "qla2x00t/qla2x_tgt.h" \
+           "drivers/scsi/qla2xxx/qla2x_tgt.h"
+
+  add_file "qla2x00t/qla2x_tgt_def.h" \
+           "drivers/scsi/qla2xxx/qla2x_tgt_def.h"
+
   add_file "qla2x00t/qla2x00-target/Makefile_in-tree" \
            "drivers/scst/qla2xxx-target/Makefile"
 
   add_file "qla2x00t/qla2x00-target/Kconfig" \
            "drivers/scst/qla2xxx-target/Kconfig"
 
-#  add_file "qla2x00t/qla2x_tgt_def.h" \
-#           "drivers/scst/qla2x00-target/qla2x_tgt_def.h"
-
-  for f in $(ls qla2x00t/qla2x00-target/*.[ch])
+  for f in $(ls qla2x00t/qla2x00-target/*.[ch] 2>/dev/null)
   do
     add_file "${f}" "drivers/scst/qla2xxx-target/${f#qla2x00t/qla2x00-target/}"
   done
@@ -345,7 +407,7 @@ if [ "$srpt" = "true" ]; then
 
   add_file  "srpt/src/Makefile.in_kernel" "drivers/scst/srpt/Makefile"
 
-  for f in $(ls srpt/src/*.[ch])
+  for f in $(ls srpt/src/*.[ch] 2>/dev/null)
   do
     add_file "${f}" "drivers/scst/srpt/${f#srpt/src/}"
   done
@@ -376,7 +438,7 @@ if [ "$mpt_scst" = "true" ]; then
 
   add_file  "mpt/in-tree/Kconfig"  "drivers/message/fusion/mpt_scst/Kconfig"
 
-  for f in $(ls mpt/*.[ch])
+  for f in $(ls mpt/*.[ch] 2>/dev/null)
   do
     add_file "${f}" "drivers/message/fusion/mpt_scst/${f#mpt/}"
   done

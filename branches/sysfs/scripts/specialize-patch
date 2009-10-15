@@ -42,8 +42,10 @@ function version_code(kver) {
 # it is the same order as the order of operators in C.
 
 function evaluate(stmnt) {
+  # Remove C-style comments.
   gsub(" *\\/\\*[^*]*\\*\\/ *", "", stmnt)
 
+  # Remove the spaces before the #-sign.
   gsub("^+ *# *", "+#", stmnt)
 
   if (match(stmnt, "^+#ifdef (.*)$", arg))
@@ -59,6 +61,8 @@ function evaluate(stmnt) {
   gsub("LINUX_VERSION_CODE", LINUX_VERSION_CODE, stmnt)
 
   gsub("defined\\(INSIDE_KERNEL_TREE\\)", "1", stmnt)
+
+  gsub("defined\\(BACKPORT_LINUX_WORKQUEUE_TO_2_6_19\\)", "0", stmnt)
 
   if (RHEL_MAJOR == "")
     gsub("defined\\(RHEL_MAJOR\\)", "0", stmnt)
@@ -77,11 +81,34 @@ function evaluate(stmnt) {
   }
 
   if (RHEL_MAJOR == "" || RHEL_MINOR == "")
+  {
     gsub("defined\\(RHEL_RELEASE_CODE\\)", "0", stmnt)
+    gsub("RHEL_RELEASE_CODE", "", stmnt)
+  }
   else
   {
     gsub("defined\\(RHEL_RELEASE_CODE\\)", "1", stmnt)
     gsub("RHEL_RELEASE_CODE", RHEL_MAJOR * 256 + RHEL_MINOR, stmnt)
+  }
+
+  if (SCSI_EXEC_REQ_FIFO_DEFINED != "")
+  {
+    gsub("defined  *SCSI_EXEC_REQ_FIFO_DEFINED",
+         SCSI_EXEC_REQ_FIFO_DEFINED, stmnt)
+    gsub("defined *\\( *SCSI_EXEC_REQ_FIFO_DEFINED *\\)",
+         SCSI_EXEC_REQ_FIFO_DEFINED, stmnt)
+  }
+
+  if (SCST_IO_CONTEXT != "")
+  {
+    gsub("defined  *SCST_IO_CONTEXT", SCST_IO_CONTEXT, stmnt)
+    gsub("defined *\\( *SCST_IO_CONTEXT *\\)", SCST_IO_CONTEXT, stmnt)
+  }
+
+  if (generating_upstream_patch_defined)
+  {
+    gsub("defined  *GENERATING_UPSTREAM_PATCH", 1, stmnt)
+    gsub("defined *\\( *GENERATING_UPSTREAM_PATCH *\\)", 1, stmnt)
   }
 
   do
@@ -94,13 +121,31 @@ function evaluate(stmnt) {
       sub(pattern, op[1] == 0, stmnt)
     }
     
-    pattern="KERNEL_VERSION\\(([0-9]+) *, *([0-9]+) *, *([0-9]+) *\\)"
+    pattern="KERNEL_VERSION\\( *([0-9]+) *, *([0-9]+) *, *([0-9]+) *\\)"
     while (match(stmnt, pattern, op) != 0)
     {
       sub(pattern, op[1] * 65536 + op[2] * 256 + op[3], stmnt)
     }
   
-    pattern="([0-9]+) *(<|<=|>|>=|==) *([0-9]+)"
+    pattern="(-*[0-9]+) *(\\*|/) *(-*[0-9]+)"
+    while (match(stmnt, pattern, op) != 0)
+    {
+      result="error"
+      if      (op[2] == "*") result = op[1] * op[3]
+      else if (op[2] == "/" && op[3] != 0) result = op[1] / op[3]
+      sub(pattern, result, stmnt)
+    }
+  
+    pattern="(-*[0-9]+) *(\\+|-) *(-*[0-9]+)"
+    while (match(stmnt, pattern, op) != 0)
+    {
+      result="error"
+      if      (op[2] == "+") result = op[1] * op[3]
+      else if (op[2] == "-") result = op[1] / op[3]
+      sub(pattern, result, stmnt)
+    }
+  
+    pattern="(-*[0-9]+) *(<|<=|>|>=|==) *(-*[0-9]+)"
     while (match(stmnt, pattern, op) != 0)
     {
       result="error"
@@ -112,19 +157,19 @@ function evaluate(stmnt) {
       sub(pattern, result, stmnt)
     }
   
-    pattern="([0-9]+) *\\&\\& *([0-9]+)"
+    pattern="(-*[0-9]+) *\\&\\& *(-*[0-9]+)"
     while (match(stmnt, pattern, op) != 0)
     {
       sub(pattern, (op[1] != 0) && (op[2] != 0), stmnt)
     }
   
-    pattern="([0-9]+) *\\|\\| *([0-9]+)"
+    pattern="(-*[0-9]+) *\\|\\| *(-*[0-9]+)"
     while (match(stmnt, pattern, op) != 0)
     {
       sub(pattern, (op[1] != 0) || (op[2] != 0), stmnt)
     }
   
-    pattern="\\(([0-9]+)\\)"
+    pattern="\\((-*[0-9]+)\\)"
     while (match(stmnt, pattern, op) != 0)
     {
       sub(pattern, op[1], stmnt)
@@ -152,7 +197,10 @@ function handle_if()
       || $0 ~ "INSIDE_KERNEL_TREE" \
       || $0 ~ "RHEL_MAJOR"         \
       || $0 ~ "RHEL_MINOR"         \
-      || $0 ~ "RHEL_RELEASE_CODE")
+      || $0 ~ "RHEL_RELEASE_CODE"  \
+      || $0 ~ "GENERATING_UPSTREAM_PATCH" \
+      || $0 ~ "SCSI_EXEC_REQ_FIFO_DEFINED" \
+      || $0 ~ "SCST_IO_CONTEXT")
   {
     #print $0 " -> " evaluated
     $0 = evaluated
@@ -165,6 +213,7 @@ function handle_if()
   if (evaluated ~ "^+#if")
   {
     if_stmnt[if_nesting_level] = evaluated
+    any_section_output[if_nesting_level] = 0
   }
   else
   {
@@ -182,8 +231,10 @@ function handle_if()
 
 function process_preprocessor_statement() {
   last_if_nesting_level = if_nesting_level
+  orig_stmnt = $0
   evaluated = evaluate($0)
   condition = 1
+  delete_next_blank_line = 0
   if (evaluated ~ "^+#if")
   {
     if_nesting_level++
@@ -201,6 +252,7 @@ function process_preprocessor_statement() {
   else if (evaluated ~ "^+#endif")
   {
     matching_if = if_stmnt[if_nesting_level]
+    delete_next_blank_line = ! any_section_output[if_nesting_level]
     if_nesting_level--
   }
   else
@@ -214,10 +266,19 @@ function process_preprocessor_statement() {
     {
       output = output && decision[i] != "+#if 0"
     }
+    if (output)
+      any_section_output[if_nesting_level] = 1
   }
-  if (output && (! condition || condition && matching_if !~ "^+#if [01]"))
+  if (delete_disabled_code                                      \
+      && (evaluated ~ "^+#define SCSI_EXEC_REQ_FIFO_DEFINED$"   \
+          || evaluated ~ "^+#define SCST_IO_CONTEXT$"))
   {
-    line[lines++]=$0
+    lines_deleted++
+    delete_next_blank_line = 1
+  }
+  else if (delete_disabled_code == 0 || (output && (! condition || condition && matching_if !~ "^+#if [01]")))
+  {
+    line[lines++] = orig_stmnt
   }
   else
   {
@@ -225,13 +286,35 @@ function process_preprocessor_statement() {
   }
 }
 
-function dump_lines() {
-  if (h[0] != "")
-    printf "@@ -%d,%d +%d,%d @@%s\n",h[1],h[2],h[3],h[4]-lines_deleted,h[5]
-  for (i = 0; i < lines; i++)
-    print line[i]
+function reset_hunk_state_variables() {
   lines = 0
   lines_deleted = 0
+  output = 1
+  if_nesting_level = -1
+  delete_next_blank_line = 0
+}
+
+function dump_lines() {
+  # Detect empty hunks
+  first_modif = -1
+  for (i = 0; i < lines; i++)
+  {
+    if (line[i] ~ "^[+-]")
+    {
+      first_modif = i
+      break
+    }
+  }
+
+  # Dump line[] as a hunk, but only if the hunk is not empty.
+  if (first_modif >= 0)
+  {
+    if (h[0] != "")
+      printf "@@ -%d,%d +%d,%d @@%s\n",h[1],h[2],h[3],h[4]-lines_deleted,h[5]
+    for (i = 0; i < lines; i++)
+    print line[i]
+  }
+  reset_hunk_state_variables()
 }
 
 BEGIN {
@@ -247,16 +330,30 @@ BEGIN {
     printf "Error: kernel version (%s) is out of range.\n", kernel_version
     exit 1
   }
+  if (delete_disabled_code != 0 && delete_disabled_code != 1)
+    delete_disabled_code = 0
+  if (generating_upstream_patch_defined != 0 && generating_upstream_patch_defined != 1)
+    generating_upstream_patch_defined = 0
 
   # Variable initialization.
-  lines = 0
-  lines_deleted = 0
-  output = 1
-  if_nesting_level = -1
+  reset_hunk_state_variables()
 }
 
 
 {
+  # Dump continued lines without trying to process these -- the parsing code
+  # in this script cannot handle continued lines yet.
+  if (match($0, "\\\\$"))
+  {
+    line[lines++]=$0
+    do
+    {
+      getline
+      line[lines++]=$0
+    } while (match($0, "\\\\$"))
+    getline
+  }
+
   # If the line currently being processed is a hunk header, print all lines
   # that were stored in the array line[] since the last hunk header was read.
   if (match($0, "^@@ -([0-9]*),([0-9]*) \\+([0-9]*),([0-9]*) @@(.*)$"))
@@ -265,19 +362,28 @@ BEGIN {
     dump_lines()
     match($0, "^@@ -([0-9]*),([0-9]*) \\+([0-9]*),([0-9]*) @@(.*)$", h)
   }
-  else if (match($0, "^+ *#"))
+  else if (delete_disabled_code && delete_next_blank_line && match($0, "^+$"))
   {
-    process_preprocessor_statement()
-  }
-  else if (output)
-  {
-    # Store the line that was just read.
-    line[lines++]=$0
+    lines_deleted++
+    delete_next_blank_line = 0
   }
   else
   {
-    # Discard the last read line.
-    lines_deleted++
+    delete_next_blank_line = 0
+    if (match($0, "^+ *#"))
+    {
+      process_preprocessor_statement()
+    }
+    else if (delete_disabled_code == 0 || output)
+    {
+      # Store the line that was just read.
+      line[lines++]=$0
+    }
+    else
+    {
+      # Discard the last read line.
+      lines_deleted++
+    }
   }
 }
 
