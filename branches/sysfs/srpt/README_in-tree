@@ -58,7 +58,7 @@ h. echo "add vdisk2 2" >/proc/scsi_tgt/groups/Default/devices
 
 B. On initiator machines you can manualy do the following steps:
 1. modprobe ib_srp
-2. ipsrpdm -c (to discover new SRP target)
+2. ibsrpdm -c (to discover new SRP target)
 3. echo <new target info> > /sys/class/infiniband_srp/srp-mthca0-1/add_target
 4. fdisk -l (will show new discovered scsi disks)
 
@@ -81,7 +81,7 @@ and multipath tool
 + Please refer to OFED-1.x SRP's user manual for more in-details instructions
 on how-to enable/use HA feature
 
-To minimize QUEUEFULL conditions, you can apply scst_increase_max_tgt_cmds
+To minimize QUEUE_FULL conditions, you can apply scst_increase_max_tgt_cmds
 patch from SRPT package from http://sourceforge.net/project/showfiles.php?group_id=110471
 
 
@@ -94,10 +94,10 @@ maximize IOPS it can be needed to assign for those threads dedicated
 CPUs using Linux CPU affinity facilities. No IRQ processing should be
 done on those CPUs. Check that using /proc/interrupts. See taskset
 command and Documentation/IRQ-affinity.txt in your kernel's source tree
-for how to assign IRQ affinity to tasks and IRQs.
+for how to assign CPU affinity to tasks and IRQs.
 
 The reason for that is that processing of coming commands in SIRQ context
-might be done on the same CPUs as SSD devices' threads doing data
+can be done on the same CPUs as SSD devices' threads doing data
 transfers. As the result, those threads won't receive all the CPU power
 and perform worse.
 
@@ -106,3 +106,7 @@ target's internal thread. It will allows Linux CPU scheduler to better
 distribute load among available CPUs. To enable SRP target driver's
 internal thread you should load ib_srpt module with parameter
 "thread=1".
+
+
+Send questions about this driver to scst-devel@lists.sourceforge.net, CC:
+Vu Pham <vuhuong@mellanox.com> and Bart Van Assche <bart.vanassche@gmail.com>.
