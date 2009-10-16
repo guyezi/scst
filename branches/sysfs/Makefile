@@ -301,38 +301,45 @@ mvsas_clean:
 mvsas_extraclean:
 	cd $(MVSAS_DIR) && $(MAKE) extraclean
 
-
 debug2perf:
-	echo "Changing current debug state from full debug to full performance"
-	patch -p0 <scst-full_perf.patch
-	patch -p0 <usr-full_perf.patch
-	patch -p0 <qla2x00t-full_perf.patch
-	patch -p0 <iscsi-full_perf.patch
-	patch -p0 <qla_isp-release.patch
+	cd $(SCST_DIR) && $(MAKE) $@
+	@if [ -d $(QLA_DIR) ]; then cd $(QLA_DIR) && $(MAKE) $@; fi
+#	patch -p0 <qla_isp-release.patch
+#	@if [ -d $(LSI_DIR) ]; then cd $(LSI_DIR) && $(MAKE) $@; fi
+#	@if [ -d $(SRP_DIR) ]; then cd $(SRP_DIR) && $(MAKE) $@; fi
+	@if [ -d $(ISCSI_DIR) ]; then cd $(ISCSI_DIR) && $(MAKE) $@; fi
+	@if [ -d $(USR_DIR) ]; then cd $(USR_DIR) && $(MAKE) $@; fi
+#	@if [ -d $(SCST_LOCAL_DIR) ]; then cd $(SCST_LOCAL_DIR) && $(MAKE) $@; fi
 
 debug2release:
-	echo "Changing current debug state from full debug to release"
-	patch -p0 <scst-release.patch
-	patch -p0 <usr-release.patch
-	patch -p0 <qla2x00t-release.patch
-	patch -p0 <iscsi-release.patch
-	patch -p0 <qla_isp-release.patch
+	cd $(SCST_DIR) && $(MAKE) $@
+	@if [ -d $(QLA_DIR) ]; then cd $(QLA_DIR) && $(MAKE) $@; fi
+#	patch -p0 <qla_isp-release.patch
+#	@if [ -d $(LSI_DIR) ]; then cd $(LSI_DIR) && $(MAKE) $@; fi
+#	@if [ -d $(SRP_DIR) ]; then cd $(SRP_DIR) && $(MAKE) $@; fi
+	@if [ -d $(ISCSI_DIR) ]; then cd $(ISCSI_DIR) && $(MAKE) $@; fi
+	@if [ -d $(USR_DIR) ]; then cd $(USR_DIR) && $(MAKE) $@; fi
+#	@if [ -d $(SCST_LOCAL_DIR) ]; then cd $(SCST_LOCAL_DIR) && $(MAKE) $@; fi
 
 perf2debug:
-	echo "Changing current debug state from full performance to full debug"
-	patch -p0 -R <scst-full_perf.patch
-	patch -p0 -R <usr-full_perf.patch
-	patch -p0 -R <qla2x00t-full_perf.patch
-	patch -p0 -R <iscsi-full_perf.patch
-	patch -p0 -R <qla_isp-release.patch
+	cd $(SCST_DIR) && $(MAKE) $@
+	@if [ -d $(QLA_DIR) ]; then cd $(QLA_DIR) && $(MAKE) $@; fi
+#	patch -p0 -R <qla_isp-release.patch
+#	@if [ -d $(LSI_DIR) ]; then cd $(LSI_DIR) && $(MAKE) $@; fi
+#	@if [ -d $(SRP_DIR) ]; then cd $(SRP_DIR) && $(MAKE) $@; fi
+	@if [ -d $(ISCSI_DIR) ]; then cd $(ISCSI_DIR) && $(MAKE) $@; fi
+	@if [ -d $(USR_DIR) ]; then cd $(USR_DIR) && $(MAKE) $@; fi
+#	@if [ -d $(SCST_LOCAL_DIR) ]; then cd $(SCST_LOCAL_DIR) && $(MAKE) $@; fi
 
 release2debug:
-	echo "Changing current debug state from release to full debug"
-	patch -p0 -R <scst-release.patch
-	patch -p0 -R <usr-release.patch
-	patch -p0 -R <qla2x00t-release.patch
-	patch -p0 -R <iscsi-release.patch
-	patch -p0 -R <qla_isp-release.patch
+	cd $(SCST_DIR) && $(MAKE) $@
+	@if [ -d $(QLA_DIR) ]; then cd $(QLA_DIR) && $(MAKE) $@; fi
+#	patch -p0 -R <qla_isp-release.patch
+#	@if [ -d $(LSI_DIR) ]; then cd $(LSI_DIR) && $(MAKE) $@; fi
+#	@if [ -d $(SRP_DIR) ]; then cd $(SRP_DIR) && $(MAKE) $@; fi
+	@if [ -d $(ISCSI_DIR) ]; then cd $(ISCSI_DIR) && $(MAKE) $@; fi
+	@if [ -d $(USR_DIR) ]; then cd $(USR_DIR) && $(MAKE) $@; fi
+#	@if [ -d $(SCST_LOCAL_DIR) ]; then cd $(SCST_LOCAL_DIR) && $(MAKE) $@; fi
 
 .PHONY: all install uninstall clean extraclean help \
 	qla qla_install qla_uninstall qla_clean qla_extraclean \

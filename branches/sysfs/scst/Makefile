@@ -22,19 +22,31 @@
 
 SCST_DIR=src
 
-all: 
+all:
 	cd $(SCST_DIR) && $(MAKE) $@
 
-install: 
+install:
 	cd $(SCST_DIR) && $(MAKE) $@
 
-uninstall: 
+uninstall:
 	cd $(SCST_DIR) && $(MAKE) $@
 
-clean: 
+clean:
 	cd $(SCST_DIR) && $(MAKE) $@
 
-extraclean: 
+extraclean:
+	cd $(SCST_DIR) && $(MAKE) $@
+
+debug2release:
+	cd $(SCST_DIR) && $(MAKE) $@
+
+release2debug:
+	cd $(SCST_DIR) && $(MAKE) $@
+
+debug2perf:
+	cd $(SCST_DIR) && $(MAKE) $@
+
+perf2debug:
 	cd $(SCST_DIR) && $(MAKE) $@
 
 help:
@@ -48,4 +60,4 @@ help:
 	@echo "         - be sure to compile qla against the correct initiator"
 	@echo "           driver. Read its README for details."
 
-.PHONY: all install uninstall clean extraclean help
+.PHONY: all install uninstall clean extraclean help debug2release release2debug debug2perf perf2debug
