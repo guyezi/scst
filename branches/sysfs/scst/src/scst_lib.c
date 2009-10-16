@@ -50,6 +50,7 @@ static void scst_unblock_cmds(struct scst_device *dev);
 static void scst_clear_reservation(struct scst_tgt_dev *tgt_dev);
 static struct scst_tgt_dev *scst_alloc_add_tgt_dev(struct scst_session *sess,
 	struct scst_acg_dev *acg_dev);
+static void scst_tgt_retry_timer_fn(unsigned long arg);
 
 #ifdef CONFIG_SCST_DEBUG_TM
 static void tm_dbg_init_tgt_dev(struct scst_tgt_dev *tgt_dev,
@@ -1034,6 +1035,44 @@ out:
 	return;
 }
 EXPORT_SYMBOL(scst_set_resp_data_len);
+
+struct scst_tgt *scst_alloc_tgt(struct scst_tgt_template *tgtt)
+{
+	struct scst_tgt *tgt;
+
+	TRACE_ENTRY();
+
+	tgt = kzalloc(sizeof(*tgt), GFP_KERNEL);
+	if (tgt == NULL) {
+		TRACE(TRACE_OUT_OF_MEM, "%s", "Allocation of tgt failed");
+		goto out;
+	}
+
+	INIT_LIST_HEAD(&tgt->sess_list);
+	init_waitqueue_head(&tgt->unreg_waitQ);
+	tgt->tgtt = tgtt;
+	tgt->sg_tablesize = tgtt->sg_tablesize;
+	spin_lock_init(&tgt->tgt_lock);
+	INIT_LIST_HEAD(&tgt->retry_cmd_list);
+	atomic_set(&tgt->finished_cmds, 0);
+	init_timer(&tgt->retry_timer);
+	tgt->retry_timer.data = (unsigned long)tgt;
+	tgt->retry_timer.function = scst_tgt_retry_timer_fn;
+
+out:
+	TRACE_EXIT_HRES((unsigned long)tgt);
+	return tgt;
+}
+
+void scst_free_tgt(struct scst_tgt *tgt)
+{
+	TRACE_ENTRY();
+
+	kfree(tgt);
+
+	TRACE_EXIT();
+	return;
+}
 
 /* Called under scst_mutex and suspended activity */
 int scst_alloc_device(gfp_t gfp_mask, struct scst_device **out_dev)
@@ -2128,6 +2167,17 @@ void scst_free_session(struct scst_session *sess)
 	return;
 }
 
+void scst_release_session(struct scst_session *sess)
+{
+	TRACE_ENTRY();
+
+	kfree(sess->initiator_name);
+	kmem_cache_free(scst_sess_cachep, sess);
+
+	TRACE_EXIT();
+	return;
+}
+
 void scst_free_session_callback(struct scst_session *sess)
 {
 	struct completion *c;
@@ -2375,7 +2425,7 @@ void scst_check_retries(struct scst_tgt *tgt)
 	return;
 }
 
-void scst_tgt_retry_timer_fn(unsigned long arg)
+static void scst_tgt_retry_timer_fn(unsigned long arg)
 {
 	struct scst_tgt *tgt = (struct scst_tgt *)arg;
 	unsigned long flags;

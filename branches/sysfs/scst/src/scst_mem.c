@@ -1478,6 +1478,16 @@ out_err_unlock_put:
 }
 EXPORT_SYMBOL(sgv_pool_create);
 
+void sgv_pool_release(struct sgv_pool *pool)
+{
+	TRACE_ENTRY();
+
+	kfree(pool);
+
+	TRACE_EXIT();
+	return;
+}
+
 static void sgv_pool_get(struct sgv_pool *pool)
 {
 	atomic_inc(&pool->sgv_pool_ref);
@@ -1602,6 +1612,8 @@ void scst_sgv_pools_deinit(void)
 	return;
 }
 
+#ifdef CONFIG_SCST_PROC
+
 static void sgv_do_proc_read(struct seq_file *seq, const struct sgv_pool *pool)
 {
 	int i, total = 0, hit = 0, merged = 0, allocated = 0;
@@ -1687,6 +1699,8 @@ int sgv_procinfo_show(struct seq_file *seq, void *v)
 	TRACE_EXIT();
 	return 0;
 }
+
+#endif /* CONFIG_SCST_PROC */
 
 ssize_t sgv_sysfs_stat_show(struct kobject *kobj,
 	struct kobj_attribute *attr, char *buf)

@@ -95,31 +95,35 @@ static int __init init_scst_tape_driver(void)
 	if (res < 0)
 		goto out;
 
-	res = scst_dev_handler_build_std_proc(&tape_devtype);
-	if (res != 0)
-		goto out_unreg1;
-
 	tape_devtype_perf.module = THIS_MODULE;
 
 	res = scst_register_dev_driver(&tape_devtype_perf);
 	if (res < 0)
-		goto out_unreg1_err1;
+		goto out_unreg;
+
+#ifdef CONFIG_SCST_PROC
+	res = scst_dev_handler_build_std_proc(&tape_devtype);
+	if (res != 0)
+		goto out_unreg1;
 
 	res = scst_dev_handler_build_std_proc(&tape_devtype_perf);
 	if (res != 0)
 		goto out_unreg2;
+#endif
 
 out:
 	TRACE_EXIT_RES(res);
 	return res;
 
+#ifdef CONFIG_SCST_PROC
 out_unreg2:
-	scst_dev_handler_destroy_std_proc(&tape_devtype_perf);
-
-out_unreg1_err1:
 	scst_dev_handler_destroy_std_proc(&tape_devtype);
 
 out_unreg1:
+	scst_unregister_dev_driver(&tape_devtype_perf);
+#endif
+
+out_unreg:
 	scst_unregister_dev_driver(&tape_devtype);
 	goto out;
 }
@@ -127,10 +131,14 @@ out_unreg1:
 static void __exit exit_scst_tape_driver(void)
 {
 	TRACE_ENTRY();
+
+#ifdef CONFIG_SCST_PROC
 	scst_dev_handler_destroy_std_proc(&tape_devtype_perf);
-	scst_unregister_dev_driver(&tape_devtype_perf);
 	scst_dev_handler_destroy_std_proc(&tape_devtype);
+#endif
+	scst_unregister_dev_driver(&tape_devtype_perf);
 	scst_unregister_dev_driver(&tape_devtype);
+
 	TRACE_EXIT();
 	return;
 }

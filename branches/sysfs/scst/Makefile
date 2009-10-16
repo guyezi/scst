@@ -49,6 +49,12 @@ debug2perf:
 perf2debug:
 	cd $(SCST_DIR) && $(MAKE) $@
 
+disable_proc:
+	cd $(SCST_DIR) && $(MAKE) $@
+
+enable_proc:
+	cd $(SCST_DIR) && $(MAKE) $@
+
 help:
 	@echo "		all (the default) : make all"
 	@echo "		clean             : clean files"
@@ -60,4 +66,4 @@ help:
 	@echo "         - be sure to compile qla against the correct initiator"
 	@echo "           driver. Read its README for details."
 
-.PHONY: all install uninstall clean extraclean help debug2release release2debug debug2perf perf2debug
+.PHONY: all install uninstall clean extraclean help debug2release release2debug debug2perf perf2debug disable_proc enable_proc

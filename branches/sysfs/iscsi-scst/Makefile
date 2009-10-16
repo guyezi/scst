@@ -119,4 +119,8 @@ perf2debug:
 	@cmp $(KMOD)/Makefile $(KMOD)/Makefile.aa >/dev/null; if [[ $$? = 0 ]]; then rm $(KMOD)/Makefile.aa; echo "sed failed"; false; fi
 	rm $(KMOD)/Makefile.aa
 
-.PHONY: all mods progs install clean extraclean debug2release release2debug debug2perf perf2debug
+disable_proc:
+
+enable_proc:
+
+.PHONY: all mods progs install clean extraclean debug2release release2debug debug2perf perf2debug disable_proc enable_proc

@@ -17,7 +17,6 @@
 
 #include <linux/scatterlist.h>
 #include <linux/workqueue.h>
-#include <linux/seq_file.h>
 
 #define SGV_POOL_ELEMENTS	11
 
@@ -118,14 +117,18 @@ static inline struct scatterlist *sgv_pool_sg(struct sgv_pool_obj *obj)
 	return obj->sg_entries;
 }
 
-extern int scst_sgv_pools_init(unsigned long mem_hwmark,
-			       unsigned long mem_lwmark);
-extern void scst_sgv_pools_deinit(void);
-extern int sgv_procinfo_show(struct seq_file *seq, void *v);
+int scst_sgv_pools_init(unsigned long mem_hwmark, unsigned long mem_lwmark);
+void scst_sgv_pools_deinit(void);
 
-extern ssize_t sgv_sysfs_stat_show(struct kobject *kobj,
+void sgv_pool_release(struct sgv_pool *pool);
+
+#ifdef CONFIG_SCST_PROC
+int sgv_procinfo_show(struct seq_file *seq, void *v);
+#endif
+
+ssize_t sgv_sysfs_stat_show(struct kobject *kobj,
 	struct kobj_attribute *attr, char *buf);
-extern ssize_t sgv_sysfs_global_stat_show(struct kobject *kobj,
+ssize_t sgv_sysfs_global_stat_show(struct kobject *kobj,
 	struct kobj_attribute *attr, char *buf);
 
 void scst_sgv_pool_use_norm(struct scst_tgt_dev *tgt_dev);

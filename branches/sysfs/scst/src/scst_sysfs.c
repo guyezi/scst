@@ -100,11 +100,6 @@ static void scst_sysfs_release(struct kobject *kobj)
  * Target Template
  */
 
-static void scst_tgtt_cleanup(struct scst_tgt_template *tgtt)
-{
-	return;
-}
-
 static void scst_tgtt_release(struct kobject *kobj)
 {
 	struct scst_tgt_template *tgtt;
@@ -255,16 +250,6 @@ void scst_tgtt_sysfs_put(struct scst_tgt_template *tgtt)
 /*
  * Target directory implementation
  */
-
-static void scst_free_tgt(struct scst_tgt *tgt)
-{
-	TRACE_ENTRY();
-
-	kfree(tgt);
-
-	TRACE_EXIT();
-	return;
-}
 
 static void scst_tgt_release(struct kobject *kobj)
 {
@@ -469,12 +454,7 @@ static struct attribute *scst_device_attrs[] = {
 	NULL,
 };
 
-void __scst_device_release(struct scst_device *dev)
-{
-	scst_free_device(dev);
-}
-
-static void scst_device_release(struct kobject *kobj)
+static void scst_sysfs_device_release(struct kobject *kobj)
 {
 	struct scst_device *dev;
 
@@ -482,7 +462,7 @@ static void scst_device_release(struct kobject *kobj)
 
 	dev = container_of(kobj, struct scst_device, dev_kobj);
 
-	__scst_device_release(dev);
+	scst_free_device(dev);
 
 	TRACE_EXIT();
 	return;
@@ -559,7 +539,7 @@ out:
 
 static struct kobj_type scst_device_ktype = {
 	.sysfs_ops = &scst_sysfs_ops,
-	.release = scst_device_release,
+	.release = scst_sysfs_device_release,
 	.default_attrs = scst_device_attrs,
 };
 
@@ -619,7 +599,7 @@ void scst_device_sysfs_put(struct scst_device *dev)
 		kobject_del(&dev->dev_kobj);
 		kobject_put(&dev->dev_kobj);
 	} else
-		__scst_device_release(dev);
+		scst_free_device(dev);
 
 	TRACE_EXIT();
 	return;
@@ -647,18 +627,7 @@ static struct attribute *scst_session_attrs[] = {
 	NULL,
 };
 
-static void __scst_session_release(struct scst_session *sess)
-{
-	TRACE_ENTRY();
-
-	kfree(sess->initiator_name);
-	kmem_cache_free(scst_sess_cachep, sess);
-
-	TRACE_EXIT();
-	return;
-}
-
-static void scst_session_release(struct kobject *kobj)
+static void scst_sysfs_session_release(struct kobject *kobj)
 {
 	struct scst_session *sess;
 
@@ -666,7 +635,7 @@ static void scst_session_release(struct kobject *kobj)
 
 	sess = container_of(kobj, struct scst_session, sess_kobj);
 
-	__scst_session_release(sess);
+	scst_release_session(sess);
 
 	TRACE_EXIT();
 	return;
@@ -674,7 +643,7 @@ static void scst_session_release(struct kobject *kobj)
 
 static struct kobj_type scst_session_ktype = {
 	.sysfs_ops = &scst_sysfs_ops,
-	.release = scst_session_release,
+	.release = scst_sysfs_session_release,
 	.default_attrs = scst_session_attrs,
 };
 
@@ -712,7 +681,7 @@ void scst_sess_sysfs_put(struct scst_session *sess)
 		kobject_del(&sess->sess_kobj);
 		kobject_put(&sess->sess_kobj);
 	} else
-		__scst_session_release(sess);
+		scst_release_session(sess);
 
 	TRACE_EXIT();
 	return;
@@ -1029,16 +998,6 @@ static struct attribute *sgv_attrs[] = {
 	NULL,
 };
 
-static void sgv_release(struct sgv_pool *pool)
-{
-	TRACE_ENTRY();
-
-	kfree(pool);
-
-	TRACE_EXIT();
-	return;
-}
-
 static void sgv_kobj_release(struct kobject *kobj)
 {
 	struct sgv_pool *pool;
@@ -1047,7 +1006,7 @@ static void sgv_kobj_release(struct kobject *kobj)
 
 	pool = container_of(kobj, struct sgv_pool, sgv_kobj);
 
-	sgv_release(pool);
+	sgv_pool_release(pool);
 
 	TRACE_EXIT();
 	return;
@@ -1086,7 +1045,7 @@ void scst_sgv_sysfs_put(struct sgv_pool *pool)
 		kobject_del(&pool->sgv_kobj);
 		kobject_put(&pool->sgv_kobj);
 	} else
-		sgv_release(pool);
+		sgv_pool_release(pool);
 	return;
 }
 
@@ -1500,11 +1459,6 @@ static struct kobj_type scst_sysfs_root_ktype = {
 	.default_attrs = scst_sysfs_root_default_attrs,
 };
 
-static void __scst_devt_cleanup(struct scst_dev_type *devt)
-{
-	return;
-}
-
 static void scst_devt_free(struct kobject *kobj)
 {
 	struct scst_dev_type *devt;
@@ -1515,7 +1469,7 @@ static void scst_devt_free(struct kobject *kobj)
 
 	complete_all(&devt->devt_kobj_release_compl);
 
-	__scst_devt_cleanup(devt);
+	scst_devt_cleanup(devt);
 
 	TRACE_EXIT();
 	return;
@@ -1674,7 +1628,7 @@ void scst_devt_sysfs_put(struct scst_dev_type *devt)
 				"for dev handler template %s", devt->name);
 		}
 	} else
-		__scst_devt_cleanup(devt);
+		scst_devt_cleanup(devt);
 
 	TRACE_EXIT();
 	return;

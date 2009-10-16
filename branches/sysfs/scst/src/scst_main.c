@@ -221,21 +221,23 @@ int __scst_register_target_template(struct scst_tgt_template *vtt,
 			"devices or no devices at all!", vtt->name);
 	}
 
+#ifdef CONFIG_SCST_PROC
 	if (!vtt->no_proc_entry) {
 		res = scst_build_proc_target_dir_entries(vtt);
 		if (res < 0)
 			goto out_err;
 	}
+#endif
 
 	res = scst_create_tgtt_sysfs(vtt);
 	if (res)
-		goto out_proc_err;
+		goto out_sysfs_err;
 
 	if (vtt->rdy_to_xfer == NULL)
 		vtt->rdy_to_xfer_atomic = 1;
 
 	if (mutex_lock_interruptible(&m) != 0)
-		goto out_proc_err;
+		goto out_sysfs_err;
 
 	if (mutex_lock_interruptible(&scst_mutex) != 0)
 		goto out_m_err;
@@ -275,9 +277,10 @@ out:
 out_m_err:
 	mutex_unlock(&m);
 
-out_proc_err:
+out_sysfs_err:
+#ifdef CONFIG_SCST_PROC
 	scst_cleanup_proc_target_dir_entries(vtt);
-
+#endif
 	scst_tgtt_sysfs_put(vtt);
 
 out_err:
@@ -318,7 +321,9 @@ restart:
 
 	mutex_unlock(&scst_mutex);
 
+#ifdef CONFIG_SCST_PROC
 	scst_cleanup_proc_target_dir_entries(vtt);
+#endif
 
 	scst_tgtt_sysfs_put(vtt);
 
@@ -342,23 +347,11 @@ struct scst_tgt *scst_register(struct scst_tgt_template *vtt,
 
 	TRACE_ENTRY();
 
-	tgt = kzalloc(sizeof(*tgt), GFP_KERNEL);
+	tgt = scst_alloc_tgt(vtt);
 	if (tgt == NULL) {
-		TRACE(TRACE_OUT_OF_MEM, "%s", "Allocation of tgt failed");
 		rc = -ENOMEM;
 		goto out_err;
 	}
-
-	INIT_LIST_HEAD(&tgt->sess_list);
-	init_waitqueue_head(&tgt->unreg_waitQ);
-	tgt->tgtt = vtt;
-	tgt->sg_tablesize = vtt->sg_tablesize;
-	spin_lock_init(&tgt->tgt_lock);
-	INIT_LIST_HEAD(&tgt->retry_cmd_list);
-	atomic_set(&tgt->finished_cmds, 0);
-	init_timer(&tgt->retry_timer);
-	tgt->retry_timer.data = (unsigned long)tgt;
-	tgt->retry_timer.function = scst_tgt_retry_timer_fn;
 
 	rc = scst_suspend_activity(true);
 	if (rc != 0)
@@ -370,6 +363,7 @@ struct scst_tgt *scst_register(struct scst_tgt_template *vtt,
 	}
 
 	if (target_name != NULL) {
+#ifdef CONFIG_SCST_PROC
 		int len = strlen(target_name) +
 			strlen(SCST_DEFAULT_ACG_NAME) + 1 + 1;
 
@@ -382,13 +376,18 @@ struct scst_tgt *scst_register(struct scst_tgt_template *vtt,
 		}
 		sprintf(tgt->default_group_name, "%s_%s", SCST_DEFAULT_ACG_NAME,
 			target_name);
+#endif
 
 		tgt->tgt_name = kmalloc(strlen(target_name) + 1, GFP_KERNEL);
 		if (tgt->tgt_name == NULL) {
 			TRACE(TRACE_OUT_OF_MEM, "Allocation of tgt name %s failed",
 				target_name);
 			rc = -ENOMEM;
+#ifdef CONFIG_SCST_PROC
 			goto out_free_def_name;
+#else
+			goto out_unlock_resume;
+#endif
 		}
 		strcpy(tgt->tgt_name, target_name);
 	} else {
@@ -401,7 +400,11 @@ struct scst_tgt *scst_register(struct scst_tgt_template *vtt,
 			TRACE(TRACE_OUT_OF_MEM, "Allocation of tgt name failed "
 				"(template name %s)", vtt->name);
 			rc = -ENOMEM;
+#ifdef CONFIG_SCST_PROC
 			goto out_free_def_name;
+#else
+			goto out_unlock_resume;
+#endif
 		}
 		sprintf(tgt->tgt_name, "%s%s%d", vtt->name,
 			SCST_DEFAULT_TGT_NAME_SUFFIX, tgt_num++);
@@ -411,13 +414,19 @@ struct scst_tgt *scst_register(struct scst_tgt_template *vtt,
 	if (tgt->default_acg == NULL)
 		goto out_free_tgt_name;
 
+#ifdef CONFIG_SCST_PROC
 	rc = scst_build_proc_target_entries(tgt);
 	if (rc < 0)
 		goto out_free_acg;
+#endif
 
 	rc = scst_create_tgt_sysfs(tgt);
 	if (rc < 0)
+#ifdef CONFIG_SCST_PROC
 		goto out_clean_proc;
+#else
+		goto out_free_acg;
+#endif
 
 	list_add_tail(&tgt->tgt_list_entry, &vtt->tgt_list);
 
@@ -431,8 +440,10 @@ out:
 	TRACE_EXIT();
 	return tgt;
 
+#ifdef CONFIG_SCST_PROC
 out_clean_proc:
 	scst_cleanup_proc_target_entries(tgt);
+#endif
 
 out_free_acg:
 	scst_destroy_acg(tgt->default_acg);
@@ -440,8 +451,10 @@ out_free_acg:
 out_free_tgt_name:
 	kfree(tgt->tgt_name);
 
+#ifdef CONFIG_SCST_PROC
 out_free_def_name:
 	kfree(tgt->default_group_name);
+#endif
 
 out_unlock_resume:
 	mutex_unlock(&scst_mutex);
@@ -506,7 +519,9 @@ again:
 
 	list_del(&tgt->tgt_list_entry);
 
+#ifdef CONFIG_SCST_PROC
 	scst_cleanup_proc_target_entries(tgt);
+#endif
 
 	mutex_unlock(&scst_mutex);
 	scst_resume_activity();
@@ -518,7 +533,9 @@ again:
 	scst_destroy_acg(tgt->default_acg);
 
 	kfree(tgt->tgt_name);
+#ifdef CONFIG_SCST_PROC
 	kfree(tgt->default_group_name);
+#endif
 
 	del_timer_sync(&tgt->retry_timer);
 
@@ -1057,11 +1074,13 @@ int __scst_register_dev_driver(struct scst_dev_type *dev_type,
 	if (exist)
 		goto out_up;
 
+#ifdef CONFIG_SCST_PROC
 	if (!dev_type->no_proc) {
 		res = scst_build_proc_dev_handler_dir_entries(dev_type);
 		if (res < 0)
 			goto out_up;
 	}
+#endif
 
 	res = scst_create_devt_sysfs(dev_type);
 	if (res < 0)
@@ -1089,9 +1108,10 @@ out:
 	return res;
 
 out_free:
+#ifdef CONFIG_SCST_PROC
 	if (!dev_type->no_proc)
 		scst_cleanup_proc_dev_handler_dir_entries(dev_type);
-
+#endif
 	scst_devt_sysfs_put(dev_type);
 
 out_up:
@@ -1142,7 +1162,9 @@ void scst_unregister_dev_driver(struct scst_dev_type *dev_type)
 	mutex_unlock(&scst_mutex);
 	scst_resume_activity();
 
+#ifdef CONFIG_SCST_PROC
 	scst_cleanup_proc_dev_handler_dir_entries(dev_type);
+#endif
 
 	scst_devt_sysfs_put(dev_type);
 
@@ -1178,11 +1200,13 @@ int __scst_register_virtual_dev_driver(struct scst_dev_type *dev_type,
 	if (res != 0)
 		goto out_err;
 
+#ifdef CONFIG_SCST_PROC
 	if (!dev_type->no_proc) {
 		res = scst_build_proc_dev_handler_dir_entries(dev_type);
 		if (res < 0)
 			goto out_err;
 	}
+#endif
 
 	res = scst_create_devt_sysfs(dev_type);
 	if (res < 0)
@@ -1202,8 +1226,10 @@ out:
 	return res;
 
 out_free:
+#ifdef CONFIG_SCST_PROC
 	if (!dev_type->no_proc)
 		scst_cleanup_proc_dev_handler_dir_entries(dev_type);
+#endif
 
 	scst_devt_sysfs_put(dev_type);
 
@@ -1218,8 +1244,10 @@ void scst_unregister_virtual_dev_driver(struct scst_dev_type *dev_type)
 {
 	TRACE_ENTRY();
 
+#ifdef CONFIG_SCST_PROC
 	if (!dev_type->no_proc)
 		scst_cleanup_proc_dev_handler_dir_entries(dev_type);
+#endif
 
 	scst_devt_sysfs_put(dev_type);
 
@@ -2015,9 +2043,11 @@ static int __init init_scst(void)
 	if (res < 0)
 		goto out_thread_free;
 
+#ifdef CONFIG_SCST_PROC
 	res = scst_proc_init_module();
 	if (res != 0)
 		goto out_thread_free;
+#endif
 
 	PRINT_INFO("SCST version %s loaded successfully (max mem for "
 		"commands %dMB, per device %dMB)", SCST_VERSION_STRING,
@@ -2093,7 +2123,9 @@ static void __exit exit_scst(void)
 
 	/* ToDo: unregister_cpu_notifier() */
 
+#ifdef CONFIG_SCST_PROC
 	scst_proc_cleanup_module();
+#endif
 	scst_sysfs_cleanup();
 
 	scst_stop_all_threads();

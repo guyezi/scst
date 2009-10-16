@@ -2745,7 +2745,9 @@ static int dev_user_register_dev(struct file *file,
 	dev->devtype.parse_atomic = 1;
 	dev->devtype.exec_atomic = 0; /* no point to make it 1 */
 	dev->devtype.dev_done_atomic = 1;
+#ifdef CONFIG_SCST_PROC
 	dev->devtype.no_proc = 1;
+#endif
 	dev->devtype.attach = dev_user_attach;
 	dev->devtype.detach = dev_user_detach;
 	dev->devtype.attach_tgt = dev_user_attach_tgt;
@@ -3328,16 +3330,22 @@ static int __init init_scst_user(void)
 	if (res < 0)
 		goto out_cache1;
 
+#ifdef CONFIG_SCST_PROC
 	res = scst_dev_handler_build_std_proc(&dev_user_devtype);
 	if (res != 0)
 		goto out_unreg;
+#endif
 
 	dev_user_sysfs_class = class_create(THIS_MODULE, DEV_USER_NAME);
 	if (IS_ERR(dev_user_sysfs_class)) {
 		PRINT_ERROR("%s", "Unable create sysfs class for SCST user "
 			"space handler");
 		res = PTR_ERR(dev_user_sysfs_class);
+#ifdef CONFIG_SCST_PROC
 		goto out_proc;
+#else
+		goto out_unreg;
+#endif
 	}
 
 	res = register_chrdev(DEV_USER_MAJOR, DEV_USER_NAME, &dev_user_fops);
@@ -3392,8 +3400,10 @@ out_chrdev:
 out_class:
 	class_destroy(dev_user_sysfs_class);
 
+#ifdef CONFIG_SCST_PROC
 out_proc:
 	scst_dev_handler_destroy_std_proc(&dev_user_devtype);
+#endif
 
 out_unreg:
 	scst_unregister_dev_driver(&dev_user_devtype);
@@ -3424,7 +3434,9 @@ static void __exit exit_scst_user(void)
 #endif
 	class_destroy(dev_user_sysfs_class);
 
+#ifdef CONFIG_SCST_PROC
 	scst_dev_handler_destroy_std_proc(&dev_user_devtype);
+#endif
 	scst_unregister_virtual_dev_driver(&dev_user_devtype);
 
 	kmem_cache_destroy(user_get_cmd_cachep);

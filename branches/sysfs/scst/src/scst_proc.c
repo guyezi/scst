@@ -2424,3 +2424,17 @@ int scst_single_seq_open(struct inode *inode, struct file *file)
 	return single_open(file, pdata->show, PDE(inode)->data);
 }
 EXPORT_SYMBOL(scst_single_seq_open);
+
+struct proc_dir_entry *scst_proc_get_tgt_root(
+	struct scst_tgt_template *vtt)
+{
+	return vtt->proc_tgt_root;
+}
+EXPORT_SYMBOL(scst_proc_get_tgt_root);
+
+struct proc_dir_entry *scst_proc_get_dev_type_root(
+	struct scst_dev_type *dtt)
+{
+	return dtt->proc_dev_type_root;
+}
+EXPORT_SYMBOL(scst_proc_get_dev_type_root);

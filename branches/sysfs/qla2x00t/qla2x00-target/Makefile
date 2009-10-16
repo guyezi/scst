@@ -135,4 +135,14 @@ perf2debug:
 	@cmp Makefile Makefile.aa >/dev/null; if [[ $$? = 0 ]]; then rm Makefile.aa; echo "sed failed"; false; fi
 	rm Makefile.aa
 
-.PHONY: all tgt install uninstall clean extraclean debug2perf, debug2release, perf2debug, release2debug
+disable_proc:
+	sed -c -i.aa s/"^#define CONFIG_SCST_PROC"/"\/* #define CONFIG_SCST_PROC *\/"/ ../qla_attr.c
+	@cmp ../qla_attr.c ../qla_attr.c.aa >/dev/null; if [[ $$? = 0 ]]; then rm ../qla_attr.c.aa; echo "sed failed"; false; fi
+	rm ../qla_attr.c.aa
+
+enable_proc:
+	sed -c -i.aa s/"\/\* #define CONFIG_SCST_PROC \*\/"/"#define CONFIG_SCST_PROC"/ ../qla_attr.c
+	@cmp ../qla_attr.c ../qla_attr.c.aa >/dev/null; if [[ $$? = 0 ]]; then rm ../qla_attr.c.aa; echo "sed failed"; false; fi
+	rm ../qla_attr.c.aa
+
+.PHONY: all tgt install uninstall clean extraclean debug2perf debug2release perf2debug release2debug disable_proc enable_proc

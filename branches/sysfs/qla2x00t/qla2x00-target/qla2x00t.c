@@ -29,7 +29,6 @@
 #include <scsi/scsi_host.h>
 #include <linux/pci.h>
 #include <linux/delay.h>
-#include <linux/seq_file.h>
 #include <linux/list.h>
 
 #include <scst.h>
@@ -826,7 +825,7 @@ static void q2t_target_stop(struct scst_tgt *scst_tgt)
 	wait_event(tgt->waitQ, test_tgt_sess_count(tgt));
 
 	/* Big hammer */
-	if (!ha->host_shutting_down)
+	if (!ha->host_shutting_down && qla_tgt_mode_enabled(ha))
 		qla2x00_disable_tgt_mode(ha);
 
 	/* Wait for sessions to clear out (just in case) */
@@ -5030,11 +5029,13 @@ static int q2t_add_target(scsi_qla_host_t *ha)
 		}
 	}
 
+#ifndef CONFIG_SCST_PROC
 	rc = sysfs_create_link(scst_sysfs_get_tgt_kobj(tgt->scst_tgt),
 		&ha->host->shost_dev.kobj, "host");
 	if (rc != 0)
 		PRINT_ERROR("Unable to create \"host\" link for target "
 			"%s", scst_get_tgt_name(tgt->scst_tgt));
+#endif
 
 	scst_tgt_set_sg_tablesize(tgt->scst_tgt, sg_tablesize);
 	scst_tgt_set_tgt_priv(tgt->scst_tgt, tgt);
@@ -5278,6 +5279,8 @@ static ssize_t q2t_version_show(struct kobject *kobj,
 	return strlen(buf);
 }
 
+#ifdef CONFIG_SCST_PROC
+
 #if defined(CONFIG_SCST_DEBUG) || defined(CONFIG_SCST_TRACING)
 
 #define Q2T_PROC_LOG_ENTRY_NAME     "trace_level"
@@ -5416,6 +5419,8 @@ static void q2t_proc_log_entry_clean(struct scst_tgt_template *templ)
 	return;
 }
 
+#endif /* CONFIG_SCST_PROC */
+
 static int __init q2t_init(void)
 {
 	int res = 0;
@@ -5455,15 +5460,19 @@ static int __init q2t_init(void)
 	 * called via scst_register_target_template()
 	 */
 
+#ifdef CONFIG_SCST_PROC
 	res = q2t_proc_log_entry_build(&tgt2x_template);
 	if (res < 0)
 		goto out_unreg_target2x;
+#endif
 
 out:
 	TRACE_EXIT_RES(res);
 	return res;
 
+#ifdef CONFIG_SCST_PROC
 out_unreg_target2x:
+#endif
 	scst_unregister_target_template(&tgt2x_template);
 	qla2xxx_tgt_unregister_driver();
 
@@ -5488,7 +5497,10 @@ static void __exit q2t_exit(void)
 	/* To sync with q2t_host_action() */
 	down_write(&q2t_unreg_rwsem);
 
+#ifdef CONFIG_SCST_PROC
 	q2t_proc_log_entry_clean(&tgt2x_template);
+#endif
+
 	scst_unregister_target_template(&tgt2x_template);
 
 	/*

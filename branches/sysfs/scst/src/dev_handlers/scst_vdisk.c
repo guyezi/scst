@@ -30,7 +30,6 @@
 #include <linux/spinlock.h>
 #include <linux/init.h>
 #include <linux/uio.h>
-#include <linux/proc_fs.h>
 #include <linux/list.h>
 #include <linux/ctype.h>
 #include <linux/writeback.h>
@@ -109,7 +108,9 @@ static struct scst_trace_log vdisk_local_trace_tbl[] =
 
 #define DEF_DSENSE		SCST_CONTR_MODE_FIXED_SENSE
 
+#ifdef CONFIG_SCST_PROC
 #define VDISK_PROC_HELP		"help"
+#endif
 
 static unsigned int random_values[256] = {
 	    9862592UL,  3744545211UL,  2348289082UL,  4036111983UL,
@@ -349,6 +350,7 @@ static void vdisk_exec_read_toc(struct scst_cmd *cmd);
 static void vdisk_exec_prevent_allow_medium_removal(struct scst_cmd *cmd);
 static int vdisk_fsync(struct scst_vdisk_thr *thr,
 	loff_t loff, loff_t len, struct scst_cmd *cmd);
+#ifdef CONFIG_SCST_PROC
 static int vdisk_read_proc(struct seq_file *seq,
 	struct scst_dev_type *dev_type);
 static int vdisk_write_proc(char *buffer, char **start, off_t offset,
@@ -357,6 +359,7 @@ static int vcdrom_read_proc(struct seq_file *seq,
 	struct scst_dev_type *dev_type);
 static int vcdrom_write_proc(char *buffer, char **start, off_t offset,
 	int length, int *eof, struct scst_dev_type *dev_type);
+#endif
 static int vdisk_task_mgmt_fn(struct scst_mgmt_cmd *mcmd,
 	struct scst_tgt_dev *tgt_dev);
 
@@ -479,8 +482,10 @@ static struct scst_dev_type vdisk_file_devtype = {
 	.detach_tgt =		vdisk_detach_tgt,
 	.parse =		vdisk_parse,
 	.exec =			vdisk_do_job,
+#ifdef CONFIG_SCST_PROC
 	.read_proc =		vdisk_read_proc,
 	.write_proc =		vdisk_write_proc,
+#endif
 	.task_mgmt_fn =		vdisk_task_mgmt_fn,
 	.devt_attrs =		vdisk_attrs,
 	.dev_attrs =		vdisk_fileio_attrs,
@@ -502,7 +507,9 @@ static struct scst_dev_type vdisk_blk_devtype = {
 	.parse_atomic =		1,
 	.exec_atomic =		0,
 	.dev_done_atomic =	1,
+#ifdef CONFIG_SCST_PROC
 	.no_proc =		1,
+#endif
 	.attach =		vdisk_attach,
 	.detach =		vdisk_detach,
 	.attach_tgt =		vdisk_attach_tgt,
@@ -528,7 +535,9 @@ static struct scst_dev_type vdisk_null_devtype = {
 	.parse_atomic =		1,
 	.exec_atomic =		1,
 	.dev_done_atomic =	1,
+#ifdef CONFIG_SCST_PROC
 	.no_proc =		1,
+#endif
 	.attach =		vdisk_attach,
 	.detach =		vdisk_detach,
 	.attach_tgt =		vdisk_attach_tgt,
@@ -561,8 +570,10 @@ static struct scst_dev_type vcdrom_devtype = {
 	.detach_tgt =		vdisk_detach_tgt,
 	.parse =		vcdrom_parse,
 	.exec =			vcdrom_exec,
+#ifdef CONFIG_SCST_PROC
 	.read_proc =		vcdrom_read_proc,
 	.write_proc =		vcdrom_write_proc,
+#endif
 	.task_mgmt_fn =		vdisk_task_mgmt_fn,
 	.devt_attrs =		vdisk_attrs,
 	.dev_attrs =		vcdrom_attrs,
@@ -576,6 +587,7 @@ static struct scst_dev_type vcdrom_devtype = {
 
 static struct scst_vdisk_thr nullio_thr_data;
 
+#ifdef CONFIG_SCST_PROC
 static char *vdisk_proc_help_string =
 	"echo \"open|close|resync_size NAME [FILE_NAME [BLOCK_SIZE] "
 	"[WRITE_THROUGH READ_ONLY O_DIRECT NULLIO NV_CACHE BLOCKIO]]\" "
@@ -584,6 +596,7 @@ static char *vdisk_proc_help_string =
 static char *vcdrom_proc_help_string =
 	"echo \"open|change|close NAME [FILE_NAME]\" "
 	">/proc/scsi_tgt/vcdrom/vcdrom\n";
+#endif
 
 static int scst_vdisk_ID;
 
@@ -3901,6 +3914,8 @@ out:
 	return res;
 }
 
+#ifdef CONFIG_SCST_PROC
+
 /*
  * ProcFS
  */
@@ -4453,6 +4468,8 @@ static void vdisk_proc_help_destroy(struct scst_dev_type *dev_type)
 	TRACE_EXIT();
 }
 
+#endif /* CONFIG_SCST_PROC */
+
 static int __init init_scst_vdisk(struct scst_dev_type *devtype,
 	struct vdev_type *vdt)
 {
@@ -4469,6 +4486,7 @@ static int __init init_scst_vdisk(struct scst_dev_type *devtype,
 	if (res < 0)
 		goto out;
 
+#ifdef CONFIG_SCST_PROC
 	if (!devtype->no_proc) {
 		res = scst_dev_handler_build_std_proc(devtype);
 		if (res < 0)
@@ -4478,11 +4496,13 @@ static int __init init_scst_vdisk(struct scst_dev_type *devtype,
 		if (res < 0)
 			goto out_destroy_proc;
 	}
+#endif
 
 out:
 	TRACE_EXIT_RES(res);
 	return res;
 
+#ifdef CONFIG_SCST_PROC
 out_destroy_proc:
 	if (!devtype->no_proc)
 		scst_dev_handler_destroy_std_proc(devtype);
@@ -4490,6 +4510,7 @@ out_destroy_proc:
 out_unreg:
 	scst_unregister_virtual_dev_driver(devtype);
 	goto out;
+#endif
 }
 
 static void exit_scst_vdisk(struct scst_dev_type *devtype,
@@ -4518,10 +4539,12 @@ static void exit_scst_vdisk(struct scst_dev_type *devtype,
 	}
 	mutex_unlock(&scst_vdisk_mutex);
 
+#ifdef CONFIG_SCST_PROC
 	if (!devtype->no_proc) {
 		vdisk_proc_help_destroy(devtype);
 		scst_dev_handler_destroy_std_proc(devtype);
 	}
+#endif
 
 	scst_unregister_virtual_dev_driver(devtype);
 

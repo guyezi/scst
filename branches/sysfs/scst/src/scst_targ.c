@@ -5266,6 +5266,7 @@ out:
 	return res;
 }
 
+#ifdef CONFIG_SCST_PROC
 /* scst_mutex supposed to be held */
 static struct scst_acg *scst_find_acg_by_name(const char *acg_name)
 {
@@ -5286,6 +5287,7 @@ out:
 	TRACE_EXIT_HRES(res);
 	return res;
 }
+#endif /* CONFIG_SCST_PROC */
 
 /* Must be called under scst_mitex */
 struct scst_acg *scst_find_acg(const struct scst_session *sess)
@@ -5296,8 +5298,10 @@ struct scst_acg *scst_find_acg(const struct scst_session *sess)
 
 	if (sess->initiator_name)
 		acg = scst_find_acg_by_name_wild(sess->initiator_name);
+#ifdef CONFIG_SCST_PROC
 	if ((acg == NULL) && (sess->tgt->default_group_name != NULL))
 		acg = scst_find_acg_by_name(sess->tgt->default_group_name);
+#endif
 	if (acg == NULL) {
 		if (list_empty(&sess->tgt->default_acg->acg_dev_list))
 			acg = scst_default_acg;

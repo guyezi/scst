@@ -341,6 +341,24 @@ release2debug:
 	@if [ -d $(USR_DIR) ]; then cd $(USR_DIR) && $(MAKE) $@; fi
 #	@if [ -d $(SCST_LOCAL_DIR) ]; then cd $(SCST_LOCAL_DIR) && $(MAKE) $@; fi
 
+enable_proc:
+	cd $(SCST_DIR) && $(MAKE) $@
+	@if [ -d $(QLA_DIR) ]; then cd $(QLA_DIR) && $(MAKE) $@; fi
+#	patch -p0 -R <qla_isp-release.patch
+#	@if [ -d $(LSI_DIR) ]; then cd $(LSI_DIR) && $(MAKE) $@; fi
+#	@if [ -d $(SRP_DIR) ]; then cd $(SRP_DIR) && $(MAKE) $@; fi
+	@if [ -d $(ISCSI_DIR) ]; then cd $(ISCSI_DIR) && $(MAKE) $@; fi
+#	@if [ -d $(SCST_LOCAL_DIR) ]; then cd $(SCST_LOCAL_DIR) && $(MAKE) $@; fi
+
+disable_proc:
+	cd $(SCST_DIR) && $(MAKE) $@
+	@if [ -d $(QLA_DIR) ]; then cd $(QLA_DIR) && $(MAKE) $@; fi
+#	patch -p0 -R <qla_isp-release.patch
+#	@if [ -d $(LSI_DIR) ]; then cd $(LSI_DIR) && $(MAKE) $@; fi
+#	@if [ -d $(SRP_DIR) ]; then cd $(SRP_DIR) && $(MAKE) $@; fi
+	@if [ -d $(ISCSI_DIR) ]; then cd $(ISCSI_DIR) && $(MAKE) $@; fi
+#	@if [ -d $(SCST_LOCAL_DIR) ]; then cd $(SCST_LOCAL_DIR) && $(MAKE) $@; fi
+
 .PHONY: all install uninstall clean extraclean help \
 	qla qla_install qla_uninstall qla_clean qla_extraclean \
 	qla_isp qla_isp_install qla_isp_uninstall qla_isp_clean qla_isp_extraclean \
@@ -352,4 +370,5 @@ release2debug:
 	usr usr_install usr_uninstall usr_clean usr_extraclean \
 	scst_local scst_local_install scst_local_uninstall scst_local_clean scst_local_extraclean \
 	mvsas mvsas_install mvsas_uninstall mvsas_clean mvsas_extraclean \
-	debug2perf, debug2release, perf2debug, release2debug
+	debug2perf, debug2release, perf2debug, release2debug \
+	enable_proc disable_proc

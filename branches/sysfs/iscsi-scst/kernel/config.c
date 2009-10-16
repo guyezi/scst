@@ -13,9 +13,11 @@
  *  GNU General Public License for more details.
  */
 
-#include <linux/proc_fs.h>
-
 #include "iscsi.h"
+
+#ifdef CONFIG_SCST_PROC
+
+#include <linux/proc_fs.h>
 
 #define ISCSI_PROC_VERSION_NAME		"version"
 
@@ -230,6 +232,8 @@ err:
 		iscsi_procfs_exit();
 	goto out;
 }
+
+#endif /* CONFIG_SCST_PROC */
 
 /* target_mutex supposed to be locked */
 static int add_conn(struct iscsi_target *target, void __user *ptr)
