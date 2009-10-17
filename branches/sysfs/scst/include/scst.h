@@ -50,7 +50,12 @@
  */
 #define SCST_VERSION(a, b, c, d)    (((a) << 24) + ((b) << 16) + ((c) << 8) + d)
 #define SCST_VERSION_CODE	    SCST_VERSION(1, 0, 2, 0)
-#define SCST_VERSION_STRING	    "1.0.2sysfs"
+#ifdef CONFIG_SCST_PROC
+#define SCST_VERSION_STRING_SUFFIX
+#else
+#define SCST_VERSION_STRING_SUFFIX  "sysfs"
+#endif
+#define SCST_VERSION_STRING	    "1.0.2" SCST_VERSION_STRING_SUFFIX
 #define SCST_INTERFACE_VERSION	    \
 		SCST_VERSION_STRING "$Revision$" SCST_CONST_VERSION
 
