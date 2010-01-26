@@ -118,10 +118,15 @@ module_param(srp_max_rdma_size, int, 0744);
 MODULE_PARM_DESC(thread,
 		 "Maximum size of SRP RDMA transfers for new connections.");
 
-static unsigned int srp_max_message_size = DEFAULT_MAX_MESSAGE_SIZE;
-module_param(srp_max_message_size, int, 0444);
+static unsigned int srp_max_req_size = DEFAULT_MAX_REQ_SIZE;
+module_param(srp_max_req_size, int, 0444);
 MODULE_PARM_DESC(thread,
-		 "Maximum size of SRP control messages in bytes.");
+		 "Maximum size of SRP request messages in bytes.");
+
+static unsigned int srp_max_rsp_size = DEFAULT_MAX_RSP_SIZE;
+module_param(srp_max_rsp_size, int, 0444);
+MODULE_PARM_DESC(thread,
+		 "Maximum size of SRP response messages in bytes.");
 
 module_param(use_port_guid_in_session_name, bool, 0444);
 MODULE_PARM_DESC(use_port_guid_in_session_name,
@@ -361,7 +366,7 @@ static void srpt_get_ioc(struct srpt_device *sdev, u32 slot,
 	iocp->protocol_version = cpu_to_be16(SRP_PROTOCOL_VERSION);
 	iocp->send_queue_depth = cpu_to_be16(SRPT_SRQ_SIZE);
 	iocp->rdma_read_depth = 4;
-	iocp->send_size = cpu_to_be32(srp_max_message_size);
+	iocp->send_size = cpu_to_be32(srp_max_req_size);
 	iocp->rdma_size = cpu_to_be32(min(max(srp_max_rdma_size, 256U),
 					  1U << 24));
 	iocp->num_svc_entries = 1;
@@ -625,24 +630,38 @@ static struct srpt_ioctx *srpt_alloc_ioctx(struct srpt_device *sdev)
 
 	ioctx = kmalloc(sizeof *ioctx, GFP_KERNEL);
 	if (!ioctx)
-		goto out;
+		goto err;
 
-	ioctx->buf = kzalloc(srp_max_message_size, GFP_KERNEL);
-	if (!ioctx->buf)
-		goto out_free_ioctx;
+	ioctx->req = kzalloc(srp_max_req_size, GFP_KERNEL);
+	if (!ioctx->req)
+		goto err_free_ioctx;
 
-	ioctx->dma = ib_dma_map_single(sdev->device, ioctx->buf,
-				       srp_max_message_size, DMA_BIDIRECTIONAL);
-	if (ib_dma_mapping_error(sdev->device, ioctx->dma))
-		goto out_free_buf;
+	ioctx->req_dma = ib_dma_map_single(sdev->device, ioctx->req,
+				       srp_max_req_size, DMA_FROM_DEVICE);
+	if (ib_dma_mapping_error(sdev->device, ioctx->req_dma))
+		goto err_free_req;
+
+	ioctx->rsp = kzalloc(srp_max_rsp_size, GFP_KERNEL);
+	if (!ioctx->rsp)
+		goto err_unmap_req;
+
+	ioctx->rsp_dma = ib_dma_map_single(sdev->device, ioctx->rsp,
+				       srp_max_rsp_size, DMA_TO_DEVICE);
+	if (ib_dma_mapping_error(sdev->device, ioctx->rsp_dma))
+		goto err_free_rsp;
 
 	return ioctx;
 
-out_free_buf:
-	kfree(ioctx->buf);
-out_free_ioctx:
+err_free_rsp:
+	kfree(ioctx->rsp);
+err_unmap_req:
+	ib_dma_unmap_single(sdev->device, ioctx->req_dma,
+			    srp_max_req_size, DMA_FROM_DEVICE);
+err_free_req:
+	kfree(ioctx->req);
+err_free_ioctx:
 	kfree(ioctx);
-out:
+err:
 	return NULL;
 }
 
@@ -654,9 +673,14 @@ static void srpt_free_ioctx(struct srpt_device *sdev, struct srpt_ioctx *ioctx)
 	if (!ioctx)
 		return;
 
-	ib_dma_unmap_single(sdev->device, ioctx->dma,
-			    srp_max_message_size, DMA_BIDIRECTIONAL);
-	kfree(ioctx->buf);
+	ib_dma_unmap_single(sdev->device, ioctx->rsp_dma,
+			    srp_max_rsp_size, DMA_TO_DEVICE);
+	kfree(ioctx->rsp);
+
+	ib_dma_unmap_single(sdev->device, ioctx->req_dma,
+			    srp_max_req_size, DMA_FROM_DEVICE);
+	kfree(ioctx->req);
+
 	kfree(ioctx);
 }
 
@@ -669,8 +693,7 @@ static void srpt_free_ioctx(struct srpt_device *sdev, struct srpt_ioctx *ioctx)
  */
 static int srpt_alloc_ioctx_ring(struct srpt_device *sdev,
 				 struct srpt_ioctx **ioctx_ring,
-				 int ring_size,
-				 u32 flags)
+				 int ring_size)
 {
 	int res;
 	int i;
@@ -684,8 +707,7 @@ static int srpt_alloc_ioctx_ring(struct srpt_device *sdev,
 		if (!ioctx_ring[i])
 			goto err;
 
-		WARN_ON(i & flags);
-		ioctx_ring[i]->index = i | flags;
+		ioctx_ring[i]->index = i;
 	}
 	res = 0;
 	goto out;
@@ -765,8 +787,8 @@ static int srpt_post_recv(struct srpt_device *sdev, struct srpt_ioctx *ioctx)
 
 	wr.wr_id = ioctx->index | SRPT_OP_RECV;
 
-	list.addr = ioctx->dma;
-	list.length = srp_max_message_size;
+	list.addr = ioctx->req_dma;
+	list.length = srp_max_req_size;
 	list.lkey = sdev->mr->lkey;
 
 	wr.next = NULL;
@@ -798,10 +820,10 @@ static int srpt_post_send(struct srpt_rdma_ch *ch, struct srpt_ioctx *ioctx,
 		goto out;
 	}
 
-	ib_dma_sync_single_for_device(sdev->device, ioctx->dma,
-				      len, DMA_TO_DEVICE);
+	ib_dma_sync_single_for_device(sdev->device, ioctx->rsp_dma,
+				      srp_max_rsp_size, DMA_TO_DEVICE);
 
-	list.addr = ioctx->dma;
+	list.addr = ioctx->rsp_dma;
 	list.length = len;
 	list.lkey = sdev->mr->lkey;
 
@@ -1034,7 +1056,8 @@ static int srpt_req_lim_delta(struct srpt_rdma_ch *ch)
 
 static void srpt_reset_ioctx(struct srpt_rdma_ch *ch, struct srpt_ioctx *ioctx)
 {
-	srpt_unmap_sg_to_ib_sge(ch, ioctx);
+	if (ioctx->scmnd)
+		srpt_unmap_sg_to_ib_sge(ch, ioctx);
 
 	if (ioctx->n_rbuf > 1) {
 		kfree(ioctx->rbufs);
@@ -1123,7 +1146,7 @@ static void srpt_handle_err_comp(struct srpt_rdma_ch *ch, struct ib_wc *wc)
 		PRINT_ERROR("%s", "This is serious - SRQ is in bad state.");
 	} else {
 		ioctx = sdev->ioctx_ring[wc->wr_id];
-
+		WARN_ON(!ioctx->scmnd);
 		if (ioctx->scmnd)
 			srpt_abort_scst_cmd(sdev, ioctx->scmnd);
 		else
@@ -1136,6 +1159,7 @@ static void srpt_handle_send_comp(struct srpt_rdma_ch *ch,
 				  struct srpt_ioctx *ioctx,
 				  enum scst_exec_context context)
 {
+	WARN_ON(!ioctx->scmnd);
 	if (ioctx->scmnd) {
 		scst_data_direction dir =
 			scst_cmd_get_data_direction(ioctx->scmnd);
@@ -1154,11 +1178,18 @@ static void srpt_handle_send_comp(struct srpt_rdma_ch *ch,
 static void srpt_handle_rdma_comp(struct srpt_rdma_ch *ch,
 				  struct srpt_ioctx *ioctx)
 {
+#if LINUX_VERSION_CODE <= KERNEL_VERSION(2, 6, 18)
+	WARN_ON(!ioctx->scmnd);
 	if (!ioctx->scmnd) {
-		WARN_ON("ERROR: ioctx->scmnd == NULL");
 		srpt_reset_ioctx(ch, ioctx);
 		return;
 	}
+#else
+	if (WARN_ON(!ioctx->scmnd)) {
+		srpt_reset_ioctx(ch, ioctx);
+		return;
+	}
+#endif
 
 	/*
 	 * If an RDMA completion notification has been received for a write
@@ -1205,7 +1236,7 @@ static int srpt_build_cmd_rsp(struct srpt_rdma_ch *ch,
 	 */
 	WARN_ON(status & 1);
 
-	srp_rsp = ioctx->buf;
+	srp_rsp = ioctx->rsp;
 	BUG_ON(!srp_rsp);
 	memset(srp_rsp, 0, sizeof *srp_rsp);
 
@@ -1222,7 +1253,7 @@ static int srpt_build_cmd_rsp(struct srpt_rdma_ch *ch,
 	srp_rsp->tag = tag;
 
 	if (SCST_SENSE_VALID(sense_data)) {
-		BUILD_BUG_ON(MIN_MAX_MESSAGE_SIZE <= sizeof(*srp_rsp));
+		BUILD_BUG_ON(MIN_MAX_RSP_SIZE <= sizeof(*srp_rsp));
 		max_sense_len = ch->max_ti_iu_len - sizeof(*srp_rsp);
 		if (sense_data_len > max_sense_len) {
 			PRINT_WARNING("truncated sense data from %d to %d"
@@ -1265,7 +1296,8 @@ static int srpt_build_tskmgmt_rsp(struct srpt_rdma_ch *ch,
 	resp_data_len = (rsp_code == SRP_TSK_MGMT_SUCCESS) ? 0 : 4;
 	resp_len = sizeof(*srp_rsp) + resp_data_len;
 
-	srp_rsp = ioctx->buf;
+	srp_rsp = ioctx->rsp;
+	BUG_ON(!srp_rsp);
 	memset(srp_rsp, 0, sizeof *srp_rsp);
 
 	srp_rsp->opcode = SRP_RSP;
@@ -1301,7 +1333,7 @@ static int srpt_handle_cmd(struct srpt_rdma_ch *ch, struct srpt_ioctx *ioctx)
 	u64 data_len;
 	int ret;
 
-	srp_cmd = ioctx->buf;
+	srp_cmd = ioctx->req;
 
 	scmnd = scst_rx_cmd(ch->scst_sess, (u8 *) &srp_cmd->lun,
 			    sizeof srp_cmd->lun, srp_cmd->cdb, 16,
@@ -1371,7 +1403,7 @@ static u8 srpt_handle_tsk_mgmt(struct srpt_rdma_ch *ch,
 	int ret;
 	u8 srp_tsk_mgmt_status;
 
-	srp_tsk = ioctx->buf;
+	srp_tsk = ioctx->req;
 
 	TRACE_DBG("recv_tsk_mgmt= %d for task_tag= %lld"
 		  " using tag= %lld cm_id= %p sess= %p",
@@ -1497,10 +1529,10 @@ static void srpt_handle_new_iu(struct srpt_rdma_ch *ch,
 	WARN_ON(ch_state != RDMA_CHANNEL_LIVE);
 
 	ib_dma_sync_single_for_cpu(ch->sport->sdev->device,
-				   ioctx->dma, srp_max_message_size,
+				   ioctx->req_dma, srp_max_req_size,
 				   DMA_FROM_DEVICE);
 
-	srp_cmd = ioctx->buf;
+	srp_cmd = ioctx->req;
 
 	ioctx->n_rbuf = 0;
 	ioctx->rbufs = NULL;
@@ -1554,6 +1586,7 @@ err:
 	} else {
 		s32 req_lim_delta;
 
+		srpt_reset_ioctx(ch, ioctx);
 		req_lim_delta = srpt_req_lim_delta(ch) + 1;
 		if (srp_cmd->opcode == SRP_TSK_MGMT) {
 			len = srpt_build_tskmgmt_rsp(ch, ioctx, req_lim_delta,
@@ -1573,7 +1606,6 @@ err:
 		if (srpt_post_send(ch, ioctx, len)) {
 			PRINT_ERROR("%s", "Sending SRP_RSP response failed.");
 			atomic_sub(req_lim_delta, &ch->last_response_req_lim);
-			srpt_reset_ioctx(ch, ioctx);
 		}
 	}
 }
@@ -1910,13 +1942,13 @@ static int srpt_cm_req_recv(struct ib_cm_id *cm_id,
 		goto out;
 	}
 
-	if (it_iu_len > srp_max_message_size || it_iu_len < 64) {
+	if (it_iu_len > srp_max_req_size || it_iu_len < 64) {
 		rej->reason =
 		    cpu_to_be32(SRP_LOGIN_REJ_REQ_IT_IU_LENGTH_TOO_LARGE);
 		ret = -EINVAL;
 		PRINT_ERROR("rejected SRP_LOGIN_REQ because its"
 			    " length (%d bytes) is out of range (%d .. %d)",
-			    it_iu_len, 64, srp_max_message_size);
+			    it_iu_len, 64, srp_max_req_size);
 		goto reject;
 	}
 
@@ -2449,6 +2481,7 @@ static void srpt_unmap_sg_to_ib_sge(struct srpt_rdma_ch *ch,
 	struct scatterlist *scat;
 	scst_data_direction dir;
 
+	BUG_ON(!ioctx);
 	BUG_ON(ioctx->n_rdma && !ioctx->rdma_ius);
 
 	while (ioctx->n_rdma)
@@ -2680,6 +2713,7 @@ static int srpt_xmit_response(struct scst_cmd *scmnd)
 
 	scst_check_convert_sense(scmnd);
 
+	srpt_reset_ioctx(ch, ioctx);
 	req_lim_delta = srpt_req_lim_delta(ch) + 1;
 	resp_len = srpt_build_cmd_rsp(ch, ioctx, req_lim_delta,
 				      scst_cmd_get_tag(scmnd),
@@ -2734,6 +2768,7 @@ static void srpt_tsk_mgmt_done(struct scst_mgmt_cmd *mcmnd)
 	    == SRPT_STATE_ABORTED)
 		goto out;
 
+	srpt_reset_ioctx(ch, ioctx);
 	req_lim_delta = srpt_req_lim_delta(ch) + 1;
 	rsp_len = srpt_build_tskmgmt_rsp(ch, ioctx, req_lim_delta,
 					 (scst_mgmt_cmd_get_status(mcmnd) ==
@@ -2760,20 +2795,15 @@ out:
  */
 static void srpt_on_free_cmd(struct scst_cmd *scmnd)
 {
-	struct srpt_rdma_ch *ch;
 	struct srpt_ioctx *ioctx;
 
 	ioctx = scst_cmd_get_tgt_priv(scmnd);
 	BUG_ON(!ioctx);
 
-	ch = ioctx->ch;
-	BUG_ON(!ch);
-
 	scst_cmd_set_tgt_priv(scmnd, NULL);
 	srpt_set_cmd_state(ioctx, SRPT_STATE_ABORTED);
 	ioctx->scmnd = NULL;
 	ioctx->ch = NULL;
-	srpt_reset_ioctx(ch, ioctx);
 }
 
 #if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 20) && ! defined(BACKPORT_LINUX_WORKQUEUE_TO_2_6_19)
@@ -3142,7 +3172,7 @@ static void srpt_add_one(struct ib_device *device)
 		goto err_cm;
 
 	if (srpt_alloc_ioctx_ring(sdev, sdev->ioctx_ring,
-				  ARRAY_SIZE(sdev->ioctx_ring), 0))
+				  ARRAY_SIZE(sdev->ioctx_ring)))
 		goto err_event;
 
 	INIT_LIST_HEAD(&sdev->rch_list);
@@ -3343,11 +3373,19 @@ static int __init srpt_init_module(void)
 	int ret;
 
 	ret = -EINVAL;
-	if (srp_max_message_size < MIN_MAX_MESSAGE_SIZE) {
+	if (srp_max_req_size < MIN_MAX_REQ_SIZE) {
 		PRINT_ERROR("invalid value %d for kernel module parameter"
-			    " srp_max_message_size -- must be at least %d.",
-			    srp_max_message_size,
-			    MIN_MAX_MESSAGE_SIZE);
+			    " srp_max_req_size -- must be at least %d.",
+			    srp_max_req_size,
+			    MIN_MAX_REQ_SIZE);
+		goto out;
+	}
+
+	if (srp_max_rsp_size < MIN_MAX_RSP_SIZE) {
+		PRINT_ERROR("invalid value %d for kernel module parameter"
+			    " srp_max_rsp_size -- must be at least %d.",
+			    srp_max_rsp_size,
+			    MIN_MAX_RSP_SIZE);
 		goto out;
 	}
 

@@ -115,11 +115,14 @@ enum {
 	SRPT_RQ_SIZE = 128,
 	SRPT_SRQ_SIZE = 4095,
 
-	MIN_MAX_MESSAGE_SIZE = 996,
-	DEFAULT_MAX_MESSAGE_SIZE
+	MIN_MAX_REQ_SIZE = 996,
+	DEFAULT_MAX_REQ_SIZE
 		= sizeof(struct srp_cmd)/*48*/
 		+ sizeof(struct srp_indirect_buf)/*20*/
 		+ 128 * sizeof(struct srp_direct_buf)/*16*/,
+
+	MIN_MAX_RSP_SIZE = sizeof(struct srp_rsp)/*36*/ + 4,
+	DEFAULT_MAX_RSP_SIZE = 256, /* at most 220 bytes for sense data */
 
 	DEFAULT_MAX_RDMA_SIZE = 65536,
 };
@@ -153,8 +156,10 @@ enum srpt_command_state {
 /* SRPT I/O context: SRPT-private data associated with a struct scst_cmd. */
 struct srpt_ioctx {
 	int index;
-	void *buf;
-	dma_addr_t dma;
+	void *req;
+	void *rsp;
+	dma_addr_t req_dma;
+	dma_addr_t rsp_dma;
 	struct rdma_iu *rdma_ius;
 	struct srp_direct_buf *rbufs;
 	struct srp_direct_buf single_rbuf;
