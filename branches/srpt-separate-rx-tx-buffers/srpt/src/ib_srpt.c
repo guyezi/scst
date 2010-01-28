@@ -39,7 +39,6 @@
 #include <linux/err.h>
 #include <linux/ctype.h>
 #include <linux/string.h>
-#include <linux/kthread.h>
 #include <linux/delay.h>
 #include <asm/atomic.h>
 #if defined(CONFIG_SCST_DEBUG) || defined(CONFIG_SCST_TRACING)
@@ -71,14 +70,6 @@ MODULE_DESCRIPTION("InfiniBand SCSI RDMA Protocol target "
 		   "v" DRV_VERSION " (" DRV_RELDATE ")");
 MODULE_LICENSE("Dual BSD/GPL");
 
-struct srpt_thread {
-	/* Protects thread_ioctx_list. */
-	spinlock_t thread_lock;
-	/* I/O contexts to be processed by the kernel thread. */
-	struct list_head thread_ioctx_list;
-	/* SRPT kernel thread. */
-	struct task_struct *thread;
-};
 
 /*
  * Global Variables
@@ -88,8 +79,6 @@ static u64 srpt_service_guid;
 /* List of srpt_device structures. */
 static atomic_t srpt_device_count;
 static int use_port_guid_in_session_name;
-static int thread = 1;
-static struct srpt_thread srpt_thread;
 static DECLARE_WAIT_QUEUE_HEAD(ioctx_list_waitQ);
 #if defined(CONFIG_SCST_DEBUG) || defined(CONFIG_SCST_TRACING)
 static unsigned long trace_flag = DEFAULT_SRPT_TRACE_FLAGS;
@@ -102,30 +91,21 @@ static unsigned long interrupt_processing_delay_in_us;
 module_param(interrupt_processing_delay_in_us, long, 0744);
 MODULE_PARM_DESC(interrupt_processing_delay_in_us,
 		 "CQ completion handler interrupt delay in microseconds.");
-static unsigned long thread_processing_delay_in_us;
-module_param(thread_processing_delay_in_us, long, 0744);
-MODULE_PARM_DESC(thread_processing_delay_in_us,
-		 "SRP thread processing delay in microseconds.");
 #endif
-
-module_param(thread, int, 0444);
-MODULE_PARM_DESC(thread,
-		 "Executing ioctx in thread context. Default 0, i.e. soft IRQ, "
-		 "where possible.");
 
 static unsigned int srp_max_rdma_size = DEFAULT_MAX_RDMA_SIZE;
 module_param(srp_max_rdma_size, int, 0744);
-MODULE_PARM_DESC(thread,
+MODULE_PARM_DESC(srp_max_rdma_size,
 		 "Maximum size of SRP RDMA transfers for new connections.");
 
 static unsigned int srp_max_req_size = DEFAULT_MAX_REQ_SIZE;
 module_param(srp_max_req_size, int, 0444);
-MODULE_PARM_DESC(thread,
+MODULE_PARM_DESC(srp_max_req_size,
 		 "Maximum size of SRP request messages in bytes.");
 
 static unsigned int srp_max_rsp_size = DEFAULT_MAX_RSP_SIZE;
 module_param(srp_max_rsp_size, int, 0444);
-MODULE_PARM_DESC(thread,
+MODULE_PARM_DESC(srp_max_rsp_size,
 		 "Maximum size of SRP response messages in bytes.");
 
 module_param(use_port_guid_in_session_name, bool, 0444);
@@ -1336,8 +1316,7 @@ static int srpt_handle_cmd(struct srpt_rdma_ch *ch, struct srpt_ioctx *ioctx)
 	srp_cmd = ioctx->req;
 
 	scmnd = scst_rx_cmd(ch->scst_sess, (u8 *) &srp_cmd->lun,
-			    sizeof srp_cmd->lun, srp_cmd->cdb, 16,
-			    thread ? SCST_NON_ATOMIC : SCST_ATOMIC);
+			    sizeof srp_cmd->lun, srp_cmd->cdb, 16, SCST_ATOMIC);
 	if (!scmnd)
 		goto err;
 
@@ -1427,8 +1406,7 @@ static u8 srpt_handle_tsk_mgmt(struct srpt_rdma_ch *ch,
 		ret = scst_rx_mgmt_fn_tag(ch->scst_sess,
 					  SCST_ABORT_TASK,
 					  srp_tsk->task_tag,
-					  thread ?
-					  SCST_NON_ATOMIC : SCST_ATOMIC,
+					  SCST_ATOMIC,
 					  mgmt_ioctx);
 		break;
 	case SRP_TSK_ABORT_TASK_SET:
@@ -1437,8 +1415,7 @@ static u8 srpt_handle_tsk_mgmt(struct srpt_rdma_ch *ch,
 					  SCST_ABORT_TASK_SET,
 					  (u8 *) &srp_tsk->lun,
 					  sizeof srp_tsk->lun,
-					  thread ?
-					  SCST_NON_ATOMIC : SCST_ATOMIC,
+					  SCST_ATOMIC,
 					  mgmt_ioctx);
 		break;
 	case SRP_TSK_CLEAR_TASK_SET:
@@ -1447,8 +1424,7 @@ static u8 srpt_handle_tsk_mgmt(struct srpt_rdma_ch *ch,
 					  SCST_CLEAR_TASK_SET,
 					  (u8 *) &srp_tsk->lun,
 					  sizeof srp_tsk->lun,
-					  thread ?
-					  SCST_NON_ATOMIC : SCST_ATOMIC,
+					  SCST_ATOMIC,
 					  mgmt_ioctx);
 		break;
 	case SRP_TSK_LUN_RESET:
@@ -1457,8 +1433,7 @@ static u8 srpt_handle_tsk_mgmt(struct srpt_rdma_ch *ch,
 					  SCST_LUN_RESET,
 					  (u8 *) &srp_tsk->lun,
 					  sizeof srp_tsk->lun,
-					  thread ?
-					  SCST_NON_ATOMIC : SCST_ATOMIC,
+					  SCST_ATOMIC,
 					  mgmt_ioctx);
 		break;
 	case SRP_TSK_CLEAR_ACA:
@@ -1467,8 +1442,7 @@ static u8 srpt_handle_tsk_mgmt(struct srpt_rdma_ch *ch,
 					  SCST_CLEAR_ACA,
 					  (u8 *) &srp_tsk->lun,
 					  sizeof srp_tsk->lun,
-					  thread ?
-					  SCST_NON_ATOMIC : SCST_ATOMIC,
+					  SCST_ATOMIC,
 					  mgmt_ioctx);
 		break;
 	default:
@@ -1610,33 +1584,6 @@ err:
 	}
 }
 
-/*
- * Returns true if the ioctx list is non-empty or if the ib_srpt kernel thread
- * should stop.
- * @pre thread != 0
- */
-static inline int srpt_test_ioctx_list(void)
-{
-	int res = (!list_empty(&srpt_thread.thread_ioctx_list) ||
-		   unlikely(kthread_should_stop()));
-	return res;
-}
-
-/*
- * Add 'ioctx' to the tail of the ioctx list and wake up the kernel thread.
- *
- * @pre thread != 0
- */
-static inline void srpt_schedule_thread(struct srpt_ioctx *ioctx)
-{
-	unsigned long flags;
-
-	spin_lock_irqsave(&srpt_thread.thread_lock, flags);
-	list_add_tail(&ioctx->comp_list, &srpt_thread.thread_ioctx_list);
-	spin_unlock_irqrestore(&srpt_thread.thread_lock, flags);
-	wake_up(&ioctx_list_waitQ);
-}
-
 /**
  * InfiniBand completion queue callback function.
  * @cq: completion queue.
@@ -1670,12 +1617,7 @@ static void srpt_completion(struct ib_cq *cq, void *ctx)
 				PRINT_ERROR("internal error: req_lim = %d < 0",
 					    req_lim);
 			ioctx = sdev->ioctx_ring[wc.wr_id & ~SRPT_OP_RECV];
-			if (thread) {
-				ioctx->ch = ch;
-				ioctx->op = IB_WC_RECV;
-				srpt_schedule_thread(ioctx);
-			} else
-				srpt_handle_new_iu(ch, ioctx);
+			srpt_handle_new_iu(ch, ioctx);
 		} else {
 			ioctx = sdev->ioctx_ring[wc.wr_id];
 			if (wc.opcode == IB_WC_SEND)
@@ -1686,26 +1628,20 @@ static void srpt_completion(struct ib_cq *cq, void *ctx)
 				atomic_add(ioctx->n_rdma,
 					   &ch->qp_wr_avail);
 			}
-			if (thread) {
-				ioctx->ch = ch;
-				ioctx->op = wc.opcode;
-				srpt_schedule_thread(ioctx);
-			} else {
-				switch (wc.opcode) {
-				case IB_WC_SEND:
-					srpt_handle_send_comp(ch, ioctx,
-						scst_estimate_context());
-					break;
-				case IB_WC_RDMA_WRITE:
-				case IB_WC_RDMA_READ:
-					srpt_handle_rdma_comp(ch, ioctx);
-					break;
-				default:
-					PRINT_ERROR("received unrecognized"
-						    " IB WC opcode %d",
-						    wc.opcode);
-					break;
-				}
+			switch (wc.opcode) {
+			case IB_WC_SEND:
+				srpt_handle_send_comp(ch, ioctx,
+						      scst_estimate_context());
+				break;
+			case IB_WC_RDMA_WRITE:
+			case IB_WC_RDMA_READ:
+				srpt_handle_rdma_comp(ch, ioctx);
+				break;
+			default:
+				PRINT_ERROR("received unrecognized"
+					    " IB WC opcode %d",
+					    wc.opcode);
+				break;
 			}
 		}
 
@@ -2882,77 +2818,6 @@ static int srpt_release(struct scst_tgt *scst_tgt)
 	return 0;
 }
 
-/*
- * Entry point for ib_srpt's kernel thread. This kernel thread is only created
- * when the module parameter 'thread' is not zero (the default is zero).
- * This thread processes the ioctx list srpt_thread.thread_ioctx_list.
- *
- * @pre thread != 0
- */
-static int srpt_ioctx_thread(void *arg)
-{
-	struct srpt_ioctx *ioctx;
-
-	/* Hibernation / freezing of the SRPT kernel thread is not supported. */
-	current->flags |= PF_NOFREEZE;
-
-	spin_lock_irq(&srpt_thread.thread_lock);
-	while (!kthread_should_stop()) {
-		wait_queue_t wait;
-		init_waitqueue_entry(&wait, current);
-
-		if (!srpt_test_ioctx_list()) {
-			add_wait_queue_exclusive(&ioctx_list_waitQ, &wait);
-
-			for (;;) {
-				set_current_state(TASK_INTERRUPTIBLE);
-				if (srpt_test_ioctx_list())
-					break;
-				spin_unlock_irq(&srpt_thread.thread_lock);
-				schedule();
-				spin_lock_irq(&srpt_thread.thread_lock);
-			}
-			set_current_state(TASK_RUNNING);
-			remove_wait_queue(&ioctx_list_waitQ, &wait);
-		}
-
-		while (!list_empty(&srpt_thread.thread_ioctx_list)) {
-			ioctx = list_entry(srpt_thread.thread_ioctx_list.next,
-					   struct srpt_ioctx, comp_list);
-
-			list_del(&ioctx->comp_list);
-
-			spin_unlock_irq(&srpt_thread.thread_lock);
-			switch (ioctx->op) {
-			case IB_WC_SEND:
-				srpt_handle_send_comp(ioctx->ch, ioctx,
-					SCST_CONTEXT_DIRECT);
-				break;
-			case IB_WC_RDMA_WRITE:
-			case IB_WC_RDMA_READ:
-				srpt_handle_rdma_comp(ioctx->ch, ioctx);
-				break;
-			case IB_WC_RECV:
-				srpt_handle_new_iu(ioctx->ch, ioctx);
-				break;
-			default:
-				PRINT_ERROR("received unrecognized WC opcode"
-					    " %d", ioctx->op);
-				break;
-			}
-#if defined(CONFIG_SCST_DEBUG)
-			if (thread_processing_delay_in_us
-			    <= MAX_UDELAY_MS * 1000)
-				udelay(thread_processing_delay_in_us);
-#endif
-			spin_lock_irq(&srpt_thread.thread_lock);
-		}
-	}
-	spin_unlock_irq(&srpt_thread.thread_lock);
-
-	return 0;
-}
-
 /* SCST target template for the SRP target implementation. */
 static struct scst_tgt_template srpt_template = {
 	.name = DRV_NAME,
@@ -3416,17 +3281,6 @@ static int __init srpt_init_module(void)
 		goto out_unregister_target;
 	}
 
-	if (thread) {
-		spin_lock_init(&srpt_thread.thread_lock);
-		INIT_LIST_HEAD(&srpt_thread.thread_ioctx_list);
-		srpt_thread.thread = kthread_run(srpt_ioctx_thread,
-						 NULL, "srpt_thread");
-		if (IS_ERR(srpt_thread.thread)) {
-			srpt_thread.thread = NULL;
-			thread = 0;
-		}
-	}
-
 	return 0;
 
 out_unregister_target:
@@ -3449,8 +3303,6 @@ static void __exit srpt_cleanup_module(void)
 
 	ib_unregister_client(&srpt_client);
 	scst_unregister_target_template(&srpt_template);
-	if (srpt_thread.thread)
-		kthread_stop(srpt_thread.thread);
 	class_unregister(&srpt_class);
 
 	TRACE_EXIT();
