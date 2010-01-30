@@ -614,7 +614,7 @@ static struct srpt_ioctx *srpt_alloc_ioctx(struct srpt_device *sdev)
 {
 	struct srpt_ioctx *ioctx;
 
-	ioctx = kmalloc(sizeof *ioctx, GFP_KERNEL);
+	ioctx = kzalloc(sizeof *ioctx, GFP_KERNEL);
 	if (!ioctx)
 		goto err;
 
@@ -770,6 +770,11 @@ static int srpt_post_recv(struct srpt_device *sdev, struct srpt_ioctx *ioctx)
 {
 	struct ib_sge list;
 	struct ib_recv_wr wr, *bad_wr;
+	int res;
+
+#ifdef CONFIG_SCST_EXTRACHECKS
+	WARN_ON(ioctx->on_receive_queue);
+#endif
 
 	wr.wr_id = ioctx->index | SRPT_OP_RECV;
 
@@ -781,7 +786,12 @@ static int srpt_post_recv(struct srpt_device *sdev, struct srpt_ioctx *ioctx)
 	wr.sg_list = &list;
 	wr.num_sge = 1;
 
-	return ib_post_srq_recv(sdev->srq, &wr, &bad_wr);
+	res = ib_post_srq_recv(sdev->srq, &wr, &bad_wr);
+#ifdef CONFIG_SCST_EXTRACHECKS
+	if (!res)
+		ioctx->on_receive_queue = true;
+#endif
+	return res;
 }
 
 /**
@@ -1040,8 +1050,17 @@ static int srpt_req_lim_delta(struct srpt_rdma_ch *ch)
 	return req_lim - last_rsp_req_lim;
 }
 
+/**
+ * srpt_reset_ioctx() - Free the receive buffers associated with an I/O context
+ * and call post ioctx->req again on the receive queue.
+ * Note: ioctx->scmnd may be NULL when this function is called.
+ */
 static void srpt_reset_ioctx(struct srpt_rdma_ch *ch, struct srpt_ioctx *ioctx)
 {
+#ifdef CONFIG_SCST_EXTRACHECKS
+	WARN_ON(ioctx->on_receive_queue);
+#endif
+
 	if (ioctx->scmnd)
 		srpt_unmap_sg_to_ib_sge(ch, ioctx);
 
@@ -1122,23 +1141,24 @@ out:
 	TRACE_EXIT();
 }
 
-static void srpt_handle_err_comp(struct srpt_rdma_ch *ch, struct ib_wc *wc,
-				 enum scst_exec_context context)
+static void srpt_handle_recv_err_comp(struct srpt_rdma_ch *ch,
+				      struct srpt_ioctx *ioctx,
+				      enum scst_exec_context context)
 {
-	struct srpt_ioctx *ioctx;
+	PRINT_ERROR("%s", "This is serious - SRQ is in bad state.");
+}
+
+static void srpt_handle_send_err_comp(struct srpt_rdma_ch *ch,
+				      struct srpt_ioctx *ioctx,
+				      enum scst_exec_context context)
+{
 	struct srpt_device *sdev = ch->sport->sdev;
 
-	if (wc->wr_id & SRPT_OP_RECV) {
-		ioctx = sdev->ioctx_ring[wc->wr_id & ~SRPT_OP_RECV];
-		PRINT_ERROR("%s", "This is serious - SRQ is in bad state.");
-	} else {
-		ioctx = sdev->ioctx_ring[wc->wr_id];
-		WARN_ON(!ioctx->scmnd);
-		if (ioctx->scmnd)
-			srpt_abort_scst_cmd(sdev, ioctx->scmnd, context);
-		else
-			srpt_reset_ioctx(ch, ioctx);
-	}
+	WARN_ON(!ioctx->scmnd);
+	if (ioctx->scmnd)
+		srpt_abort_scst_cmd(sdev, ioctx->scmnd, context);
+	else
+		srpt_reset_ioctx(ch, ioctx);
 }
 
 /** Process an IB send completion notification. */
@@ -1612,27 +1632,34 @@ static void srpt_completion(struct ib_cq *cq, void *ctx)
 
 	ib_req_notify_cq(ch->cq, IB_CQ_NEXT_COMP);
 	while (ib_poll_cq(ch->cq, 1, &wc) > 0) {
-		if (wc.status) {
-			PRINT_INFO("%s failed with status %d",
-				   wc.wr_id & SRPT_OP_RECV
-				   ? "receiving"
-				   : "sending response",
-				   wc.status);
-			srpt_handle_err_comp(ch, &wc, SCST_CONTEXT_TASKLET);
-			continue;
-		}
-
 		if (wc.wr_id & SRPT_OP_RECV) {
 			int req_lim;
 
+			ioctx = sdev->ioctx_ring[wc.wr_id & ~SRPT_OP_RECV];
+#ifdef CONFIG_SCST_EXTRACHECKS
+			ioctx->on_receive_queue = false;
+#endif
+			if (wc.status) {
+				PRINT_INFO("receiving failed with status %d",
+					   wc.status);
+				srpt_handle_recv_err_comp(ch, ioctx,
+							  SCST_CONTEXT_TASKLET);
+				continue;
+			}
 			req_lim = atomic_dec_return(&ch->req_lim);
 			if (req_lim < 0)
 				PRINT_ERROR("internal error: req_lim = %d < 0",
 					    req_lim);
-			ioctx = sdev->ioctx_ring[wc.wr_id & ~SRPT_OP_RECV];
 			srpt_handle_new_iu(ch, ioctx);
 		} else {
 			ioctx = sdev->ioctx_ring[wc.wr_id];
+			if (wc.status) {
+				PRINT_INFO("sending failed with status %d",
+					   wc.status);
+				srpt_handle_send_err_comp(ch, ioctx,
+							  SCST_CONTEXT_TASKLET);
+				continue;
+			}
 			if (wc.opcode == IB_WC_SEND)
 				atomic_inc(&ch->qp_wr_avail);
 			else {

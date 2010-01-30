@@ -169,6 +169,9 @@ struct srpt_ioctx {
 	u8 n_rdma;
 	u8 n_rbuf;
 	u8 sol_not;
+#ifdef CONFIG_SCST_EXTRACHECKS
+	bool on_receive_queue;
+#endif
 
 	enum ib_wc_opcode op;
 	/* Node for insertion in the srpt_thread::thread_ioctx_list. */
