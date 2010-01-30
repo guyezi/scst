@@ -93,6 +93,12 @@ MODULE_PARM_DESC(interrupt_processing_delay_in_us,
 		 "CQ completion handler interrupt delay in microseconds.");
 #endif
 
+static int thread;
+module_param(thread, int, 0444);
+MODULE_PARM_DESC(thread,
+		 "Execute SCSI commands in thread context. Defaults to zero,"
+		 " i.e. soft IRQ whenever possible.");
+
 static unsigned int srp_max_rdma_size = DEFAULT_MAX_RDMA_SIZE;
 module_param(srp_max_rdma_size, int, 0744);
 MODULE_PARM_DESC(srp_max_rdma_size,
@@ -1065,7 +1071,8 @@ static void srpt_reset_ioctx(struct srpt_rdma_ch *ch, struct srpt_ioctx *ioctx)
  * Abort a command.
  */
 static void srpt_abort_scst_cmd(struct srpt_device *sdev,
-				struct scst_cmd *scmnd)
+				struct scst_cmd *scmnd,
+				enum scst_exec_context context)
 {
 	struct srpt_ioctx *ioctx;
 	scst_data_direction dir;
@@ -1097,8 +1104,7 @@ static void srpt_abort_scst_cmd(struct srpt_device *sdev,
 	case SRPT_STATE_NEED_DATA:
 		WARN_ON(scst_cmd_get_data_direction(ioctx->scmnd)
 			== SCST_DATA_READ);
-		scst_rx_data(scmnd, SCST_RX_STATUS_ERROR,
-			     scst_estimate_context());
+		scst_rx_data(scmnd, SCST_RX_STATUS_ERROR, context);
 		break;
 	case SRPT_STATE_DATA_IN:
 	case SRPT_STATE_PROCESSED:
@@ -1108,7 +1114,7 @@ static void srpt_abort_scst_cmd(struct srpt_device *sdev,
 		TRACE_DBG("Aborting cmd with state %d", previous_state);
 		WARN_ON("ERROR: unexpected command state");
 	}
-	scst_tgt_cmd_done(scmnd, scst_estimate_context());
+	scst_tgt_cmd_done(scmnd, context);
 
 out:
 	;
@@ -1116,7 +1122,8 @@ out:
 	TRACE_EXIT();
 }
 
-static void srpt_handle_err_comp(struct srpt_rdma_ch *ch, struct ib_wc *wc)
+static void srpt_handle_err_comp(struct srpt_rdma_ch *ch, struct ib_wc *wc,
+				 enum scst_exec_context context)
 {
 	struct srpt_ioctx *ioctx;
 	struct srpt_device *sdev = ch->sport->sdev;
@@ -1128,7 +1135,7 @@ static void srpt_handle_err_comp(struct srpt_rdma_ch *ch, struct ib_wc *wc)
 		ioctx = sdev->ioctx_ring[wc->wr_id];
 		WARN_ON(!ioctx->scmnd);
 		if (ioctx->scmnd)
-			srpt_abort_scst_cmd(sdev, ioctx->scmnd);
+			srpt_abort_scst_cmd(sdev, ioctx->scmnd, context);
 		else
 			srpt_reset_ioctx(ch, ioctx);
 	}
@@ -1156,7 +1163,8 @@ static void srpt_handle_send_comp(struct srpt_rdma_ch *ch,
 
 /** Process an IB RDMA completion notification. */
 static void srpt_handle_rdma_comp(struct srpt_rdma_ch *ch,
-				  struct srpt_ioctx *ioctx)
+				  struct srpt_ioctx *ioctx,
+				  enum scst_exec_context context)
 {
 #if LINUX_VERSION_CODE <= KERNEL_VERSION(2, 6, 18)
 	WARN_ON(!ioctx->scmnd);
@@ -1180,8 +1188,7 @@ static void srpt_handle_rdma_comp(struct srpt_rdma_ch *ch,
 				SRPT_STATE_DATA_IN) == SRPT_STATE_NEED_DATA) {
 		WARN_ON(scst_cmd_get_data_direction(ioctx->scmnd)
 			== SCST_DATA_READ);
-		scst_rx_data(ioctx->scmnd, SCST_RX_STATUS_SUCCESS,
-			     scst_estimate_context());
+		scst_rx_data(ioctx->scmnd, SCST_RX_STATUS_SUCCESS, context);
 	}
 }
 
@@ -1350,7 +1357,8 @@ static int srpt_handle_cmd(struct srpt_rdma_ch *ch, struct srpt_ioctx *ioctx)
 	scst_cmd_set_tag(scmnd, srp_cmd->tag);
 	scst_cmd_set_tgt_priv(scmnd, ioctx);
 	scst_cmd_set_expected(scmnd, dir, data_len);
-	scst_cmd_init_done(scmnd, scst_estimate_context());
+	scst_cmd_init_done(scmnd,
+			   thread ? SCST_CONTEXT_THREAD : SCST_CONTEXT_TASKLET);
 
 	return 0;
 
@@ -1406,7 +1414,8 @@ static u8 srpt_handle_tsk_mgmt(struct srpt_rdma_ch *ch,
 		ret = scst_rx_mgmt_fn_tag(ch->scst_sess,
 					  SCST_ABORT_TASK,
 					  srp_tsk->task_tag,
-					  SCST_ATOMIC,
+					  thread ?
+					  SCST_NON_ATOMIC : SCST_ATOMIC,
 					  mgmt_ioctx);
 		break;
 	case SRP_TSK_ABORT_TASK_SET:
@@ -1415,7 +1424,8 @@ static u8 srpt_handle_tsk_mgmt(struct srpt_rdma_ch *ch,
 					  SCST_ABORT_TASK_SET,
 					  (u8 *) &srp_tsk->lun,
 					  sizeof srp_tsk->lun,
-					  SCST_ATOMIC,
+					  thread ?
+					  SCST_NON_ATOMIC : SCST_ATOMIC,
 					  mgmt_ioctx);
 		break;
 	case SRP_TSK_CLEAR_TASK_SET:
@@ -1424,7 +1434,8 @@ static u8 srpt_handle_tsk_mgmt(struct srpt_rdma_ch *ch,
 					  SCST_CLEAR_TASK_SET,
 					  (u8 *) &srp_tsk->lun,
 					  sizeof srp_tsk->lun,
-					  SCST_ATOMIC,
+					  thread ?
+					  SCST_NON_ATOMIC : SCST_ATOMIC,
 					  mgmt_ioctx);
 		break;
 	case SRP_TSK_LUN_RESET:
@@ -1433,7 +1444,8 @@ static u8 srpt_handle_tsk_mgmt(struct srpt_rdma_ch *ch,
 					  SCST_LUN_RESET,
 					  (u8 *) &srp_tsk->lun,
 					  sizeof srp_tsk->lun,
-					  SCST_ATOMIC,
+					  thread ?
+					  SCST_NON_ATOMIC : SCST_ATOMIC,
 					  mgmt_ioctx);
 		break;
 	case SRP_TSK_CLEAR_ACA:
@@ -1442,7 +1454,8 @@ static u8 srpt_handle_tsk_mgmt(struct srpt_rdma_ch *ch,
 					  SCST_CLEAR_ACA,
 					  (u8 *) &srp_tsk->lun,
 					  sizeof srp_tsk->lun,
-					  SCST_ATOMIC,
+					  thread ?
+					  SCST_NON_ATOMIC : SCST_ATOMIC,
 					  mgmt_ioctx);
 		break;
 	default:
@@ -1605,7 +1618,7 @@ static void srpt_completion(struct ib_cq *cq, void *ctx)
 				   ? "receiving"
 				   : "sending response",
 				   wc.status);
-			srpt_handle_err_comp(ch, &wc);
+			srpt_handle_err_comp(ch, &wc, SCST_CONTEXT_TASKLET);
 			continue;
 		}
 
@@ -1631,11 +1644,12 @@ static void srpt_completion(struct ib_cq *cq, void *ctx)
 			switch (wc.opcode) {
 			case IB_WC_SEND:
 				srpt_handle_send_comp(ch, ioctx,
-						      scst_estimate_context());
+						      SCST_CONTEXT_TASKLET);
 				break;
 			case IB_WC_RDMA_WRITE:
 			case IB_WC_RDMA_READ:
-				srpt_handle_rdma_comp(ch, ioctx);
+				srpt_handle_rdma_comp(ch, ioctx,
+						      SCST_CONTEXT_TASKLET);
 				break;
 			default:
 				PRINT_ERROR("received unrecognized"
@@ -2563,34 +2577,6 @@ out:
 }
 
 /**
- * srpt_must_wait_for_cred() - Whether or not the target must wait with
- * sending a response towards the initiator in order to avoid that the
- * initiator locks up. The Linux SRP initiator locks up when:
- * initiator.req_lim < req_lim_min (2 for SRP_CMD; 1 for SRP_TSK_MGMT).
- * no new SRP_RSP is received, or new SRP_RSP do not increase initiator.req_lim.
- * In order to avoid an initiator lock up, the target must not send an SRP_RSP
- * that keeps initiator.req_lim < req_lim_min when initiator.req_lim
- * < req_lim_min. when target.req_lim == req_lim_min - 1, initiator.req_lim must
- * also equal req_lim_min - 1 because of the credit mechanism defined in the
- * SRP standard. Hence wait with sending a response if that response would not
- * increase initiator.req_lim.
- */
-static bool srpt_must_wait_for_cred(struct srpt_rdma_ch *ch, int req_lim_min)
-{
-	int req_lim;
-	req_lim = atomic_read(&ch->req_lim);
-
-	return req_lim < req_lim_min
-		&& req_lim - atomic_read(&ch->last_response_req_lim) + 1 <= 0;
-}
-
-static void srpt_wait_for_cred(struct srpt_rdma_ch *ch, int req_lim_min)
-{
-	while (unlikely(srpt_must_wait_for_cred(ch, req_lim_min)))
-		schedule();
-}
-
-/**
  * srpt_xmit_response() - SCST callback function that transmits the response
  * to a SCSI command.
  *
@@ -2614,18 +2600,14 @@ static int srpt_xmit_response(struct scst_cmd *scmnd)
 	if (unlikely(scst_cmd_aborted(scmnd))) {
 		TRACE_DBG("cmd with tag %lld has been aborted",
 			  scst_cmd_get_tag(scmnd));
-		srpt_abort_scst_cmd(ch->sport->sdev, scmnd);
+		srpt_abort_scst_cmd(ch->sport->sdev, scmnd,
+				    thread ? SCST_CONTEXT_THREAD
+				    : SCST_CONTEXT_TASKLET);
 		ret = SCST_TGT_RES_SUCCESS;
 		goto out;
 	}
 
-	if (unlikely(scst_cmd_atomic(scmnd))) {
-		TRACE_DBG("%s", "Switching to thread context.");
-		ret = SCST_TGT_RES_NEED_THREAD_CTX;
-		goto out;
-	}
-
-	srpt_wait_for_cred(ch, 2);
+	WARN_ON(thread && scst_cmd_atomic(scmnd));
 
 	if (srpt_set_cmd_state(ioctx, SRPT_STATE_PROCESSED)
 	    == SRPT_STATE_ABORTED) {
@@ -2695,10 +2677,6 @@ static void srpt_tsk_mgmt_done(struct scst_mgmt_cmd *mcmnd)
 	TRACE_DBG("%s: tsk_mgmt_done for tag= %lld status=%d",
 		  __func__, (unsigned long long)mgmt_ioctx->tag,
 		  scst_mgmt_cmd_get_status(mcmnd));
-
-	WARN_ON(in_irq());
-
-	srpt_wait_for_cred(ch, 1);
 
 	if (srpt_set_cmd_state(ioctx, SRPT_STATE_PROCESSED)
 	    == SRPT_STATE_ABORTED)
@@ -2822,8 +2800,6 @@ static int srpt_release(struct scst_tgt *scst_tgt)
 static struct scst_tgt_template srpt_template = {
 	.name = DRV_NAME,
 	.sg_tablesize = SRPT_DEF_SG_TABLESIZE,
-	.xmit_response_atomic = 1,
-	.rdy_to_xfer_atomic = 1,
 	.detect = srpt_detect,
 	.release = srpt_release,
 	.xmit_response = srpt_xmit_response,
@@ -3048,6 +3024,8 @@ static void srpt_add_one(struct ib_device *device)
 
 	ib_set_client_data(device, &srpt_client, sdev);
 
+	srpt_template.xmit_response_atomic = ! thread;
+	srpt_template.rdy_to_xfer_atomic   = ! thread;
 	sdev->scst_tgt = scst_register(&srpt_template, NULL);
 	if (!sdev->scst_tgt) {
 		PRINT_ERROR("SCST registration failed for %s.",
