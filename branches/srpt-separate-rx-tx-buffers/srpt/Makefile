@@ -23,9 +23,11 @@ MODULE_SYMVERS:=$(shell if [ -e $(KDIR)/Module.symvers ]; then \
 
 # Whether or not the OFED kernel modules have been installed.
 OFED_KERNEL_IB_RPM_INSTALLED:=$(shell if rpm -q kernel-ib >/dev/null 2>&1; then echo true; else echo false; fi)
+#OFED_KERNEL_IB_RPM_INSTALLED:=false
 
 # Whether or not the OFED kernel-ib-devel RPM has been installed.
 OFED_KERNEL_IB_DEVEL_RPM_INSTALLED:=$(shell if rpm -q kernel-ib-devel >/dev/null 2>&1; then echo true; else echo false; fi)
+#OFED_KERNEL_IB_DEVEL_RPM_INSTALLED:=false
 
 ifeq ($(OFED_KERNEL_IB_DEVEL_RPM_INSTALLED),true)
 # Read OFED's config.mk, which contains the definition of the variable
