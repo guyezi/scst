@@ -117,7 +117,7 @@ static unsigned srpt_srq_size = DEFAULT_SRPT_SRQ_SIZE;
 module_param(srpt_srq_size, int, 0444);
 MODULE_PARM_DESC(srpt_srq_size, "Size of the per-HCA IB shared receive queue.");
 
-static bool allow_multiple_logins;
+static int allow_multiple_logins;
 module_param(allow_multiple_logins, bool, 0444);
 MODULE_PARM_DESC(allow_multiple_logins,
 		 "Allow the same initiator to log in more than once.");
@@ -3092,8 +3092,8 @@ static void srpt_add_one(struct ib_device *device)
 
 	ib_set_client_data(device, &srpt_client, sdev);
 
-	srpt_template.xmit_response_atomic = ! thread;
-	srpt_template.rdy_to_xfer_atomic   = ! thread;
+	srpt_template.xmit_response_atomic = !thread;
+	srpt_template.rdy_to_xfer_atomic   = !thread;
 	sdev->scst_tgt = scst_register(&srpt_template, NULL);
 	if (!sdev->scst_tgt) {
 		PRINT_ERROR("SCST registration failed for %s.",
