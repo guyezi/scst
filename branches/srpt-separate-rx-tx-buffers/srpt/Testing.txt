@@ -63,3 +63,7 @@ The following tests must be run at least before releasing a new SRPT version:
     EXTRA_CFLAGS += -DCONFIG_SCST_DEBUG_TM -DCONFIG_SCST_TM_DBG_GO_OFFLINE
 
 * Test with multiple values of ib_srp_tablesize in the range 1..128.
+
+* Test whether the SRP initiator does not lock up when the target is slowed
+  down significantly. See also http://bugzilla.kernel.org/show_bug.cgi?id=14235
+  for detailed instructions.
