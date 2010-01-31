@@ -111,9 +111,10 @@ enum {
 	SRPT_DEF_SG_TABLESIZE = 128,
 	SRPT_DEF_SG_PER_WQE = 16,
 
-	SRPT_SQ_SIZE = 128 * SRPT_DEF_SG_PER_WQE,
+	SRPT_SQ_SIZE = 2048,
 	SRPT_RQ_SIZE = 128,
-	SRPT_SRQ_SIZE = 4095,
+	MIN_SRPT_SRQ_SIZE = 256,
+	DEFAULT_SRPT_SRQ_SIZE = 4096,
 
 	MIN_MAX_REQ_SIZE = 996,
 	DEFAULT_MAX_REQ_SIZE
@@ -205,8 +206,6 @@ struct srpt_rdma_ch {
 	struct ib_cm_id *cm_id;
 	/* IB queue pair. */
 	struct ib_qp *qp;
-	/* Number of WR's in the QP 'qp' that are not in use. */
-	atomic_t qp_wr_avail;
 	struct ib_cq *cq;
 	struct srpt_port *sport;
 	/* 128-bit initiator port identifier copied from SRP_LOGIN_REQ. */
@@ -264,6 +263,9 @@ struct srpt_device {
 	struct ib_mr *mr;
 	/* SRQ (shared receive queue). */
 	struct ib_srq *srq;
+	int srq_size;
+	/* Number of WR's in the SRQ 'srq' that are not in use. */
+	atomic_t srq_wr_avail;
 	/* Connection identifier. */
 	struct ib_cm_id *cm_id;
 	/*
@@ -272,13 +274,14 @@ struct srpt_device {
 	 */
 	struct ib_device_attr dev_attr;
 	/* I/O context ring. */
-	struct srpt_ioctx *ioctx_ring[SRPT_SRQ_SIZE];
+	struct srpt_ioctx **ioctx_ring;
 	/*
 	 * List node for insertion in the srpt_rdma_ch::list list.
 	 * This list is protected by srpt_device::spinlock.
 	 */
 	struct list_head rch_list;
 	spinlock_t spinlock;
+	atomic_t rch_count;
 	struct srpt_port port[2];
 	struct ib_event_handler event_handler;
 #if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)

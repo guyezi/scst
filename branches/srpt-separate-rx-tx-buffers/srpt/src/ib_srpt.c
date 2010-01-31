@@ -78,7 +78,6 @@ MODULE_LICENSE("Dual BSD/GPL");
 static u64 srpt_service_guid;
 /* List of srpt_device structures. */
 static atomic_t srpt_device_count;
-static int use_port_guid_in_session_name;
 static DECLARE_WAIT_QUEUE_HEAD(ioctx_list_waitQ);
 #if defined(CONFIG_SCST_DEBUG) || defined(CONFIG_SCST_TRACING)
 static unsigned long trace_flag = DEFAULT_SRPT_TRACE_FLAGS;
@@ -99,21 +98,31 @@ MODULE_PARM_DESC(thread,
 		 "Execute SCSI commands in thread context. Defaults to zero,"
 		 " i.e. soft IRQ whenever possible.");
 
-static unsigned int srp_max_rdma_size = DEFAULT_MAX_RDMA_SIZE;
+static unsigned srp_max_rdma_size = DEFAULT_MAX_RDMA_SIZE;
 module_param(srp_max_rdma_size, int, 0744);
 MODULE_PARM_DESC(srp_max_rdma_size,
 		 "Maximum size of SRP RDMA transfers for new connections.");
 
-static unsigned int srp_max_req_size = DEFAULT_MAX_REQ_SIZE;
+static unsigned srp_max_req_size = DEFAULT_MAX_REQ_SIZE;
 module_param(srp_max_req_size, int, 0444);
 MODULE_PARM_DESC(srp_max_req_size,
 		 "Maximum size of SRP request messages in bytes.");
 
-static unsigned int srp_max_rsp_size = DEFAULT_MAX_RSP_SIZE;
+static unsigned srp_max_rsp_size = DEFAULT_MAX_RSP_SIZE;
 module_param(srp_max_rsp_size, int, 0444);
 MODULE_PARM_DESC(srp_max_rsp_size,
 		 "Maximum size of SRP response messages in bytes.");
 
+static unsigned srpt_srq_size = DEFAULT_SRPT_SRQ_SIZE;
+module_param(srpt_srq_size, int, 0444);
+MODULE_PARM_DESC(srpt_srq_size, "Size of the per-HCA IB shared receive queue.");
+
+static bool allow_multiple_logins;
+module_param(allow_multiple_logins, bool, 0444);
+MODULE_PARM_DESC(allow_multiple_logins,
+		 "Allow the same initiator to log in more than once.");
+
+static int use_port_guid_in_session_name;
 module_param(use_port_guid_in_session_name, bool, 0444);
 MODULE_PARM_DESC(use_port_guid_in_session_name,
 		 "Use target port ID in the SCST session name such that"
@@ -350,7 +359,7 @@ static void srpt_get_ioc(struct srpt_device *sdev, u32 slot,
 	iocp->io_subclass = cpu_to_be16(SRP_IO_SUBCLASS);
 	iocp->protocol = cpu_to_be16(SRP_PROTOCOL);
 	iocp->protocol_version = cpu_to_be16(SRP_PROTOCOL_VERSION);
-	iocp->send_queue_depth = cpu_to_be16(SRPT_SRQ_SIZE);
+	iocp->send_queue_depth = cpu_to_be16(sdev->srq_size);
 	iocp->rdma_read_depth = 4;
 	iocp->send_size = cpu_to_be32(srp_max_req_size);
 	iocp->rdma_size = cpu_to_be32(min(max(srp_max_rdma_size, 256U),
@@ -678,7 +687,7 @@ static void srpt_free_ioctx(struct srpt_device *sdev, struct srpt_ioctx *ioctx)
  * @flags: flags to be set in the ring index.
  */
 static int srpt_alloc_ioctx_ring(struct srpt_device *sdev,
-				 struct srpt_ioctx **ioctx_ring,
+				 struct srpt_ioctx ***ioctx_ring,
 				 int ring_size)
 {
 	int res;
@@ -686,22 +695,31 @@ static int srpt_alloc_ioctx_ring(struct srpt_device *sdev,
 
 	TRACE_ENTRY();
 
-	res = -ENOMEM;
-	for (i = 0; i < ring_size; ++i) {
-		ioctx_ring[i] = srpt_alloc_ioctx(sdev);
+	BUG_ON(!ioctx_ring);
 
-		if (!ioctx_ring[i])
+	res = -ENOMEM;
+	*ioctx_ring = kzalloc(srpt_srq_size * sizeof(*ioctx_ring), GFP_KERNEL);
+	if (!*ioctx_ring)
+		goto err;
+	for (i = 0; i < ring_size; ++i) {
+		(*ioctx_ring)[i] = srpt_alloc_ioctx(sdev);
+
+		if (!(*ioctx_ring)[i])
 			goto err;
 
-		ioctx_ring[i]->index = i;
+		(*ioctx_ring)[i]->index = i;
 	}
 	res = 0;
 	goto out;
 
 err:
-	while (--i > 0) {
-		srpt_free_ioctx(sdev, ioctx_ring[i]);
-		ioctx_ring[i] = NULL;
+	if (*ioctx_ring) {
+		while (--i > 0) {
+			srpt_free_ioctx(sdev, (*ioctx_ring)[i]);
+			(*ioctx_ring)[i] = NULL;
+		}
+		kfree(*ioctx_ring);
+		*ioctx_ring = NULL;
 	}
 out:
 	TRACE_EXIT_RES(res);
@@ -719,6 +737,7 @@ static void srpt_free_ioctx_ring(struct srpt_device *sdev,
 		srpt_free_ioctx(sdev, ioctx_ring[i]);
 		ioctx_ring[i] = NULL;
 	}
+	kfree(ioctx_ring);
 }
 
 /**
@@ -811,8 +830,15 @@ static int srpt_post_send(struct srpt_rdma_ch *ch, struct srpt_ioctx *ioctx,
 	int ret;
 
 	ret = -ENOMEM;
-	if (atomic_dec_return(&ch->qp_wr_avail) < 0) {
-		PRINT_ERROR("%s[%d]: SRQ full", __func__, __LINE__);
+	/*
+	 * Note: while the "rch_count * SRPT_RQ_SIZE" in the test below
+	 * cancels some of the advantages of using an SRQ, it guarantees that
+	 * srpt_post_recv() never fails.
+	 */
+	if (atomic_dec_return(&sdev->srq_wr_avail)
+	    < atomic_read(&sdev->rch_count) * SRPT_RQ_SIZE) {
+		PRINT_ERROR("SRQ full (channel count = %d)",
+			    atomic_read(&sdev->rch_count));
 		goto out;
 	}
 
@@ -834,7 +860,7 @@ static int srpt_post_send(struct srpt_rdma_ch *ch, struct srpt_ioctx *ioctx,
 
 out:
 	if (ret < 0)
-		atomic_inc(&ch->qp_wr_avail);
+		atomic_inc(&sdev->srq_wr_avail);
 	return ret;
 }
 
@@ -1051,6 +1077,16 @@ static int srpt_req_lim_delta(struct srpt_rdma_ch *ch)
 }
 
 /**
+ * srpt_undo_req_lim_delta() - Revert the side effect of srpt_req_lim_delta().
+ * @ch: RDMA channel.
+ * @req_lim_delta: return value of srpt_req_lim_delta().
+ */
+static void srpt_undo_req_lim_delta(struct srpt_rdma_ch *ch, int req_lim_delta)
+{
+	atomic_sub(req_lim_delta, &ch->last_response_req_lim);
+}
+
+/**
  * srpt_reset_ioctx() - Free the receive buffers associated with an I/O context
  * and call post ioctx->req again on the receive queue.
  * Note: ioctx->scmnd may be NULL when this function is called.
@@ -1166,7 +1202,6 @@ static void srpt_handle_send_comp(struct srpt_rdma_ch *ch,
 				  struct srpt_ioctx *ioctx,
 				  enum scst_exec_context context)
 {
-	WARN_ON(!ioctx->scmnd);
 	if (ioctx->scmnd) {
 		scst_data_direction dir =
 			scst_cmd_get_data_direction(ioctx->scmnd);
@@ -1612,7 +1647,7 @@ err:
 		}
 		if (srpt_post_send(ch, ioctx, len)) {
 			PRINT_ERROR("%s", "Sending SRP_RSP response failed.");
-			atomic_sub(req_lim_delta, &ch->last_response_req_lim);
+			srpt_undo_req_lim_delta(ch, req_lim_delta - 1);
 		}
 	}
 }
@@ -1629,17 +1664,16 @@ static void srpt_completion(struct ib_cq *cq, void *ctx)
 	struct srpt_device *sdev = ch->sport->sdev;
 	struct ib_wc wc;
 	struct srpt_ioctx *ioctx;
+	int req_lim;
 
 	ib_req_notify_cq(ch->cq, IB_CQ_NEXT_COMP);
 	while (ib_poll_cq(ch->cq, 1, &wc) > 0) {
+		ioctx = sdev->ioctx_ring[wc.wr_id & ~SRPT_OP_RECV];
 		if (wc.wr_id & SRPT_OP_RECV) {
-			int req_lim;
-
-			ioctx = sdev->ioctx_ring[wc.wr_id & ~SRPT_OP_RECV];
 #ifdef CONFIG_SCST_EXTRACHECKS
 			ioctx->on_receive_queue = false;
 #endif
-			if (wc.status) {
+			if (unlikely(wc.status)) {
 				PRINT_INFO("receiving failed with status %d",
 					   wc.status);
 				srpt_handle_recv_err_comp(ch, ioctx,
@@ -1647,36 +1681,33 @@ static void srpt_completion(struct ib_cq *cq, void *ctx)
 				continue;
 			}
 			req_lim = atomic_dec_return(&ch->req_lim);
-			if (req_lim < 0)
+			if (unlikely(req_lim < 0))
 				PRINT_ERROR("internal error: req_lim = %d < 0",
 					    req_lim);
 			srpt_handle_new_iu(ch, ioctx);
 		} else {
-			ioctx = sdev->ioctx_ring[wc.wr_id];
-			if (wc.status) {
+			if (unlikely(wc.status)) {
 				PRINT_INFO("sending failed with status %d",
 					   wc.status);
 				srpt_handle_send_err_comp(ch, ioctx,
 							  SCST_CONTEXT_TASKLET);
 				continue;
 			}
-			if (wc.opcode == IB_WC_SEND)
-				atomic_inc(&ch->qp_wr_avail);
-			else {
-				WARN_ON(wc.opcode != IB_WC_RDMA_READ);
-				WARN_ON(ioctx->n_rdma <= 0);
-				atomic_add(ioctx->n_rdma,
-					   &ch->qp_wr_avail);
-			}
 			switch (wc.opcode) {
 			case IB_WC_SEND:
+				atomic_inc(&sdev->srq_wr_avail);
 				srpt_handle_send_comp(ch, ioctx,
 						      SCST_CONTEXT_TASKLET);
 				break;
-			case IB_WC_RDMA_WRITE:
 			case IB_WC_RDMA_READ:
+				WARN_ON(ioctx->n_rdma <= 0);
+				atomic_add(ioctx->n_rdma,
+					   &sdev->srq_wr_avail);
 				srpt_handle_rdma_comp(ch, ioctx,
 						      SCST_CONTEXT_TASKLET);
+				break;
+			case IB_WC_RDMA_WRITE:
+				WARN_ON(false);
 				break;
 			default:
 				PRINT_ERROR("received unrecognized"
@@ -1709,7 +1740,7 @@ static int srpt_create_ch_ib(struct srpt_rdma_ch *ch)
 
 	/* Create a completion queue (CQ). */
 
-	cqe = SRPT_RQ_SIZE + SRPT_SQ_SIZE - 1;
+	cqe = SRPT_RQ_SIZE + SRPT_SQ_SIZE;
 #if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 20) && ! defined(RHEL_RELEASE_CODE)
 	ch->cq = ib_create_cq(sdev->device, srpt_completion, NULL, ch, cqe);
 #else
@@ -1746,7 +1777,7 @@ static int srpt_create_ch_ib(struct srpt_rdma_ch *ch)
 		goto out;
 	}
 
-	atomic_set(&ch->qp_wr_avail, qp_init->cap.max_send_wr);
+	atomic_set(&sdev->srq_wr_avail, qp_init->cap.max_send_wr);
 
 	TRACE_DBG("%s: max_cqe= %d max_sge= %d cm_id= %p",
 	       __func__, ch->cq->cqe, qp_init->cap.max_send_sge,
@@ -1792,6 +1823,7 @@ static void srpt_release_channel_by_cmid(struct ib_cm_id *cm_id)
 	list_for_each_entry(ch, &sdev->rch_list, list) {
 		if (ch->cm_id == cm_id) {
 			list_del(&ch->list);
+			atomic_dec(&sdev->rch_count);
 			atomic_set(&ch->state, RDMA_CHANNEL_DISCONNECTING);
 			found = true;
 			break;
@@ -1935,7 +1967,8 @@ static int srpt_cm_req_recv(struct ib_cm_id *cm_id,
 		spin_lock_irq(&sdev->spinlock);
 
 		list_for_each_entry_safe(ch, tmp_ch, &sdev->rch_list, list) {
-			if (!memcmp(ch->i_port_id, req->initiator_port_id, 16)
+			if (!allow_multiple_logins
+			    && !memcmp(ch->i_port_id, req->initiator_port_id, 16)
 			    && !memcmp(ch->t_port_id, req->target_port_id, 16)
 			    && param->port == ch->sport->port
 			    && param->listen_id == ch->sport->sdev->cm_id
@@ -1950,9 +1983,10 @@ static int srpt_cm_req_recv(struct ib_cm_id *cm_id,
 
 				prev_state = atomic_xchg(&ch->state,
 						RDMA_CHANNEL_DISCONNECTING);
-				if (prev_state == RDMA_CHANNEL_CONNECTING)
+				if (prev_state == RDMA_CHANNEL_CONNECTING) {
 					list_del(&ch->list);
-
+					atomic_dec(&sdev->rch_count);
+				}
 				spin_unlock_irq(&sdev->spinlock);
 
 				rsp->rsp_flags =
@@ -2108,6 +2142,7 @@ static int srpt_cm_req_recv(struct ib_cm_id *cm_id,
 	spin_lock_irq(&sdev->spinlock);
 	list_add_tail(&ch->list, &sdev->rch_list);
 	spin_unlock_irq(&sdev->spinlock);
+	atomic_inc(&sdev->rch_count);
 
 	goto out;
 
@@ -2489,14 +2524,18 @@ static int srpt_perform_rdmas(struct srpt_rdma_ch *ch, struct srpt_ioctx *ioctx,
 	int i;
 	int ret;
 	int srq_wr_avail;
+	struct srpt_device *sdev;
 
+	sdev = ch->sport->sdev;
 	if (dir == SCST_DATA_WRITE) {
 		ret = -ENOMEM;
-		srq_wr_avail = atomic_sub_return(ioctx->n_rdma,
-						 &ch->qp_wr_avail);
+		srq_wr_avail
+			= atomic_sub_return(ioctx->n_rdma, &sdev->srq_wr_avail)
+			- atomic_read(&sdev->rch_count) * SRPT_RQ_SIZE;
 		if (srq_wr_avail < 0) {
-			atomic_add(ioctx->n_rdma, &ch->qp_wr_avail);
-			PRINT_INFO("%s[%d]: SRQ full", __func__, __LINE__);
+			atomic_add(ioctx->n_rdma, &sdev->srq_wr_avail);
+			PRINT_ERROR("SRQ full (channel count = %d)",
+				    atomic_read(&sdev->rch_count));
 			goto out;
 		}
 	}
@@ -2670,7 +2709,7 @@ static int srpt_xmit_response(struct scst_cmd *scmnd)
 		PRINT_ERROR("%s[%d]: ch->state= %d tag= %lld",
 			    __func__, __LINE__, atomic_read(&ch->state),
 			    (unsigned long long)scst_cmd_get_tag(scmnd));
-		atomic_sub(req_lim_delta, &ch->last_response_req_lim);
+		srpt_undo_req_lim_delta(ch, req_lim_delta - 1);
 		ret = SCST_TGT_RES_FATAL_ERROR;
 	}
 
@@ -2719,7 +2758,7 @@ static void srpt_tsk_mgmt_done(struct scst_mgmt_cmd *mcmnd)
 					 mgmt_ioctx->tag);
 	if (srpt_post_send(ch, ioctx, rsp_len)) {
 		PRINT_ERROR("%s", "Sending SRP_RSP response failed.");
-		atomic_sub(req_lim_delta, &ch->last_response_req_lim);
+		srpt_undo_req_lim_delta(ch, req_lim_delta - 1);
 	}
 
 	scst_mgmt_cmd_set_tgt_priv(mcmnd, NULL);
@@ -2808,6 +2847,7 @@ static int srpt_release(struct scst_tgt *scst_tgt)
 	spin_lock_irq(&sdev->spinlock);
 	list_for_each_entry_safe(ch, tmp_ch, &sdev->rch_list, list) {
 		list_del(&ch->list);
+		atomic_dec(&sdev->rch_count);
 		atomic_set(&ch->state, RDMA_CHANNEL_DISCONNECTING);
 		spin_unlock_irq(&sdev->spinlock);
 		scst_unregister_session(ch->scst_sess, true,
@@ -2999,17 +3039,19 @@ static void srpt_add_one(struct ib_device *device)
 
 	srq_attr.event_handler = srpt_srq_event;
 	srq_attr.srq_context = (void *)sdev;
-	srq_attr.attr.max_wr = min(SRPT_SRQ_SIZE, sdev->dev_attr.max_srq_wr);
+	srq_attr.attr.max_wr = min_t(unsigned, srpt_srq_size,
+				     sdev->dev_attr.max_srq_wr);
 	srq_attr.attr.max_sge = 1;
 	srq_attr.attr.srq_limit = 0;
 
+	PRINT_INFO("SRQ: #wr = %d max_allow = %d dev = %s",
+		   srq_attr.attr.max_wr, sdev->dev_attr.max_srq_wr,
+		   device->name);
+
+	sdev->srq_size = srq_attr.attr.max_wr;
 	sdev->srq = ib_create_srq(sdev->pd, &srq_attr);
 	if (IS_ERR(sdev->srq))
 		goto err_mr;
-
-	TRACE_DBG("%s: create SRQ #wr= %d max_allow=%d dev= %s",
-	       __func__, srq_attr.attr.max_wr,
-	      sdev->dev_attr.max_srq_wr, device->name);
 
 	if (!srpt_service_guid)
 		srpt_service_guid = be64_to_cpu(device->node_guid);
@@ -3039,14 +3081,13 @@ static void srpt_add_one(struct ib_device *device)
 	if (ib_register_event_handler(&sdev->event_handler))
 		goto err_cm;
 
-	if (srpt_alloc_ioctx_ring(sdev, sdev->ioctx_ring,
-				  ARRAY_SIZE(sdev->ioctx_ring)))
+	if (srpt_alloc_ioctx_ring(sdev, &sdev->ioctx_ring, srpt_srq_size))
 		goto err_event;
 
 	INIT_LIST_HEAD(&sdev->rch_list);
 	spin_lock_init(&sdev->spinlock);
 
-	for (i = 0; i < SRPT_SRQ_SIZE; ++i)
+	for (i = 0; i < srpt_srq_size; ++i)
 		srpt_post_recv(sdev, sdev->ioctx_ring[i]);
 
 	ib_set_client_data(device, &srpt_client, sdev);
@@ -3085,8 +3126,6 @@ static void srpt_add_one(struct ib_device *device)
 		}
 	}
 
-	atomic_inc(&srpt_device_count);
-
 	TRACE_EXIT();
 
 	return;
@@ -3095,8 +3134,7 @@ err_refresh_port:
 	scst_unregister(sdev->scst_tgt);
 err_ring:
 	ib_set_client_data(device, &srpt_client, NULL);
-	srpt_free_ioctx_ring(sdev, sdev->ioctx_ring,
-			     ARRAY_SIZE(sdev->ioctx_ring));
+	srpt_free_ioctx_ring(sdev, sdev->ioctx_ring, srpt_srq_size);
 err_event:
 	ib_unregister_event_handler(&sdev->event_handler);
 err_cm:
@@ -3177,8 +3215,9 @@ static void srpt_remove_one(struct ib_device *device)
 	scst_unregister(sdev->scst_tgt);
 	sdev->scst_tgt = NULL;
 
-	srpt_free_ioctx_ring(sdev, sdev->ioctx_ring,
-			     ARRAY_SIZE(sdev->ioctx_ring));
+	WARN_ON(atomic_read(&sdev->rch_count));
+
+	srpt_free_ioctx_ring(sdev, sdev->ioctx_ring, srpt_srq_size);
 	kfree(sdev);
 
 	TRACE_EXIT();
@@ -3246,16 +3285,21 @@ static int __init srpt_init_module(void)
 	if (srp_max_req_size < MIN_MAX_REQ_SIZE) {
 		PRINT_ERROR("invalid value %d for kernel module parameter"
 			    " srp_max_req_size -- must be at least %d.",
-			    srp_max_req_size,
-			    MIN_MAX_REQ_SIZE);
+			    srp_max_req_size, MIN_MAX_REQ_SIZE);
 		goto out;
 	}
 
 	if (srp_max_rsp_size < MIN_MAX_RSP_SIZE) {
 		PRINT_ERROR("invalid value %d for kernel module parameter"
 			    " srp_max_rsp_size -- must be at least %d.",
-			    srp_max_rsp_size,
-			    MIN_MAX_RSP_SIZE);
+			    srp_max_rsp_size, MIN_MAX_RSP_SIZE);
+		goto out;
+	}
+
+	if (srpt_srq_size < MIN_SRPT_SRQ_SIZE) {
+		PRINT_ERROR("invalid value %d for kernel module parameter"
+			    " srpt_srq_size -- must be at least %d.",
+			    srpt_srq_size, MIN_SRPT_SRQ_SIZE);
 		goto out;
 	}
 
