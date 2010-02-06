@@ -111,7 +111,7 @@ enum {
 	SRPT_DEF_SG_TABLESIZE = 128,
 	SRPT_DEF_SG_PER_WQE = 16,
 
-	SRPT_SQ_SIZE = 2048,
+	SRPT_SQ_SIZE = /*2048*/4096,
 	SRPT_RQ_SIZE = 128,
 	MIN_SRPT_SRQ_SIZE = 256,
 	DEFAULT_SRPT_SRQ_SIZE = 4096,
@@ -166,6 +166,7 @@ struct srpt_ioctx {
 	struct srp_direct_buf single_rbuf;
 	/* Node for insertion in srpt_rdma_ch::cmd_wait_list. */
 	struct list_head wait_list;
+	int mapped_sg_count;
 	u16 n_rdma_ius;
 	u8 n_rdma;
 	u8 n_rbuf;
@@ -206,6 +207,8 @@ struct srpt_rdma_ch {
 	struct ib_cm_id *cm_id;
 	/* IB queue pair. */
 	struct ib_qp *qp;
+	/* Number of send work requests that are not in use. */
+	atomic_t qp_swr_avail;
 	struct ib_cq *cq;
 	struct srpt_port *sport;
 	/* 128-bit initiator port identifier copied from SRP_LOGIN_REQ. */
@@ -281,7 +284,6 @@ struct srpt_device {
 	 */
 	struct list_head rch_list;
 	spinlock_t spinlock;
-	atomic_t rch_count;
 	struct srpt_port port[2];
 	struct ib_event_handler event_handler;
 #if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
