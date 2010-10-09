@@ -1177,12 +1177,14 @@ static int ibmvstgt_probe(struct vio_dev *dev, const struct vio_device_id *id)
 #else
 	vport->dev.parent = &dev->dev;
 #endif
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 30)
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
 	snprintf(vport->dev.class_id, BUS_ID_SIZE, "ibmvstgt-%d",
 		     vport->dma_dev->unit_address);
-#else
-	dev_set_name(&vport->dev, "ibmvstgt-%d",
+#elif LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 30)
+	snprintf(vport->dev.bus_id, BUS_ID_SIZE, "ibmvstgt-%d",
 		     vport->dma_dev->unit_address);
+#else
+	dev_set_name(&vport->dev, "ibmvstgt-%d", vport->dma_dev->unit_address);
 #endif
 #if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
 	if (class_device_register(&vport->dev))
