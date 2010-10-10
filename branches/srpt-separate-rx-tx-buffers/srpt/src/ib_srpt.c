@@ -385,12 +385,14 @@ static void srpt_get_ioc(struct srpt_device *sdev, u32 slot,
 	iocp = (struct ib_dm_ioc_profile *)mad->data;
 
 	if (!slot || slot > 16) {
-		mad->mad_hdr.status = __constant_cpu_to_be16(DM_MAD_STATUS_INVALID_FIELD);
+		mad->mad_hdr.status
+			= __constant_cpu_to_be16(DM_MAD_STATUS_INVALID_FIELD);
 		return;
 	}
 
 	if (slot > 2) {
-		mad->mad_hdr.status = __constant_cpu_to_be16(DM_MAD_STATUS_NO_IOC);
+		mad->mad_hdr.status
+			= __constant_cpu_to_be16(DM_MAD_STATUS_NO_IOC);
 		return;
 	}
 
@@ -432,12 +434,14 @@ static void srpt_get_svc_entries(u64 ioc_guid,
 	WARN_ON(!ioc_guid);
 
 	if (!slot || slot > 16) {
-		mad->mad_hdr.status = __constant_cpu_to_be16(DM_MAD_STATUS_INVALID_FIELD);
+		mad->mad_hdr.status
+			= __constant_cpu_to_be16(DM_MAD_STATUS_INVALID_FIELD);
 		return;
 	}
 
 	if (slot > 2 || lo > hi || hi > 1) {
-		mad->mad_hdr.status = __constant_cpu_to_be16(DM_MAD_STATUS_NO_IOC);
+		mad->mad_hdr.status
+			= __constant_cpu_to_be16(DM_MAD_STATUS_NO_IOC);
 		return;
 	}
 
@@ -667,29 +671,30 @@ static void srpt_unregister_mad_agent(struct srpt_device *sdev)
 }
 
 /**
- * srpt_alloc_recv_ioctx() - Allocate an SRPT receive I/O context structure.
+ * srpt_alloc_ioctx() - Allocate an SRPT I/O context structure.
  */
-static struct srpt_ioctx *srpt_alloc_recv_ioctx(struct srpt_device *sdev)
+static struct srpt_ioctx *srpt_alloc_ioctx(struct srpt_device *sdev,
+					   int ioctx_size, int dma_size,
+					   enum dma_data_direction dir)
 {
-	struct srpt_recv_ioctx *ioctx;
+	struct srpt_ioctx *ioctx;
 
-	ioctx = kmalloc(sizeof *ioctx, GFP_KERNEL);
+	ioctx = kmalloc(ioctx_size, GFP_KERNEL);
 	if (!ioctx)
 		goto err;
 
-	ioctx->ioctx.buf = kmalloc(srp_max_req_size, GFP_KERNEL);
-	if (!ioctx->ioctx.buf)
+	ioctx->buf = kmalloc(dma_size, GFP_KERNEL);
+	if (!ioctx->buf)
 		goto err_free_ioctx;
 
-	ioctx->ioctx.dma = ib_dma_map_single(sdev->device, ioctx->ioctx.buf,
-				       srp_max_req_size, DMA_FROM_DEVICE);
-	if (ib_dma_mapping_error(sdev->device, ioctx->ioctx.dma))
-		goto err_free_req;
+	ioctx->dma = ib_dma_map_single(sdev->device, ioctx->buf, dma_size, dir);
+	if (ib_dma_mapping_error(sdev->device, ioctx->dma))
+		goto err_free_buf;
 
-	return &ioctx->ioctx;
+	return ioctx;
 
-err_free_req:
-	kfree(ioctx->ioctx.buf);
+err_free_buf:
+	kfree(ioctx->buf);
 err_free_ioctx:
 	kfree(ioctx);
 err:
@@ -697,127 +702,74 @@ err:
 }
 
 /**
- * srpt_free_recv_ioctx() - Free an SRPT receive I/O context structure.
+ * srpt_free_ioctx() - Free an SRPT I/O context structure.
  */
-static void srpt_free_recv_ioctx(struct srpt_device *sdev,
-				 struct srpt_ioctx *ioctx_arg)
+static void srpt_free_ioctx(struct srpt_device *sdev, struct srpt_ioctx *ioctx,
+			    int dma_size, enum dma_data_direction dir)
 {
-	struct srpt_recv_ioctx *ioctx = (void *)ioctx_arg;
-
 	if (!ioctx)
 		return;
 
-	ib_dma_unmap_single(sdev->device, ioctx->ioctx.dma,
-			    srp_max_req_size, DMA_FROM_DEVICE);
-	kfree(ioctx->ioctx.buf);
-	kfree(ioctx);
-}
-
-/**
- * srpt_alloc_send_ioctx() - Allocate an SRPT send I/O context structure.
- */
-static struct srpt_ioctx *srpt_alloc_send_ioctx(struct srpt_device *sdev)
-{
-	struct srpt_send_ioctx *ioctx;
-
-	ioctx = kmalloc(sizeof *ioctx, GFP_KERNEL);
-	if (!ioctx)
-		goto err;
-
-	ioctx->ioctx.buf = kmalloc(srp_max_rsp_size, GFP_KERNEL);
-	if (!ioctx->ioctx.buf)
-		goto err_free_ioctx;
-
-	ioctx->ioctx.dma = ib_dma_map_single(sdev->device, ioctx->ioctx.buf,
-					     srp_max_rsp_size, DMA_TO_DEVICE);
-	if (ib_dma_mapping_error(sdev->device, ioctx->ioctx.dma))
-		goto err_free_rsp;
-
-	return &ioctx->ioctx;
-
-err_free_rsp:
-	kfree(ioctx->ioctx.buf);
-err_free_ioctx:
-	kfree(ioctx);
-err:
-	return NULL;
-}
-
-/**
- * srpt_free_ioctx() - Deallocate an SRPT send I/O context structure.
- */
-static void srpt_free_send_ioctx(struct srpt_device *sdev,
-				 struct srpt_ioctx *ioctx_arg)
-{
-	struct srpt_recv_ioctx *ioctx = (void *)ioctx_arg;
-
-	if (!ioctx)
-		return;
-
-	ib_dma_unmap_single(sdev->device, ioctx->ioctx.dma,
-			    srp_max_rsp_size, DMA_TO_DEVICE);
-	kfree(ioctx->ioctx.buf);
+	ib_dma_unmap_single(sdev->device, ioctx->dma, dma_size, dir);
+	kfree(ioctx->buf);
 	kfree(ioctx);
 }
 
 /**
  * srpt_alloc_ioctx_ring() - Allocate a ring of SRPT I/O context structures.
  * @sdev:       Device to allocate the I/O context ring for.
- * @ioctx_ring: Pointer to an array of I/O contexts.
  * @ring_size:  Number of elements in the I/O context ring.
- * @flags:      Flags to be set in the ring index.
+ * @ioctx_size:
+ * @dma_size:
+ * @dir:
  */
-static int srpt_alloc_ioctx_ring(
-		 struct srpt_ioctx* (*alloc_ioctx)(struct srpt_device *sdev),
-		 void (*free_ioctx)(struct srpt_device *sdev,
-				    struct srpt_ioctx *ioctx),
-		 struct srpt_device *sdev,
-		 struct srpt_ioctx **ioctx_ring,
-		 int ring_size)
+static struct srpt_ioctx **srpt_alloc_ioctx_ring(struct srpt_device *sdev,
+				int ring_size, int ioctx_size,
+				int dma_size, enum dma_data_direction dir)
 {
-	int res;
+	struct srpt_ioctx **ring;
 	int i;
 
 	TRACE_ENTRY();
 
-	res = -ENOMEM;
+	WARN_ON(ioctx_size != sizeof(struct srpt_recv_ioctx)
+		&& ioctx_size != sizeof(struct srpt_send_ioctx));
+	WARN_ON(dma_size != srp_max_req_size && dma_size != srp_max_rsp_size);
+
+	ring = kmalloc(ring_size * sizeof(ring[0]), GFP_KERNEL);
+	if (!ring)
+		goto out;
 	for (i = 0; i < ring_size; ++i) {
-		ioctx_ring[i] = alloc_ioctx(sdev);
-
-		if (!ioctx_ring[i])
+		ring[i] = srpt_alloc_ioctx(sdev, ioctx_size, dma_size, dir);
+		if (!ring[i])
 			goto err;
-
-		ioctx_ring[i]->index = i;
+		ring[i]->index = i;
 	}
-	res = 0;
 	goto out;
 
 err:
-	while (--i >= 0) {
-		free_ioctx(sdev, ioctx_ring[i]);
-		ioctx_ring[i] = NULL;
-	}
+	while (--i >= 0)
+		srpt_free_ioctx(sdev, ring[i], dma_size, dir);
+	kfree(ring);
 out:
-	TRACE_EXIT_RES(res);
-	return res;
+	TRACE_EXIT_RES(ring);
+	return ring;
 }
 
 /**
  * srpt_free_ioctx_ring() - Free the ring of SRPT I/O context structures.
  */
-static void srpt_free_ioctx_ring(
-		void (*free_ioctx)(struct srpt_device *sdev,
-				    struct srpt_ioctx *ioctx),
-		struct srpt_device *sdev,
-		struct srpt_ioctx **ioctx_ring,
-		int ring_size)
+static void srpt_free_ioctx_ring(struct srpt_ioctx **ioctx_ring,
+				 struct srpt_device *sdev, int ring_size,
+				 int dma_size, enum dma_data_direction dir)
 {
 	int i;
 
-	for (i = 0; i < ring_size; ++i) {
-		free_ioctx(sdev, ioctx_ring[i]);
-		ioctx_ring[i] = NULL;
-	}
+	WARN_ON(dma_size != srp_max_req_size && dma_size != srp_max_rsp_size);
+
+	for (i = 0; i < ring_size; ++i)
+		srpt_free_ioctx(sdev, ioctx_ring[i], dma_size, dir);
+	kfree(ioctx_ring);
 }
 
 /**
@@ -902,8 +854,8 @@ static int srpt_post_recv(struct srpt_device *sdev,
  *
  * Returns zero upon success and a non-zero value upon failure.
  */
-static int srpt_post_send(struct srpt_rdma_ch *ch, struct srpt_send_ioctx *ioctx,
-			  int len)
+static int srpt_post_send(struct srpt_rdma_ch *ch,
+			  struct srpt_send_ioctx *ioctx, int len)
 {
 	struct ib_sge list;
 	struct ib_send_wr wr, *bad_wr;
@@ -2138,6 +2090,10 @@ static void srpt_release_channel(struct scst_session *scst_sess)
 
 	srpt_destroy_ch_ib(ch);
 
+	srpt_free_ioctx_ring((struct srpt_ioctx **)ch->ioctx_ring,
+			     ch->sport->sdev, ch->rq_size,
+			     srp_max_rsp_size, DMA_TO_DEVICE);
+
 	kfree(ch);
 
 	TRACE_EXIT();
@@ -2348,16 +2304,13 @@ static int srpt_cm_req_recv(struct ib_cm_id *cm_id,
 	INIT_LIST_HEAD(&ch->cmd_wait_list);
 
 	spin_lock_init(&ch->spinlock);
-	ch->ioctx_ring = kmalloc(ch->rq_size * sizeof ch->ioctx_ring[0],
-				 GFP_KERNEL);
+	ch->ioctx_ring = (struct srpt_send_ioctx **)
+		srpt_alloc_ioctx_ring(ch->sport->sdev, ch->rq_size,
+				      sizeof(*ch->ioctx_ring[0]),
+				      srp_max_rsp_size, DMA_TO_DEVICE);
 	if (!ch->ioctx_ring)
 		goto free_ch;
 
-	if (srpt_alloc_ioctx_ring(srpt_alloc_send_ioctx, srpt_free_send_ioctx,
-				  ch->sport->sdev,
-				  (struct srpt_ioctx **)ch->ioctx_ring,
-				  ch->rq_size))
-		goto err_alloc_ring;
 	INIT_LIST_HEAD(&ch->free_list);
 	for (i = 0; i < ch->rq_size; i++) {
 		ch->ioctx_ring[i]->ch = ch;
@@ -2465,11 +2418,9 @@ destroy_ib:
 	srpt_destroy_ch_ib(ch);
 
 free_ring:
-	srpt_free_ioctx_ring(srpt_free_send_ioctx, ch->sport->sdev,
-			     (struct srpt_ioctx **)ch->ioctx_ring,
-			     ch->rq_size);
-err_alloc_ring:
-	kfree(sdev->ioctx_ring);
+	srpt_free_ioctx_ring((struct srpt_ioctx **)ch->ioctx_ring,
+			     ch->sport->sdev, ch->rq_size,
+			     srp_max_rsp_size, DMA_TO_DEVICE);
 
 free_ch:
 	kfree(ch);
@@ -3544,15 +3495,13 @@ static void srpt_add_one(struct ib_device *device)
 	if (ib_register_event_handler(&sdev->event_handler))
 		goto err_cm;
 
-	sdev->ioctx_ring = kmalloc(sdev->srq_size * sizeof sdev->ioctx_ring[0],
-				   GFP_KERNEL);
+	sdev->ioctx_ring = (struct srpt_recv_ioctx **)
+		srpt_alloc_ioctx_ring(sdev, sdev->srq_size,
+				      sizeof(*sdev->ioctx_ring[0]),
+				      srp_max_req_size, DMA_FROM_DEVICE);
 	if (!sdev->ioctx_ring)
 		goto err_event;
 
-	if (srpt_alloc_ioctx_ring(srpt_alloc_recv_ioctx, srpt_free_recv_ioctx,
-				  sdev, (struct srpt_ioctx **)sdev->ioctx_ring,
-				  sdev->srq_size))
-		goto err_alloc_ring;
 
 	INIT_LIST_HEAD(&sdev->rch_list);
 	spin_lock_init(&sdev->spinlock);
@@ -3593,11 +3542,9 @@ static void srpt_add_one(struct ib_device *device)
 
 err_ring:
 	ib_set_client_data(device, &srpt_client, NULL);
-	srpt_free_ioctx_ring(srpt_free_recv_ioctx, sdev,
-			     (struct srpt_ioctx **)sdev->ioctx_ring,
-			     sdev->srq_size);
-err_alloc_ring:
-	kfree(sdev->ioctx_ring);
+	srpt_free_ioctx_ring((struct srpt_ioctx **)sdev->ioctx_ring, sdev,
+			     sdev->srq_size, srp_max_req_size,
+			     DMA_FROM_DEVICE);
 err_event:
 	ib_unregister_event_handler(&sdev->event_handler);
 err_cm:
@@ -3678,10 +3625,8 @@ static void srpt_remove_one(struct ib_device *device)
 	scst_unregister_target(sdev->scst_tgt);
 	sdev->scst_tgt = NULL;
 
-	srpt_free_ioctx_ring(srpt_free_recv_ioctx, sdev,
-			     (struct srpt_ioctx **)sdev->ioctx_ring,
-			     sdev->srq_size);
-	kfree(sdev->ioctx_ring);
+	srpt_free_ioctx_ring((struct srpt_ioctx **)sdev->ioctx_ring, sdev,
+			     sdev->srq_size, srp_max_req_size, DMA_FROM_DEVICE);
 	sdev->ioctx_ring = NULL;
 	kfree(sdev);
 
