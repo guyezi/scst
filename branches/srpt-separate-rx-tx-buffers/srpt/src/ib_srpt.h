@@ -141,18 +141,6 @@ enum {
 	SRPT_OP_FLAGS = SRPT_OP_RECV,
 };
 
-/*
- * SRP_CRED_REQ information unit, as defined in section 6.10 of the T10 SRP
- * r16a document.
- */
-struct srp_cred_req {
-	u8 opcode;
-	u8 sol_not;
-	u8 reserved[2];
-	__be32 req_lim_delta;
-	__be64 tag;
-};
-
 struct rdma_iu {
 	u64 raddr;
 	u32 rkey;
