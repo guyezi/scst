@@ -69,8 +69,7 @@ else
 INSTALL_DIR := /lib/modules/$(KVER)/extra
 endif
 
-EXTRA_CFLAGS += -I$(SUBDIRS) -I$(SCST_INC_DIR) -Wextra -Wno-unused-parameter \
-		-Wno-missing-field-initializers
+EXTRA_CFLAGS += -I$(SUBDIRS) -I$(SCST_INC_DIR)
 
 EXTRA_CFLAGS += -DCONFIG_SCST_EXTRACHECKS
 
