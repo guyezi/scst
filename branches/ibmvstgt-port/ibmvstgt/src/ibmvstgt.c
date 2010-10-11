@@ -278,7 +278,7 @@ static int ibmvstgt_rdma(struct scst_cmd *sc, struct scatterlist *sg, int nsg,
 	for (i = 0; i < nmd && rest; i++) {
 		unsigned int mdone, mlen;
 
-		mlen = min(rest, md[i].len);
+		mlen = min_t(unsigned int, rest, md[i].len);
 		for (mdone = 0; mlen;) {
 			int slen = min(sg_dma_len(sg + sidx) - soff, mlen);
 
