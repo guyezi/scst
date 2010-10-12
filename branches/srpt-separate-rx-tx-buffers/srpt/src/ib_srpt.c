@@ -1152,8 +1152,6 @@ static void srpt_put_send_ioctx(struct srpt_send_ioctx *ioctx)
 		ioctx->n_rbuf = 0;
 	}
 
-	atomic_inc(&ch->req_lim);
-
 	spin_lock_irqsave(&ch->spinlock, flags);
 	list_add(&ioctx->free_list, &ch->free_list);
 	spin_unlock_irqrestore(&ch->spinlock, flags);
@@ -1266,6 +1264,9 @@ static void srpt_handle_send_err_comp(struct srpt_rdma_ch *ch, u64 wr_id,
 			    && state != SRPT_STATE_NEED_DATA
 			    && state != SRPT_STATE_DONE);
 
+	if (state == SRPT_STATE_CMD_RSP_SENT
+	    || state == SRPT_STATE_MGMT_RSP_SENT)
+		atomic_dec(&ch->req_lim);
 	if (state != SRPT_STATE_DONE) {
 		if (scmnd)
 			srpt_abort_scst_cmd(ioctx, context);
@@ -1489,11 +1490,9 @@ static int srpt_handle_cmd(struct srpt_rdma_ch *ch,
 	send_ioctx->scmnd = scmnd;
 
 	ret = srpt_get_desc_tbl(send_ioctx, srp_cmd, &dir, &data_len);
-	if (ret) {
+	if (ret)
 		scst_set_cmd_error(scmnd,
 			SCST_LOAD_SENSE(scst_sense_invalid_field_in_cdb));
-		goto err;
-	}
 
 	switch (srp_cmd->task_attr) {
 	case SRP_CMD_HEAD_OF_Q:
@@ -1656,10 +1655,12 @@ static void srpt_handle_new_iu(struct srpt_rdma_ch *ch,
 			       enum scst_exec_context context)
 {
 	struct srp_cmd *srp_cmd;
-	struct scst_cmd *scmnd;
 	enum rdma_ch_state ch_state;
-	u8 srp_response_status;
-	int tsk_mgmt_status;
+	int req_lim;
+
+	req_lim = atomic_dec_return(&ch->req_lim);
+	if (unlikely(req_lim < 0))
+		PRINT_ERROR("req_lim = %d < 0", req_lim);
 
 	ch_state = atomic_read(&ch->state);
 	if (ch_state == RDMA_CHANNEL_CONNECTING) {
@@ -1672,26 +1673,11 @@ static void srpt_handle_new_iu(struct srpt_rdma_ch *ch,
 
 	WARN_ON(ch_state != RDMA_CHANNEL_LIVE);
 
-	scmnd = NULL;
-
-	srp_response_status = SAM_STAT_BUSY;
-	/* To keep the compiler happy. */
-	tsk_mgmt_status = SCST_MGMT_STATUS_FAILED;
-
 	ib_dma_sync_single_for_cpu(ch->sport->sdev->device,
 				   ioctx->ioctx.dma, srp_max_req_size,
 				   DMA_FROM_DEVICE);
 
 	srp_cmd = ioctx->ioctx.buf;
-
-	if (srp_cmd->opcode == SRP_CMD || srp_cmd->opcode == SRP_TSK_MGMT
-	    || srp_cmd->opcode == SRP_I_LOGOUT) {
-		int req_lim;
-
-		req_lim = atomic_dec_return(&ch->req_lim);
-		if (unlikely(req_lim < 0))
-			PRINT_ERROR("req_lim = %d < 0", req_lim);
-	}
 
 	switch (srp_cmd->opcode) {
 	case SRP_CMD:
@@ -3046,6 +3032,8 @@ static int srpt_xmit_response(struct scst_cmd *scmnd)
 		}
 	}
 
+	atomic_inc(&ch->req_lim);
+
 	resp_len = srpt_build_cmd_rsp(ch, ioctx,
 				      scst_cmd_get_tag(scmnd),
 				      scst_cmd_get_status(scmnd),
@@ -3055,6 +3043,7 @@ static int srpt_xmit_response(struct scst_cmd *scmnd)
 	if (srpt_post_send(ch, ioctx, resp_len)) {
 		srpt_unmap_sg_to_ib_sge(ch, ioctx);
 		srpt_set_cmd_state(ioctx, state);
+		atomic_dec(&ch->req_lim);
 		PRINT_ERROR("%s[%d]: ch->state %d cmd state %d tag %llu",
 			    __func__, __LINE__, atomic_read(&ch->state),
 			    state, scst_cmd_get_tag(scmnd));
@@ -3096,6 +3085,8 @@ static void srpt_tsk_mgmt_done(struct scst_mgmt_cmd *mcmnd)
 	new_state = srpt_set_cmd_state(ioctx, SRPT_STATE_MGMT_RSP_SENT);
 	WARN_ON(new_state == SRPT_STATE_DONE);
 
+	atomic_inc(&ch->req_lim);
+
 	rsp_len = srpt_build_tskmgmt_rsp(ch, ioctx,
 					 scst_to_srp_tsk_mgmt_status(
 					 scst_mgmt_cmd_get_status(mcmnd)),
@@ -3110,6 +3101,7 @@ static void srpt_tsk_mgmt_done(struct scst_mgmt_cmd *mcmnd)
 		PRINT_ERROR("%s", "Sending SRP_RSP response failed.");
 		srpt_set_cmd_state(ioctx, SRPT_STATE_DONE);
 		srpt_put_send_ioctx(ioctx);
+		atomic_dec(&ch->req_lim);
 	}
 
 	scst_mgmt_cmd_set_tgt_priv(mcmnd, NULL);

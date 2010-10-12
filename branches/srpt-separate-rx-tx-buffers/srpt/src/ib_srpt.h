@@ -255,8 +255,7 @@ enum rdma_ch_state {
  * @max_ti_iu_len: maximum target-to-initiator information unit length.
  * @supports_cred_req: whether or not the initiator supports SRP_CRED_REQ.
  * @req_lim:       request limit: maximum number of requests that may be sent
- *                 by the initiator without having received a response or
- *                 SRP_CRED_REQ.
+ *                 by the initiator without having received a response.
  * @state:         channel state. See also enum rdma_ch_state.
  * @list:          node for insertion in the srpt_device.rch_list list.
  * @cmd_wait_list: list of SCST commands that arrived before the RTU event. This
