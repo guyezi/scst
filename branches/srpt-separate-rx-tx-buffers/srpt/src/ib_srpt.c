@@ -719,9 +719,9 @@ static void srpt_free_ioctx(struct srpt_device *sdev, struct srpt_ioctx *ioctx,
  * srpt_alloc_ioctx_ring() - Allocate a ring of SRPT I/O context structures.
  * @sdev:       Device to allocate the I/O context ring for.
  * @ring_size:  Number of elements in the I/O context ring.
- * @ioctx_size:
- * @dma_size:
- * @dir:
+ * @ioctx_size: I/O context size.
+ * @dma_size:   DMA buffer size.
+ * @dir:        DMA data direction.
  */
 static struct srpt_ioctx **srpt_alloc_ioctx_ring(struct srpt_device *sdev,
 				int ring_size, int ioctx_size,
@@ -1484,15 +1484,21 @@ static int srpt_handle_cmd(struct srpt_rdma_ch *ch,
 	scmnd = scst_rx_cmd(ch->scst_sess, (u8 *) &srp_cmd->lun,
 			    sizeof srp_cmd->lun, srp_cmd->cdb,
 			    sizeof srp_cmd->cdb, context);
-	if (!scmnd)
+	if (!scmnd) {
+		PRINT_ERROR("0x%llx: allocation of an SCST command failed",
+			    srp_cmd->tag);
 		goto err;
+	}
 
 	send_ioctx->scmnd = scmnd;
 
 	ret = srpt_get_desc_tbl(send_ioctx, srp_cmd, &dir, &data_len);
-	if (ret)
+	if (ret) {
+		PRINT_ERROR("0x%llx: parsing SRP descriptor table failed.",
+			    srp_cmd->tag);
 		scst_set_cmd_error(scmnd,
 			SCST_LOAD_SENSE(scst_sense_invalid_field_in_cdb));
+	}
 
 	switch (srp_cmd->task_attr) {
 	case SRP_CMD_HEAD_OF_Q:
