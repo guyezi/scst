@@ -1221,6 +1221,7 @@ static void srpt_abort_scst_cmd(struct srpt_send_ioctx *ioctx,
 		 * not been received in time.
 		 */
 		srpt_unmap_sg_to_ib_sge(ioctx->ch, ioctx);
+		srpt_put_send_ioctx(ioctx);
 		scst_set_delivery_status(scmnd, SCST_CMD_DELIVERY_ABORTED);
 		scst_tgt_cmd_done(scmnd, context);
 		break;
@@ -1304,6 +1305,7 @@ static void srpt_handle_send_comp(struct srpt_rdma_ch *ch,
 				    != (scmnd == NULL));
 		if (scmnd) {
 			srpt_unmap_sg_to_ib_sge(ch, ioctx);
+			srpt_put_send_ioctx(ioctx);
 			scst_tgt_cmd_done(scmnd, context);
 		} else
 			srpt_put_send_ioctx(ioctx);
@@ -3169,13 +3171,6 @@ out:
  */
 static void srpt_on_free_cmd(struct scst_cmd *scmnd)
 {
-	struct srpt_send_ioctx *ioctx;
-
-	ioctx = scst_cmd_get_tgt_priv(scmnd);
-	BUG_ON(!ioctx);
-
-	scst_cmd_set_tgt_priv(scmnd, NULL);
-	srpt_put_send_ioctx(ioctx);
 }
 
 #if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 20) && !defined(BACKPORT_LINUX_WORKQUEUE_TO_2_6_19)
