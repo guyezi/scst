@@ -132,14 +132,12 @@ enum {
 	DEFAULT_MAX_RDMA_SIZE = 65536,
 };
 
-/**
- * @SRPT_OP_RECV: wr_id flag for marking receive operations.
- */
-enum {
-	SRPT_OP_RECV  = (1 << 31),
-
-	SRPT_OP_FLAGS = SRPT_OP_RECV,
-};
+static inline u64 encode_wr_id(u8 opcode, u32 idx)
+{ return ((u64)opcode << 32) | idx; }
+static inline u8 opcode_from_wr_id(u64 wr_id)
+{ return wr_id >> 32; }
+static inline u32 idx_from_wr_id(u64 wr_id)
+{ return (u32)wr_id; }
 
 struct rdma_iu {
 	u64 raddr;

@@ -142,16 +142,6 @@ MODULE_PARM_DESC(srpt_sq_size,
 
 #if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 31) \
     || defined(RHEL_MAJOR) && RHEL_MAJOR -0 <= 5
-static int ignore_disconnect_completions = true;
-#else
-static bool ignore_disconnect_completions = true;
-#endif
-module_param(ignore_disconnect_completions, bool, 0444);
-MODULE_PARM_DESC(ignore_disconnect_completions,
-"Whether or not to ignore the IB completions triggered after a QP disconnect.");
-
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 31) \
-    || defined(RHEL_MAJOR) && RHEL_MAJOR -0 <= 5
 static int use_port_guid_in_session_name;
 #else
 static bool use_port_guid_in_session_name;
@@ -833,7 +823,7 @@ static int srpt_post_recv(struct srpt_device *sdev,
 	struct ib_recv_wr wr, *bad_wr;
 
 	BUG_ON(!sdev);
-	wr.wr_id = ioctx->ioctx.index | SRPT_OP_RECV;
+	wr.wr_id = encode_wr_id(IB_WC_RECV, ioctx->ioctx.index);
 
 	list.addr = ioctx->ioctx.dma;
 	list.length = srp_max_req_size;
@@ -876,7 +866,7 @@ static int srpt_post_send(struct srpt_rdma_ch *ch,
 	list.lkey = sdev->mr->lkey;
 
 	wr.next = NULL;
-	wr.wr_id = ioctx->ioctx.index;
+	wr.wr_id = encode_wr_id(IB_WC_SEND, ioctx->ioctx.index);
 	wr.sg_list = &list;
 	wr.num_sge = 1;
 	wr.opcode = IB_WR_SEND;
@@ -1175,7 +1165,7 @@ static void srpt_abort_scst_cmd(struct srpt_send_ioctx *ioctx,
 	/*
 	 * If the command is in a state where the SCST core is waiting for the
 	 * ib_srpt driver, change the state to the next state. Changing the
-	 * state of the command from SRPT_NEED_DATA to SRPT_STATE_DATA_IN
+	 * state of the command from SRPT_STATE_NEED_DATA to SRPT_STATE_DATA_IN
 	 * ensures that srpt_xmit_response() will call this function a second
 	 * time.
 	 */
@@ -1246,7 +1236,7 @@ out:
 }
 
 /**
- * srpt_handle_send_err_comp() - Process an IB_WC_SEND or RDMA error completion.
+ * srpt_handle_send_err_comp() - Process an IB_WC_SEND error completion.
  */
 static void srpt_handle_send_err_comp(struct srpt_rdma_ch *ch, u64 wr_id,
 				      enum scst_exec_context context)
@@ -1254,9 +1244,10 @@ static void srpt_handle_send_err_comp(struct srpt_rdma_ch *ch, u64 wr_id,
 	struct srpt_send_ioctx *ioctx;
 	enum srpt_command_state state;
 	struct scst_cmd *scmnd;
+	u32 index;
 
-	ioctx = ch->ioctx_ring[wr_id & ~SRPT_OP_FLAGS];
-
+	index = idx_from_wr_id(wr_id);
+	ioctx = ch->ioctx_ring[index];
 	state = srpt_get_cmd_state(ioctx);
 	scmnd = ioctx->scmnd;
 
@@ -1277,7 +1268,7 @@ static void srpt_handle_send_err_comp(struct srpt_rdma_ch *ch, u64 wr_id,
 		}
 	} else
 		PRINT_ERROR("Received more than one IB error completion"
-			    " for wr_id = %u.", (unsigned)wr_id);
+			    " for wr_id = %u.", (unsigned)index);
 }
 
 /**
@@ -1332,10 +1323,12 @@ static void srpt_handle_rdma_comp(struct srpt_rdma_ch *ch,
 	if (scmnd) {
 		state = srpt_test_and_set_cmd_state(ioctx, SRPT_STATE_NEED_DATA,
 						    SRPT_STATE_DATA_IN);
-
-		EXTRACHECKS_WARN_ON(state != SRPT_STATE_NEED_DATA);
-
-		scst_rx_data(ioctx->scmnd, SCST_RX_STATUS_SUCCESS, context);
+		if (state == SRPT_STATE_NEED_DATA)
+			scst_rx_data(ioctx->scmnd, SCST_RX_STATUS_SUCCESS,
+				     context);
+		else
+			PRINT_ERROR("%s[%d]: wrong state = %d", __func__,
+				    __LINE__, state);
 	} else
 		PRINT_ERROR("%s[%d]: scmnd == NULL", __func__, __LINE__);
 }
@@ -1345,17 +1338,35 @@ static void srpt_handle_rdma_comp(struct srpt_rdma_ch *ch,
  */
 static void srpt_handle_rdma_err_comp(struct srpt_rdma_ch *ch,
 				      struct srpt_send_ioctx *ioctx,
+				      u8 opcode,
 				      enum scst_exec_context context)
 {
 	struct scst_cmd *scmnd;
-
-	EXTRACHECKS_WARN_ON(ioctx->n_rdma <= 0);
-	atomic_add(ioctx->n_rdma, &ch->sq_wr_avail);
+	enum srpt_command_state state;
 
 	scmnd = ioctx->scmnd;
-	if (scmnd)
-		srpt_abort_scst_cmd(ioctx, context);
-	else
+	state = srpt_get_cmd_state(ioctx);
+	if (scmnd) {
+		switch (opcode) {
+		case IB_WC_RDMA_READ:
+			EXTRACHECKS_WARN_ON(ioctx->n_rdma <= 0);
+			atomic_add(ioctx->n_rdma, &ch->sq_wr_avail);
+			if (state == SRPT_STATE_NEED_DATA)
+				srpt_abort_scst_cmd(ioctx, context);
+			else
+				PRINT_ERROR("%s[%d]: wrong state = %d",
+					    __func__, __LINE__, state);
+			break;
+		case IB_WC_RDMA_WRITE:
+			scst_set_delivery_status(scmnd,
+						 SCST_CMD_DELIVERY_ABORTED);
+			break;
+		default:
+			PRINT_ERROR("%s[%d]: opcode = %u", __func__, __LINE__,
+				    opcode);
+			break;
+		}
+	} else
 		PRINT_ERROR("%s[%d]: scmnd == NULL", __func__, __LINE__);
 }
 
@@ -1725,15 +1736,15 @@ static void srpt_process_rcv_completion(struct ib_cq *cq,
 {
 	struct srpt_device *sdev = ch->sport->sdev;
 	struct srpt_recv_ioctx *ioctx;
+	u32 index;
 
-	EXTRACHECKS_WARN_ON(!(wc->wr_id & SRPT_OP_RECV));
-
+	index = idx_from_wr_id(wc->wr_id);
 	if (wc->status == IB_WC_SUCCESS) {
-		ioctx = sdev->ioctx_ring[wc->wr_id & ~SRPT_OP_FLAGS];
+		ioctx = sdev->ioctx_ring[index];
 		srpt_handle_new_iu(ch, ioctx, context);
 	} else {
-		PRINT_INFO("receiving wr_id %u failed with status %d",
-			   (unsigned)(wc->wr_id & ~SRPT_OP_FLAGS), wc->status);
+		PRINT_INFO("receiving failed for idx %u with status %d",
+			   index, wc->status);
 	}
 }
 
@@ -1744,28 +1755,29 @@ static void srpt_process_send_completion(struct ib_cq *cq,
 {
 	struct srpt_send_ioctx *ioctx;
 	uint32_t index;
+	u8 opcode;
 
-	EXTRACHECKS_WARN_ON(wc->wr_id & SRPT_OP_RECV);
-
-	index = wc->wr_id & ~SRPT_OP_FLAGS;
+	index = idx_from_wr_id(wc->wr_id);
+	opcode = opcode_from_wr_id(wc->wr_id);
 	ioctx = ch->ioctx_ring[index];
 	if (wc->status == IB_WC_SUCCESS) {
-		if (wc->opcode == IB_WC_SEND)
+		if (opcode == IB_WC_SEND)
 			srpt_handle_send_comp(ch, ioctx, context);
 		else {
 			EXTRACHECKS_WARN_ON(wc->opcode != IB_WC_RDMA_READ);
 			srpt_handle_rdma_comp(ch, ioctx, context);
 		}
 	} else {
-		if (wc->opcode == IB_WC_SEND) {
-			PRINT_INFO("sending response for wr_id %u failed with"
+		if (opcode == IB_WC_SEND) {
+			PRINT_INFO("sending response for idx %u failed with"
 				   " status %d", index, wc->status);
 			srpt_handle_send_err_comp(ch, wc->wr_id, context);
 		} else {
-			EXTRACHECKS_WARN_ON(wc->opcode != IB_WC_RDMA_READ);
-			PRINT_INFO("RDMA read with wr_id %u failed with"
-				   " status %d", index, wc->status);
-			srpt_handle_rdma_err_comp(ch, ioctx, context);
+			PRINT_INFO("RDMA %s for idx %u failed with status %d",
+				   opcode == IB_WC_RDMA_READ ? "read"
+				   : opcode == IB_WC_RDMA_WRITE ? "write"
+				   : "???", index, wc->status);
+			srpt_handle_rdma_err_comp(ch, ioctx, opcode, context);
 		}
 	}
 }
@@ -1781,20 +1793,8 @@ static void srpt_process_completion(struct ib_cq *cq,
 
 	ib_req_notify_cq(cq, IB_CQ_NEXT_COMP);
 	while ((n = ib_poll_cq(cq, ARRAY_SIZE(ch->wc), wc)) > 0) {
-		if (unlikely(ignore_disconnect_completions
-		     && atomic_read(&ch->state) == RDMA_CHANNEL_DISCONNECTING))
-			continue;
 		for (i = 0; i < n; i++) {
-			if (!!(wc[i].wr_id & SRPT_OP_RECV)
-			    != !!(wc[i].opcode & IB_WC_RECV)) {
-				PRINT_ERROR("Ignored invalid completion (wr_id"
-					    " %#llx, status %d, opcode %#x).",
-					    wc[i].wr_id, wc[i].status,
-					    wc[i].opcode);
-				continue;
-			}
-			if ((wc[i].wr_id & SRPT_OP_RECV)
-			    || (wc[i].opcode & IB_WC_RECV))
+			if (opcode_from_wr_id(wc[i].wr_id) & IB_WC_RECV)
 				srpt_process_rcv_completion(cq, ch, context,
 							    &wc[i]);
 			else
@@ -2845,10 +2845,16 @@ static int srpt_perform_rdmas(struct srpt_rdma_ch *ch,
 	memset(&wr, 0, sizeof wr);
 
 	for (i = 0; i < ioctx->n_rdma; ++i, ++riu) {
-		wr.opcode = (dir == SCST_DATA_READ) ?
-		    IB_WR_RDMA_WRITE : IB_WR_RDMA_READ;
+		if (dir == SCST_DATA_READ) {
+			wr.opcode = IB_WR_RDMA_WRITE;
+			wr.wr_id = encode_wr_id(IB_WC_RDMA_WRITE,
+						ioctx->ioctx.index);
+		} else {
+			wr.opcode = IB_WR_RDMA_READ;
+			wr.wr_id = encode_wr_id(IB_WC_RDMA_READ,
+						ioctx->ioctx.index);
+		}
 		wr.next = NULL;
-		wr.wr_id = ioctx->ioctx.index;
 		wr.wr.rdma.remote_addr = riu->raddr;
 		wr.wr.rdma.rkey = riu->rkey;
 		wr.num_sge = riu->sge_cnt;
@@ -2938,7 +2944,7 @@ static void srpt_pending_cmd_timeout(struct scst_cmd *scmnd)
 	case SRPT_STATE_CMD_RSP_SENT:
 	case SRPT_STATE_MGMT_RSP_SENT:
 	default:
-		PRINT_ERROR("Command %p: IB completion for wr_id %u has not"
+		PRINT_ERROR("Command %p: IB completion for idx %u has not"
 			    " been received in time (SRPT command state %d)",
 			    scmnd, ioctx->ioctx.index, state);
 		break;
