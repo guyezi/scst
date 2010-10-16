@@ -99,13 +99,6 @@ static unsigned long trace_flag = DEFAULT_SRPT_TRACE_FLAGS;
 module_param(trace_flag, long, 0644);
 MODULE_PARM_DESC(trace_flag, "SCST trace flags.");
 #endif
-#if defined(CONFIG_SCST_DEBUG)
-static unsigned long processing_delay_in_us;
-module_param(processing_delay_in_us, long, 0744);
-MODULE_PARM_DESC(processing_delay_in_us,
-		 "SRP_CMD processing delay in microseconds. Useful for"
-		 " testing the initiator lockup avoidance algorithm.");
-#endif
 
 static int thread = 1;
 module_param(thread, int, 0444);
@@ -1681,16 +1674,23 @@ static void srpt_handle_new_iu(struct srpt_rdma_ch *ch,
 
 	ch_state = atomic_read(&ch->state);
 	srp_cmd = recv_ioctx->ioctx.buf;
-	if (ch_state == RDMA_CHANNEL_CONNECTING
-	    || ((srp_cmd->opcode == SRP_CMD || srp_cmd->opcode == SRP_TSK_MGMT)
-		&& !send_ioctx
-		&& ((send_ioctx = srpt_get_send_ioctx(ch)) == NULL))) {
+	if (unlikely(ch_state == RDMA_CHANNEL_CONNECTING)) {
 		list_add_tail(&recv_ioctx->wait_list, &ch->cmd_wait_list);
 		goto out;
 	}
 
 	if (unlikely(ch_state == RDMA_CHANNEL_DISCONNECTING))
 		goto post_recv;
+
+	if (srp_cmd->opcode == SRP_CMD || srp_cmd->opcode == SRP_TSK_MGMT) {
+		if (!send_ioctx)
+			send_ioctx = srpt_get_send_ioctx(ch);
+		if (unlikely(!send_ioctx)) {
+			list_add_tail(&recv_ioctx->wait_list,
+				      &ch->cmd_wait_list);
+			goto out;
+		}
+	}
 
 	WARN_ON(ch_state != RDMA_CHANNEL_LIVE);
 
