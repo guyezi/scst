@@ -1476,21 +1476,16 @@ static int srpt_build_tskmgmt_rsp(struct srpt_rdma_ch *ch,
  */
 static int srpt_handle_cmd(struct srpt_rdma_ch *ch,
 			   struct srpt_recv_ioctx *recv_ioctx,
+			   struct srpt_send_ioctx *send_ioctx,
 			   enum scst_exec_context context)
 {
-	struct srpt_send_ioctx *send_ioctx;
 	struct scst_cmd *scmnd;
 	struct srp_cmd *srp_cmd;
 	scst_data_direction dir;
 	u64 data_len;
 	int ret;
 
-	send_ioctx = srpt_get_send_ioctx(ch);
-	if (!send_ioctx) {
-		PRINT_ERROR("%s", "SRP initiator exceeded request limit, which"
-			    " may cause data corruption.");
-		goto err_no_send_ioctx;
-	}
+	BUG_ON(!send_ioctx);
 
 	srp_cmd = recv_ioctx->ioctx.buf;
 
@@ -1540,7 +1535,6 @@ static int srpt_handle_cmd(struct srpt_rdma_ch *ch,
 
 err:
 	srpt_put_send_ioctx(send_ioctx);
-err_no_send_ioctx:
 	return -1;
 }
 
@@ -1561,21 +1555,16 @@ err_no_send_ioctx:
  * 6.7 in the SRP r16a document.
  */
 static u8 srpt_handle_tsk_mgmt(struct srpt_rdma_ch *ch,
-			       struct srpt_recv_ioctx *recv_ioctx)
+			       struct srpt_recv_ioctx *recv_ioctx,
+			       struct srpt_send_ioctx *send_ioctx)
 {
-	struct srpt_send_ioctx *send_ioctx;
 	struct srp_tsk_mgmt *srp_tsk;
 	struct srpt_mgmt_ioctx *mgmt_ioctx;
 	int ret;
 
 	ret = SCST_MGMT_STATUS_FAILED;
 
-	send_ioctx = srpt_get_send_ioctx(ch);
-	if (!send_ioctx) {
-		PRINT_ERROR("%s", "SRP initiator exceeded request limit, which"
-			    " may cause data corruption.");
-		goto err_no_send_ioctx;
-	}
+	BUG_ON(!send_ioctx);
 
 	srp_tsk = recv_ioctx->ioctx.buf;
 
@@ -1585,8 +1574,13 @@ static u8 srpt_handle_tsk_mgmt(struct srpt_rdma_ch *ch,
 		  ch->cm_id, ch->scst_sess);
 
 	mgmt_ioctx = kmalloc(sizeof *mgmt_ioctx, GFP_ATOMIC);
-	if (!mgmt_ioctx)
+	if (!mgmt_ioctx) {
+		PRINT_ERROR("tag 0x%llx: memory allocation for task management"
+			    " function failed. Ignoring task management request"
+			    " (func %d).", srp_tsk->task_tag,
+			    srp_tsk->tsk_mgmt_func);
 		goto err;
+	}
 
 	mgmt_ioctx->ioctx = send_ioctx;
 	BUG_ON(mgmt_ioctx->ioctx->ch != ch);
@@ -1643,7 +1637,6 @@ static u8 srpt_handle_tsk_mgmt(struct srpt_rdma_ch *ch,
 
 err:
 	kfree(mgmt_ioctx);
-err_no_send_ioctx:
 	return ret;
 }
 
@@ -1670,20 +1663,28 @@ static u8 scst_to_srp_tsk_mgmt_status(const int scst_mgmt_status)
  * @ioctx: SRPT I/O context associated with the information unit.
  */
 static void srpt_handle_new_iu(struct srpt_rdma_ch *ch,
-			       struct srpt_recv_ioctx *ioctx,
+			       struct srpt_recv_ioctx *recv_ioctx,
+			       struct srpt_send_ioctx *send_ioctx,
 			       enum scst_exec_context context)
 {
 	struct srp_cmd *srp_cmd;
 	enum rdma_ch_state ch_state;
 	int req_lim;
 
-	req_lim = atomic_dec_return(&ch->req_lim);
-	if (unlikely(req_lim < 0))
-		PRINT_ERROR("req_lim = %d < 0", req_lim);
+	BUG_ON(!ch);
+	BUG_ON(!recv_ioctx);
+
+	ib_dma_sync_single_for_cpu(ch->sport->sdev->device,
+				   recv_ioctx->ioctx.dma, srp_max_req_size,
+				   DMA_FROM_DEVICE);
 
 	ch_state = atomic_read(&ch->state);
-	if (ch_state == RDMA_CHANNEL_CONNECTING) {
-		list_add_tail(&ioctx->wait_list, &ch->cmd_wait_list);
+	srp_cmd = recv_ioctx->ioctx.buf;
+	if (ch_state == RDMA_CHANNEL_CONNECTING
+	    || ((srp_cmd->opcode == SRP_CMD || srp_cmd->opcode == SRP_TSK_MGMT)
+		&& !send_ioctx
+		&& ((send_ioctx = srpt_get_send_ioctx(ch)) == NULL))) {
+		list_add_tail(&recv_ioctx->wait_list, &ch->cmd_wait_list);
 		goto out;
 	}
 
@@ -1692,18 +1693,16 @@ static void srpt_handle_new_iu(struct srpt_rdma_ch *ch,
 
 	WARN_ON(ch_state != RDMA_CHANNEL_LIVE);
 
-	ib_dma_sync_single_for_cpu(ch->sport->sdev->device,
-				   ioctx->ioctx.dma, srp_max_req_size,
-				   DMA_FROM_DEVICE);
-
-	srp_cmd = ioctx->ioctx.buf;
+	req_lim = atomic_dec_return(&ch->req_lim);
+	if (unlikely(req_lim < 0))
+		PRINT_ERROR("req_lim = %d < 0", req_lim);
 
 	switch (srp_cmd->opcode) {
 	case SRP_CMD:
-		srpt_handle_cmd(ch, ioctx, context);
+		srpt_handle_cmd(ch, recv_ioctx, send_ioctx, context);
 		break;
 	case SRP_TSK_MGMT:
-		srpt_handle_tsk_mgmt(ch, ioctx);
+		srpt_handle_tsk_mgmt(ch, recv_ioctx, send_ioctx);
 		break;
 	case SRP_I_LOGOUT:
 		PRINT_ERROR("%s", "Not yet implemented: SRP_I_LOGOUT");
@@ -1724,7 +1723,7 @@ static void srpt_handle_new_iu(struct srpt_rdma_ch *ch,
 	}
 
 post_recv:
-	srpt_post_recv(ch->sport->sdev, ioctx);
+	srpt_post_recv(ch->sport->sdev, recv_ioctx);
 out:
 	return;
 }
@@ -1741,7 +1740,7 @@ static void srpt_process_rcv_completion(struct ib_cq *cq,
 	index = idx_from_wr_id(wc->wr_id);
 	if (wc->status == IB_WC_SUCCESS) {
 		ioctx = sdev->ioctx_ring[index];
-		srpt_handle_new_iu(ch, ioctx, context);
+		srpt_handle_new_iu(ch, ioctx, NULL, context);
 	} else {
 		PRINT_INFO("receiving failed for idx %u with status %d",
 			   index, wc->status);
@@ -1753,19 +1752,19 @@ static void srpt_process_send_completion(struct ib_cq *cq,
 					 enum scst_exec_context context,
 					 struct ib_wc *wc)
 {
-	struct srpt_send_ioctx *ioctx;
+	struct srpt_send_ioctx *send_ioctx;
 	uint32_t index;
 	u8 opcode;
 
 	index = idx_from_wr_id(wc->wr_id);
 	opcode = opcode_from_wr_id(wc->wr_id);
-	ioctx = ch->ioctx_ring[index];
+	send_ioctx = ch->ioctx_ring[index];
 	if (wc->status == IB_WC_SUCCESS) {
 		if (opcode == IB_WC_SEND)
-			srpt_handle_send_comp(ch, ioctx, context);
+			srpt_handle_send_comp(ch, send_ioctx, context);
 		else {
 			EXTRACHECKS_WARN_ON(wc->opcode != IB_WC_RDMA_READ);
-			srpt_handle_rdma_comp(ch, ioctx, context);
+			srpt_handle_rdma_comp(ch, send_ioctx, context);
 		}
 	} else {
 		if (opcode == IB_WC_SEND) {
@@ -1777,8 +1776,39 @@ static void srpt_process_send_completion(struct ib_cq *cq,
 				   opcode == IB_WC_RDMA_READ ? "read"
 				   : opcode == IB_WC_RDMA_WRITE ? "write"
 				   : "???", index, wc->status);
-			srpt_handle_rdma_err_comp(ch, ioctx, opcode, context);
+			srpt_handle_rdma_err_comp(ch, send_ioctx, opcode,
+						  context);
 		}
+	}
+
+	/*
+	 * Although this has not yet been observed during tests, at least in
+	 * theory it is possible that the srpt_get_send_ioctx() call invoked
+	 * by srpt_handle_new_iu() fails. This is possible because the
+	 * req_lim_delta value in each response is set to one, and it is
+	 * possible that this response makes the initiator send a new request
+	 * before the send completion for that response has been
+	 * processed. This could e.g. happen if the call to
+	 * srpt_put_send_iotcx() is delayed because of a higher priority
+	 * interrupt or if IB retransmission causes generation of the send
+	 * completion to be delayed. Incoming information units for which
+	 * srpt_get_send_ioctx() fails are queued on cmd_wait_list. The code
+	 * below processes these delayed requests one at a time. The code
+	 * below has been tested by setting the req_lim_delta value in the
+	 * SRP_LOGIN_RSP response to a higher value than ch->req_lim.
+	 */
+	while (unlikely(opcode == IB_WC_SEND
+			&& !list_empty(&ch->cmd_wait_list)
+			&& atomic_read(&ch->state) == RDMA_CHANNEL_LIVE
+			&& (send_ioctx = srpt_get_send_ioctx(ch)) != NULL)) {
+		struct srpt_recv_ioctx *recv_ioctx;
+
+		PRINT_INFO("%s", "Processing delayed information unit.");
+		recv_ioctx = list_first_entry(&ch->cmd_wait_list,
+					      struct srpt_recv_ioctx,
+					      wait_list);
+		list_del(&recv_ioctx->wait_list);
+		srpt_handle_new_iu(ch, recv_ioctx, send_ioctx, context);
 	}
 }
 
@@ -2292,7 +2322,7 @@ static int srpt_cm_req_recv(struct ib_cm_id *cm_id,
 	memcpy(ch->t_port_id, req->target_port_id, 16);
 	ch->sport = &sdev->port[param->port - 1];
 	ch->cm_id = cm_id;
-	ch->rq_size = max(SRPT_RQ_SIZE, scst_get_max_lun_commands(NULL, 0));
+	ch->rq_size = min(SRPT_RQ_SIZE, scst_get_max_lun_commands(NULL, 0));
 	atomic_set(&ch->processing_compl, 0);
 	atomic_set(&ch->state, RDMA_CHANNEL_CONNECTING);
 	INIT_LIST_HEAD(&ch->cmd_wait_list);
@@ -2467,7 +2497,8 @@ static void srpt_cm_rtu_recv(struct ib_cm_id *cm_id)
 		list_for_each_entry_safe(ioctx, ioctx_tmp, &ch->cmd_wait_list,
 					 wait_list) {
 			list_del(&ioctx->wait_list);
-			srpt_handle_new_iu(ch, ioctx, SCST_CONTEXT_THREAD);
+			srpt_handle_new_iu(ch, ioctx, NULL,
+					   SCST_CONTEXT_THREAD);
 		}
 		if (ret && srpt_test_and_set_channel_state(ch,
 			RDMA_CHANNEL_LIVE,
