@@ -1257,6 +1257,7 @@ static void srpt_handle_send_err_comp(struct srpt_rdma_ch *ch, u64 wr_id,
 			    && state != SRPT_STATE_NEED_DATA
 			    && state != SRPT_STATE_DONE);
 
+	/* If SRP_RSP sending failed, undo the ch->req_lim change. */
 	if (state == SRPT_STATE_CMD_RSP_SENT
 	    || state == SRPT_STATE_MGMT_RSP_SENT)
 		atomic_dec(&ch->req_lim);
@@ -1670,7 +1671,6 @@ static void srpt_handle_new_iu(struct srpt_rdma_ch *ch,
 {
 	struct srp_cmd *srp_cmd;
 	enum rdma_ch_state ch_state;
-	int req_lim;
 
 	BUG_ON(!ch);
 	BUG_ON(!recv_ioctx);
@@ -1693,10 +1693,6 @@ static void srpt_handle_new_iu(struct srpt_rdma_ch *ch,
 		goto post_recv;
 
 	WARN_ON(ch_state != RDMA_CHANNEL_LIVE);
-
-	req_lim = atomic_dec_return(&ch->req_lim);
-	if (unlikely(req_lim < 0))
-		PRINT_ERROR("req_lim = %d < 0", req_lim);
 
 	switch (srp_cmd->opcode) {
 	case SRP_CMD:
@@ -1740,6 +1736,11 @@ static void srpt_process_rcv_completion(struct ib_cq *cq,
 
 	index = idx_from_wr_id(wc->wr_id);
 	if (wc->status == IB_WC_SUCCESS) {
+		int req_lim;
+
+		req_lim = atomic_dec_return(&ch->req_lim);
+		if (unlikely(req_lim < 0))
+			PRINT_ERROR("req_lim = %d < 0", req_lim);
 		ioctx = sdev->ioctx_ring[index];
 		srpt_handle_new_iu(ch, ioctx, NULL, context);
 	} else {
@@ -1804,7 +1805,6 @@ static void srpt_process_send_completion(struct ib_cq *cq,
 			&& (send_ioctx = srpt_get_send_ioctx(ch)) != NULL)) {
 		struct srpt_recv_ioctx *recv_ioctx;
 
-		PRINT_INFO("%s", "Processing delayed information unit.");
 		recv_ioctx = list_first_entry(&ch->cmd_wait_list,
 					      struct srpt_recv_ioctx,
 					      wait_list);
