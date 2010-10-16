@@ -80,9 +80,10 @@ MODULE_LICENSE("Dual BSD/GPL");
  */
 
 enum threading_mode {
-	MODE_ALL_IN_SIRQ             = 0,
-	MODE_IB_COMPLETION_IN_THREAD = 1,
-	MODE_IB_COMPLETION_IN_SIRQ   = 2,
+	MODE_ALL_IN_SIRQ                    = 0,
+	MODE_IB_COMPLETION_IN_THREAD_THREAD = 1,
+	MODE_IB_COMPLETION_IN_SIRQ          = 2,
+	MODE_IB_COMPLETION_IN_THREAD_DIRECT = 3,
 };
 
 
@@ -1852,7 +1853,8 @@ static void srpt_completion(struct ib_cq *cq, void *ctx)
 	BUG_ON(!ch);
 	atomic_inc(&ch->processing_compl);
 	switch (thread) {
-	case MODE_IB_COMPLETION_IN_THREAD:
+	case MODE_IB_COMPLETION_IN_THREAD_THREAD:
+	case MODE_IB_COMPLETION_IN_THREAD_DIRECT:
 		wake_up_interruptible(&ch->wait_queue);
 		break;
 	case MODE_IB_COMPLETION_IN_SIRQ:
@@ -1868,6 +1870,9 @@ static void srpt_completion(struct ib_cq *cq, void *ctx)
 static int srpt_compl_thread(void *arg)
 {
 	struct srpt_rdma_ch *ch;
+	enum scst_exec_context context =
+		thread == MODE_IB_COMPLETION_IN_THREAD_THREAD
+		? SCST_CONTEXT_THREAD : SCST_CONTEXT_DIRECT;
 
 	/* Hibernation / freezing of the SRPT kernel thread is not supported. */
 	current->flags |= PF_NOFREEZE;
@@ -1878,8 +1883,7 @@ static int srpt_compl_thread(void *arg)
 		   ch->sess_name, ch->thread->comm, current->pid);
 	while (!kthread_should_stop()) {
 		wait_event_interruptible(ch->wait_queue,
-			(srpt_process_completion(ch->cq, ch,
-						 SCST_CONTEXT_THREAD),
+			(srpt_process_completion(ch->cq, ch, context),
 			 kthread_should_stop()));
 	}
 	PRINT_INFO("Session %s: kernel thread %s (PID %d) stopped",
@@ -1947,7 +1951,8 @@ static int srpt_create_ch_ib(struct srpt_rdma_ch *ch)
 	if (ret)
 		goto err_destroy_qp;
 
-	if (thread == MODE_IB_COMPLETION_IN_THREAD) {
+	if (thread == MODE_IB_COMPLETION_IN_THREAD_THREAD
+	    || thread == MODE_IB_COMPLETION_IN_THREAD_DIRECT) {
 		init_waitqueue_head(&ch->wait_queue);
 
 		TRACE_DBG("creating IB completion thread for session %s",
@@ -3774,7 +3779,8 @@ static int __init srpt_init_module(void)
 		 */
 		srpt_template.rdy_to_xfer_atomic = true;
 		break;
-	case MODE_IB_COMPLETION_IN_THREAD:
+	case MODE_IB_COMPLETION_IN_THREAD_THREAD:
+	case MODE_IB_COMPLETION_IN_THREAD_DIRECT:
 		/*
 		 * Process IB completions in the kernel thread associated with
 		 * the RDMA channel, and process SCST commands in the kernel
