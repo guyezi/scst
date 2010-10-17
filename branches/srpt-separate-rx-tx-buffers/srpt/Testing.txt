@@ -41,6 +41,25 @@ At least the following tests must be run before releasing a new SRPT version:
       true
     done
 
+* Repeat the above test with SCST_MAX_TGT_DEV_COMMANDS set to 48 and after
+  having applied the patch below on ib_srpt.c. The expected result is that no
+  data corruption occurs but that on the target error messages are logged
+  about a negative req_lim value. The lowest expected value for req_lim is -15.
+
+Index: srpt/src/ib_srpt.c
+===================================================================
+--- srpt/src/ib_srpt.c  (revision 2412)
++++ srpt/src/ib_srpt.c  (working copy)
+@@ -2411,7 +2411,7 @@
+        ch->max_ti_iu_len = it_iu_len;
+        rsp->buf_fmt = __constant_cpu_to_be16(SRP_BUF_FORMAT_DIRECT
+                                              | SRP_BUF_FORMAT_INDIRECT);
+-       rsp->req_lim_delta = cpu_to_be32(ch->rq_size);
++       rsp->req_lim_delta = cpu_to_be32(ch->rq_size + 16);
+        atomic_set(&ch->req_lim, ch->rq_size);
+ 
+        /* create cm reply */
+
 * Verify that a SCSI reset works properly by running the following command
   on an initiator system (note: even with the latest Linux SRP initiator, the
   command below triggers a kernel bug -- see also
