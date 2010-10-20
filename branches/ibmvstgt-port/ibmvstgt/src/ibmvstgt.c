@@ -1032,6 +1032,39 @@ static void handle_crq(struct work_struct *work)
 	handle_cmd_queue(target);
 }
 
+static void ibmvstgt_inq_get_product_id(const u8 device_type, char* buf,
+					const int size)
+{
+	WARN_ON(size != 16);
+
+	/*
+	 * Don't even ask about the next bit.  AIX uses hardcoded device
+	 * naming to recognize device types and their client won't work unless
+	 * we use VOPTA and VDASD.
+	 */
+	if (device_type)
+		memcpy(buf, "VOPTA blkdev    ", 16);
+	else
+		memcpy(buf, "VDASD blkdev    ", 16);
+}
+
+static int ibmvstgt_inq_get_vend_specific(struct scst_tgt *scst_tgt, char *buf)
+{
+	struct srp_target *target = scst_tgt_get_tgt_priv(scst_tgt);
+	struct vio_port *vport = target_to_port(target);
+
+	sprintf(buf,
+		"IBM-VSCSI-%s-P%d-%x-%d-%d-%d\n",
+		system_id,
+		partition_number,
+		vport->dma_dev->unit_address,
+		0/*bus*/,
+		vport->dma_dev->unit_address/*target - to be verified*/,
+		0/*lun*/);
+	return 158;
+}
+
+
 #if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
 static ssize_t system_id_show(struct class_device *dev, char *buf)
 #else
@@ -1107,6 +1140,12 @@ static struct scst_tgt_template ibmvstgt_template = {
 #else
 	.sg_tablesize		= SCSI_MAX_SG_SEGMENTS,
 #endif
+	.fake_aca		= true,
+	.inq_vendor		= "IBM     ",
+	.inq_revision		= "0001",
+	.inq_get_product_id	= ibmvstgt_inq_get_product_id,
+	.inq_get_vend_specific	= ibmvstgt_inq_get_vend_specific,
+
 #if defined(CONFIG_SCST_DEBUG) || defined(CONFIG_SCST_TRACING)
 	.default_trace_flags	= DEFAULT_IBMVSTGT_TRACE_FLAGS,
 	.trace_flags		= &trace_flag,

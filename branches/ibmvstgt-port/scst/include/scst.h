@@ -644,6 +644,13 @@ struct scst_tgt_template {
 #endif
 
 	/*
+	 * True if SCST should report that it supports ACA although it does
+	 * not yet support ACA. Necessary for the IBM virtual SCSI target
+	 * driver.
+	 */
+	unsigned fake_aca:1;
+
+	/*
 	 * The maximum time in seconds cmd can stay inside the target
 	 * hardware, i.e. after rdy_to_xfer() and xmit_response(), before
 	 * on_hw_pending_cmd_timeout() will be called, if defined.
@@ -1039,6 +1046,34 @@ struct scst_tgt_template {
 	/* Device number in /proc */
 	int proc_dev_num;
 #endif
+
+	/*
+	 * Optional vendor to be reported via the SCSI inquiry data. If NULL,
+	 * an SCST device handler specific default value will be used, e.g.
+	 * "SCST_FIO" for scst_vdisk file I/O.
+	 */
+	const char* inq_vendor;
+
+	/*
+	 * Optional method that sets the product ID in [buf, buf+size) based
+	 * on the device type (byte 0 of the SCSI inquiry data, which contains
+	 * the peripheral qualifier in the highest three bits and the
+	 * peripheral device type in the lower five bits).
+	 */
+	void (*inq_get_product_id)(u8 device_type, char* buf, int size);
+
+	/*
+	 * Optional revision to be reported via the SCSI inquiry data. If NULL,
+	 * an SCST device handler specific default value will be used, e.g.
+	 * " 210" for scst_vdisk file I/O.
+	 */
+	const char* inq_revision;
+
+	/*
+	 * Optional method that sets the SCSI inquiry vendor-specific data in
+	 * [buf, buf+size).
+	 */
+	int (*inq_get_vend_specific)(struct scst_tgt *tgt, char *buf);
 };
 
 /*
