@@ -1052,7 +1052,7 @@ struct scst_tgt_template {
 	 * an SCST device handler specific default value will be used, e.g.
 	 * "SCST_FIO" for scst_vdisk file I/O.
 	 */
-	const char* inq_vendor;
+	const char *inq_vendor;
 
 	/*
 	 * Optional method that sets the product ID in [buf, buf+size) based
@@ -1061,21 +1061,21 @@ struct scst_tgt_template {
 	 * peripheral device type in the lower five bits).
 	 */
 	void (*inq_get_product_id)(const struct scst_tgt_dev *tgt_dev,
-                                   char* buf, int size);
+				   char *buf, int size);
 
 	/*
 	 * Optional revision to be reported via the SCSI inquiry data. If NULL,
 	 * an SCST device handler specific default value will be used, e.g.
 	 * " 210" for scst_vdisk file I/O.
 	 */
-	const char* inq_revision;
+	const char *inq_revision;
 
 	/*
 	 * Optional method that sets the SCSI inquiry vendor-specific data in
 	 * [buf, buf+size).
 	 */
 	int (*inq_get_vend_specific)(const struct scst_tgt_dev *tgt_dev,
-                                     char *buf);
+				     char *buf);
 };
 
 /*

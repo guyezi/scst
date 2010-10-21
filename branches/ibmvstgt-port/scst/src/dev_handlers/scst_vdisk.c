@@ -1641,7 +1641,7 @@ static void vdisk_exec_inquiry(struct scst_cmd *cmd)
 		memset(&buf[16], ' ', 16);
 		if (cmd->tgtt->inq_get_product_id)
 			cmd->tgtt->inq_get_product_id(cmd->tgt_dev, &buf[16],
-                                                      16);
+						      16);
 		else {
 			len = min_t(size_t, strlen(virt_dev->name), 16);
 			memcpy(&buf[16], virt_dev->name, len);

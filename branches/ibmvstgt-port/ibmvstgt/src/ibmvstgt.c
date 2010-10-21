@@ -1033,7 +1033,7 @@ static void handle_crq(struct work_struct *work)
 }
 
 static void ibmvstgt_inq_get_product_id(const struct scst_tgt_dev *tgt_dev,
-					char* buf, const int size)
+					char *buf, const int size)
 {
 	WARN_ON(size != 16);
 
