@@ -1290,6 +1290,65 @@ static int ibmvstgt_remove(struct vio_dev *dev)
 	return 0;
 }
 
+#ifdef CONFIG_SCST_PROC
+#if defined(CONFIG_SCST_DEBUG) || defined(CONFIG_SCST_TRACING)
+static int ibmvstgt_trace_level_show(struct seq_file *seq, void *v)
+{
+	return scst_proc_log_entry_read(seq, trace_flag, NULL);
+}
+
+static ssize_t ibmvstgt_proc_trace_level_write(struct file *file,
+	const char __user *buf, size_t length, loff_t *off)
+{
+	return scst_proc_log_entry_write(file, buf, length, &trace_flag,
+		DEFAULT_IBMVSTGT_TRACE_FLAGS, NULL);
+}
+
+static struct scst_proc_data ibmvstgt_log_proc_data = {
+	SCST_DEF_RW_SEQ_OP(ibmvstgt_proc_trace_level_write)
+	.show = ibmvstgt_trace_level_show,
+};
+#endif
+
+static int ibmvstgt_register_procfs_entry(struct scst_tgt_template *tgt)
+{
+	int res = -ENOMEM;
+#if defined(CONFIG_SCST_DEBUG) || defined(CONFIG_SCST_TRACING)
+	struct proc_dir_entry *p, *root;
+
+	root = scst_proc_get_tgt_root(tgt);
+	if (!root)
+		goto out;
+	/*
+	 * Fill in the scst_proc_data::data pointer, which is used in
+	 * a printk(KERN_INFO ...) statement in
+	 * scst_proc_log_entry_write() in scst_proc.c.
+	 */
+	ibmvstgt_log_proc_data.data = (char *)tgt->name;
+	p = scst_create_proc_entry(root, "trace_level",
+				   &ibmvstgt_log_proc_data);
+	if (p)
+		res = 0;
+#endif
+out:
+	return res;
+}
+
+static void ibmvstgt_unregister_procfs_entry(struct scst_tgt_template *tgt)
+{
+#if defined(CONFIG_SCST_DEBUG) || defined(CONFIG_SCST_TRACING)
+	struct proc_dir_entry *root;
+
+	root = scst_proc_get_tgt_root(tgt);
+	if (!root)
+		goto out;
+	remove_proc_entry("trace_level", root);
+out:
+	;
+#endif
+}
+#endif /*CONFIG_SCST_PROC*/
+
 static struct vio_device_id ibmvstgt_device_table[] __devinitdata = {
 	{"v-scsi-host", "IBM,v-scsi-host"},
 	{"",""}
@@ -1370,6 +1429,10 @@ static int ibmvstgt_init(void)
 	if (err)
 		goto destroy_wq;
 
+#ifdef CONFIG_SCST_PROC
+	ibmvstgt_register_procfs_entry(&ibmvstgt_template);
+#endif
+
 	TRACE_EXIT_RES(err);
 
 	return 0;
@@ -1392,6 +1455,9 @@ static void ibmvstgt_exit(void)
 
 	printk("Unregister IBM virtual SCSI driver\n");
 
+#ifdef CONFIG_SCST_PROC
+	ibmvstgt_unregister_procfs_entry(&ibmvstgt_template);
+#endif
 	vio_unregister_driver(&ibmvstgt_driver);
 	destroy_workqueue(vtgtd);
 	scst_unregister_target_template(&ibmvstgt_template);
