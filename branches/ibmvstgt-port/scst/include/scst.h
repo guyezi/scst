@@ -1060,7 +1060,8 @@ struct scst_tgt_template {
 	 * the peripheral qualifier in the highest three bits and the
 	 * peripheral device type in the lower five bits).
 	 */
-	void (*inq_get_product_id)(u8 device_type, char* buf, int size);
+	void (*inq_get_product_id)(const struct scst_tgt_dev *tgt_dev,
+                                   char* buf, int size);
 
 	/*
 	 * Optional revision to be reported via the SCSI inquiry data. If NULL,
@@ -1073,7 +1074,8 @@ struct scst_tgt_template {
 	 * Optional method that sets the SCSI inquiry vendor-specific data in
 	 * [buf, buf+size).
 	 */
-	int (*inq_get_vend_specific)(struct scst_tgt *tgt, char *buf);
+	int (*inq_get_vend_specific)(const struct scst_tgt_dev *tgt_dev,
+                                     char *buf);
 };
 
 /*

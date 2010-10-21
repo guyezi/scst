@@ -550,7 +550,7 @@ static void process_login(struct iu_entry *iue)
 	}
 
 	BUG_ON(!target);
-	sess = scst_register_session(target->tgt, 0, name, target, NULL, NULL);
+	sess = scst_register_session(target->tgt, 0, name, vport, NULL, NULL);
 	if (!sess) {
 		rej->reason =
 		  __constant_cpu_to_be32(SRP_LOGIN_REJ_INSUFFICIENT_RESOURCES);
@@ -1032,8 +1032,8 @@ static void handle_crq(struct work_struct *work)
 	handle_cmd_queue(target);
 }
 
-static void ibmvstgt_inq_get_product_id(const u8 device_type, char* buf,
-					const int size)
+static void ibmvstgt_inq_get_product_id(const struct scst_tgt_dev *tgt_dev,
+					char* buf, const int size)
 {
 	WARN_ON(size != 16);
 
@@ -1042,26 +1042,31 @@ static void ibmvstgt_inq_get_product_id(const u8 device_type, char* buf,
 	 * naming to recognize device types and their client won't work unless
 	 * we use VOPTA and VDASD.
 	 */
-	if (device_type)
-		memcpy(buf, "VOPTA blkdev    ", 16);
-	else
+	if (tgt_dev->dev->type == TYPE_DISK)
 		memcpy(buf, "VDASD blkdev    ", 16);
+	else
+		memcpy(buf, "VOPTA blkdev    ", 16);
 }
 
-static int ibmvstgt_inq_get_vend_specific(struct scst_tgt *scst_tgt, char *buf)
-{
-	struct srp_target *target = scst_tgt_get_tgt_priv(scst_tgt);
-	struct vio_port *vport = target_to_port(target);
+#define GETTARGET(x) ((int)((((uint64_t)(x)) >> 56) & 0x003f))
+#define GETBUS(x) ((int)((((uint64_t)(x)) >> 53) & 0x0007))
+#define GETLUN(x) ((int)((((uint64_t)(x)) >> 48) & 0x001f))
 
-	sprintf(buf,
-		"IBM-VSCSI-%s-P%d-%x-%d-%d-%d\n",
-		system_id,
-		partition_number,
-		vport->dma_dev->unit_address,
-		0/*bus*/,
-		vport->dma_dev->unit_address/*target - to be verified*/,
-		0/*lun*/);
-	return 158;
+static int ibmvstgt_inq_get_vend_specific(const struct scst_tgt_dev *tgt_dev,
+					  char *buf)
+{
+	struct scst_session *sess = tgt_dev->sess;
+	struct vio_port *vport = scst_sess_get_tgt_priv(sess);
+	uint64_t lun = tgt_dev->lun;
+
+	return sprintf(buf,
+		       "IBM-VSCSI-%s-P%d-%x-%d-%d-%d\n",
+		       system_id,
+		       partition_number,
+		       vport->dma_dev->unit_address,
+		       GETBUS(lun),
+		       GETTARGET(lun),
+		       GETLUN(lun));
 }
 
 
