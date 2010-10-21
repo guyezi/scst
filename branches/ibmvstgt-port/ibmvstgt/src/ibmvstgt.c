@@ -535,6 +535,8 @@ static void process_login(struct iu_entry *iue)
 	struct vio_port *vport = target_to_port(target);
 	char name[16];
 
+	TRACE_ENTRY();
+
 	BUG_ON(vport->sess);
 
 	memset(iu, 0, max(sizeof *rsp, sizeof *rej));
@@ -574,6 +576,8 @@ static void process_login(struct iu_entry *iue)
 
 	send_iu(iue, sizeof(*rsp), VIOSRP_SRP_FORMAT);
 
+	TRACE_EXIT();
+
 	return;
 
 reject:
@@ -583,6 +587,8 @@ reject:
 					      | SRP_BUF_FORMAT_INDIRECT);
 
 	send_iu(iue, sizeof *rsp, VIOSRP_SRP_FORMAT);
+
+	TRACE_EXIT();
 }
 
 static inline void queue_cmd(struct iu_entry *iue)
@@ -767,6 +773,8 @@ static int process_srp_iu(struct iu_entry *iue)
 	int done = 1;
 	u8 opcode = iu->srp.rsp.opcode;
 
+	TRACE_ENTRY();
+
 	spin_lock_irqsave(&target->lock, flags);
 	if (vport->releasing) {
 		spin_unlock_irqrestore(&target->lock, flags);
@@ -798,6 +806,8 @@ static int process_srp_iu(struct iu_entry *iue)
 	default:
 		eprintk("Unknown type %u\n", opcode);
 	}
+
+	TRACE_EXIT_RES(done);
 
 	return done;
 }
@@ -1046,6 +1056,8 @@ static void ibmvstgt_inq_get_product_id(const struct scst_tgt_dev *tgt_dev,
 		memcpy(buf, "VDASD blkdev    ", 16);
 	else
 		memcpy(buf, "VOPTA blkdev    ", 16);
+
+	TRACE_DBG("%s: %d -> %.*s", __FUNCTION__, tgt_dev->dev->type, 16, buf);
 }
 
 #define GETTARGET(x) ((int)((((uint64_t)(x)) >> 56) & 0x003f))
@@ -1175,6 +1187,8 @@ static int ibmvstgt_probe(struct vio_dev *dev, const struct vio_device_id *id)
 	unsigned int *dma, dma_size;
 	int err = -ENOMEM;
 
+	TRACE_ENTRY();
+
 	vport = kzalloc(sizeof(struct vio_port), GFP_KERNEL);
 	if (!vport)
 		return err;
@@ -1241,6 +1255,8 @@ static int ibmvstgt_probe(struct vio_dev *dev, const struct vio_device_id *id)
 
 	atomic_inc(&ibmvstgt_device_count);
 
+	TRACE_EXIT_RES(0);
+
 	return 0;
 
 destroy_crq_queue:
@@ -1253,6 +1269,9 @@ free_target:
 	kfree(target);
 free_vport:
 	kfree(vport);
+
+	TRACE_EXIT_RES(err);
+
 	return err;
 }
 
@@ -1327,6 +1346,8 @@ static int ibmvstgt_init(void)
 {
 	int err = -ENOMEM;
 
+	TRACE_ENTRY();
+
 	printk("IBM eServer i/pSeries Virtual SCSI Target Driver\n");
 
 	err = class_register(&ibmvstgt_class);
@@ -1349,6 +1370,8 @@ static int ibmvstgt_init(void)
 	if (err)
 		goto destroy_wq;
 
+	TRACE_EXIT_RES(err);
+
 	return 0;
 
 destroy_wq:
@@ -1358,17 +1381,23 @@ unregister_tgt:
 unregister_class:
 	class_unregister(&ibmvstgt_class);
 out:
+	TRACE_EXIT_RES(err);
+
 	return err;
 }
 
 static void ibmvstgt_exit(void)
 {
+	TRACE_ENTRY();
+
 	printk("Unregister IBM virtual SCSI driver\n");
 
 	vio_unregister_driver(&ibmvstgt_driver);
 	destroy_workqueue(vtgtd);
 	scst_unregister_target_template(&ibmvstgt_template);
 	class_unregister(&ibmvstgt_class);
+
+	TRACE_EXIT();
 }
 
 MODULE_DESCRIPTION("IBM Virtual SCSI Target");
