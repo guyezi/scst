@@ -27,6 +27,7 @@ At least the following tests must be run before releasing a new SRPT version:
 * Verify that the following I/O stress test does not report any errors even
   when left running for several hours:
 
+    dev=...
     umount /mnt
     mkfs.ext4 -O ^has_journal $dev
     while \
@@ -104,7 +105,13 @@ Index: srpt/src/ib_srpt.c
 * Verify that the initiator does not lock up while running the command below
   (see also https://bugzilla.kernel.org/show_bug.cgi?id=14235):
 
-    dev=/dev/sdb
+    dev=...
     fio --bs=512 --buffered=0 --ioengine=libaio --rw=read --invalidate=1 \
         --thread --numjobs=8 --loops=10 --gtod_reduce=1 --group_reporting \
         --name=$dev --filename=$dev
+
+* Test whether queue overflow recovery works correctly by setting the queue
+  send queue size to a low value, e.g. srpt_sq_size=128.
+
+* Repeat the above tests for all three threading modes: thread=0, thread=1
+  and thread=2.
