@@ -199,12 +199,13 @@ static int send_rsp(struct iu_entry *iue, struct scst_cmd *sc,
 	iu->srp.rsp.status = status;
 	if (status) {
 		uint8_t *sense = iu->srp.rsp.data;
+		uint8_t *sc_sense;
 
-		if (sc) {
-			uint8_t *sc_sense;
+		sc_sense = sc ? scst_cmd_get_sense_buffer(sc) : NULL;
+
+		if (SENSE_VALID(sc_sense)) {
 			int sense_data_len;
 
-			sc_sense = scst_cmd_get_sense_buffer(sc);
 			sense_data_len = min(scst_cmd_get_sense_buffer_len(sc),
 					     SRP_RSP_SENSE_DATA_LEN);
 			iu->srp.rsp.flags |= SRP_RSP_FLAG_SNSVALID;
@@ -408,6 +409,8 @@ static int ibmvstgt_xmit_response(struct scst_cmd *sc)
 	int ret;
 	enum dma_data_direction dir;
 
+	TRACE_ENTRY();
+
 	if (unlikely(scst_cmd_aborted(sc))) {
 		scst_set_delivery_status(sc, SCST_CMD_DELIVERY_ABORTED);
 		goto out;
@@ -429,6 +432,8 @@ static int ibmvstgt_xmit_response(struct scst_cmd *sc)
 out:
 	scst_tgt_cmd_done(sc, SCST_CONTEXT_SAME);
 
+	TRACE_EXIT();
+
 	return SCST_TGT_RES_SUCCESS;
 }
 
@@ -443,6 +448,8 @@ static int ibmvstgt_rdy_to_xfer(struct scst_cmd *sc)
 	struct iu_entry *iue = scst_cmd_get_tgt_priv(sc);
 	int ret = SCST_TGT_RES_SUCCESS;
 
+	TRACE_ENTRY();
+
 	WARN_ON(srp_cmd_direction(&vio_iu(iue)->srp.cmd) != DMA_TO_DEVICE);
 
 	/* Transfer the data from the initiator to the target. */
@@ -454,6 +461,8 @@ static int ibmvstgt_rdy_to_xfer(struct scst_cmd *sc)
 			(long long unsigned)be64_to_cpu(scst_cmd_get_tag(sc)));
 		scst_rx_data(sc, SCST_RX_STATUS_ERROR, SCST_CONTEXT_SAME);
 	}
+
+	TRACE_EXIT();
 
 	return SCST_TGT_RES_SUCCESS;
 }
@@ -622,6 +631,8 @@ static int process_tsk_mgmt(struct iu_entry *iue)
 	struct mgmt_ctx *mgmt_ctx;
 	int ret = 0;
 
+	TRACE_ENTRY();
+
 	srp_tsk = &iu->srp.tsk_mgmt;
 
 	dprintk("%p %u\n", iue, srp_tsk->tsk_mgmt_func);
@@ -671,10 +682,12 @@ static int process_tsk_mgmt(struct iu_entry *iue)
 
 	if (ret != SCST_MGMT_STATUS_SUCCESS)
 		goto err;
+	TRACE_EXIT_RES(ret);
 	return ret;
 
 err:
 	kfree(mgmt_ctx);
+	TRACE_EXIT_RES(ret);
 	return ret;
 }
 
@@ -709,6 +722,8 @@ static void ibmvstgt_tsk_mgmt_done(struct scst_mgmt_cmd *mcmnd)
 	struct iu_entry *iue;
 	union viosrp_iu *iu;
 
+	TRACE_ENTRY();
+
 	mgmt_ctx = scst_mgmt_cmd_get_tgt_priv(mcmnd);
 	BUG_ON(!mgmt_ctx);
 
@@ -729,6 +744,8 @@ static void ibmvstgt_tsk_mgmt_done(struct scst_mgmt_cmd *mcmnd)
 		 0/*asc*/);
 
 	kfree(mgmt_ctx);
+
+	TRACE_EXIT();
 }
 
 static int process_mad_iu(struct iu_entry *iue)
@@ -1080,7 +1097,6 @@ static int ibmvstgt_inq_get_vend_specific(const struct scst_tgt_dev *tgt_dev,
 		       GETTARGET(lun),
 		       GETLUN(lun));
 }
-
 
 #if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
 static ssize_t system_id_show(struct class_device *dev, char *buf)
