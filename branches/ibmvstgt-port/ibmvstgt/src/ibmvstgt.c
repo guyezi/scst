@@ -1410,33 +1410,51 @@ static int ibmvstgt_init(void)
 	printk("IBM eServer i/pSeries Virtual SCSI Target Driver\n");
 
 	err = class_register(&ibmvstgt_class);
-	if (err)
+	if (err) {
+		PRINT_ERROR("%s", "ibmvstgt device class registration failed");
 		goto out;
+        }
 
 	err = scst_register_target_template(&ibmvstgt_template);
-	if (err)
+	if (err) {
+		PRINT_ERROR("%s", "target template registration failed");
 		goto unregister_class;
+	}
 
 	vtgtd = create_workqueue("ibmvtgtd");
-	if (!vtgtd)
+	if (!vtgtd) {
+		PRINT_ERROR("%s", "work queue creation failed");
 		goto unregister_tgt;
+	}
 
 	err = get_system_info();
-	if (err)
+	if (err) {
+		PRINT_ERROR("%s", "querying system information failed");
 		goto destroy_wq;
+	}
 
 	err = vio_register_driver(&ibmvstgt_driver);
-	if (err)
+	if (err) {
+		PRINT_ERROR("%s", "virtual I/O driver registration failed");
 		goto destroy_wq;
+	}
 
 #ifdef CONFIG_SCST_PROC
-	ibmvstgt_register_procfs_entry(&ibmvstgt_template);
+	err = ibmvstgt_register_procfs_entry(&ibmvstgt_template);
+	if (err) {
+		PRINT_ERROR("%s", "procfs entry registration failed");
+		goto unregister_driver;
+	}
 #endif
 
 	TRACE_EXIT_RES(err);
 
 	return 0;
 
+#ifdef CONFIG_SCST_PROC
+unregister_driver:
+	vio_unregister_driver(&ibmvstgt_driver);
+#endif
 destroy_wq:
 	destroy_workqueue(vtgtd);
 unregister_tgt:
