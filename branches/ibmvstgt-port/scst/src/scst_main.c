@@ -553,7 +553,6 @@ out:
 #ifndef CONFIG_SCST_PROC
 out_sysfs_del:
 	mutex_unlock(&scst_mutex);
-	scst_tgt_sysfs_del(tgt);
 	goto out_free_tgt;
 #endif
 
@@ -639,10 +638,6 @@ again:
 
 	mutex_unlock(&scst_mutex);
 	scst_resume_activity();
-
-#ifndef CONFIG_SCST_PROC
-	scst_tgt_sysfs_del(tgt);
-#endif
 
 	PRINT_INFO("Target %s for template %s unregistered successfully",
 		tgt->tgt_name, vtt->name);
@@ -862,7 +857,7 @@ static int scst_register_device(struct scsi_device *scsidp)
 #endif
 	}
 
-	res = scst_alloc_device(GFP_KERNEL, &dev);
+	res = scst_alloc_dev(GFP_KERNEL, &dev);
 	if (res != 0)
 		goto out_unlock;
 
@@ -925,7 +920,7 @@ out_del:
 	list_del(&dev->dev_list_entry);
 
 out_free_dev:
-	scst_free_device(dev);
+	scst_free_dev(dev);
 
 out_unlock:
 	mutex_unlock(&scst_mutex);
@@ -973,13 +968,11 @@ static void scst_unregister_device(struct scsi_device *scsidp)
 
 	scst_resume_activity();
 
-	scst_dev_sysfs_del(dev);
-
 	PRINT_INFO("Detached from scsi%d, channel %d, id %d, lun %d, type %d",
 		scsidp->host->host_no, scsidp->channel, scsidp->id,
 		scsidp->lun, scsidp->type);
 
-	scst_free_device(dev);
+	scst_free_dev(dev);
 
 out:
 	TRACE_EXIT();
@@ -1054,7 +1047,6 @@ int scst_register_virtual_device(struct scst_dev_type *dev_handler,
 {
 	int res, rc;
 	struct scst_device *dev, *d;
-	bool sysfs_del = false;
 
 	TRACE_ENTRY();
 
@@ -1088,7 +1080,7 @@ int scst_register_virtual_device(struct scst_dev_type *dev_handler,
 		goto out_resume;
 	}
 
-	res = scst_alloc_device(GFP_KERNEL, &dev);
+	res = scst_alloc_dev(GFP_KERNEL, &dev);
 	if (res != 0)
 		goto out_unlock;
 
@@ -1135,7 +1127,6 @@ int scst_register_virtual_device(struct scst_dev_type *dev_handler,
 		if (strcmp(d->virt_name, dev_name) == 0) {
 			PRINT_ERROR("Device %s already exists", dev_name);
 			res = -EEXIST;
-			sysfs_del = true;
 			goto out_pr_clear_dev;
 		}
 	}
@@ -1143,7 +1134,6 @@ int scst_register_virtual_device(struct scst_dev_type *dev_handler,
 	rc = scst_assign_dev_handler(dev, dev_handler);
 	if (rc != 0) {
 		res = rc;
-		sysfs_del = true;
 		goto out_pr_clear_dev;
 	}
 
@@ -1171,9 +1161,7 @@ out_pr_clear_dev:
 
 out_free_dev:
 	mutex_unlock(&scst_mutex);
-	if (sysfs_del)
-		scst_dev_sysfs_del(dev);
-	scst_free_device(dev);
+	scst_free_dev(dev);
 	goto out_resume;
 
 out_unlock:
@@ -1225,12 +1213,10 @@ void scst_unregister_virtual_device(int id)
 	mutex_unlock(&scst_mutex);
 	scst_resume_activity();
 
-	scst_dev_sysfs_del(dev);
-
 	PRINT_INFO("Detached from virtual device %s (id %d)",
 		dev->virt_name, dev->virt_id);
 
-	scst_free_device(dev);
+	scst_free_dev(dev);
 
 out:
 	TRACE_EXIT();
@@ -1571,20 +1557,9 @@ int scst_add_threads(struct scst_cmd_threads *cmd_threads,
 				cmd_threads, "%s%d", nm, n++);
 		} else if (tgt_dev != NULL) {
 			char nm[11]; /* to limit the name's len */
-			int rc;
 			strlcpy(nm, tgt_dev->dev->virt_name, ARRAY_SIZE(nm));
 			thr->cmd_thread = kthread_create(scst_cmd_thread,
 				cmd_threads, "%s%d_%d", nm, tgt_dev_num, n++);
-#ifdef RHEL_MAJOR
-			rc = set_cpus_allowed(thr->cmd_thread,
-				tgt_dev->sess->acg->acg_cpu_mask);
-#else
-			rc = set_cpus_allowed_ptr(thr->cmd_thread,
-				&tgt_dev->sess->acg->acg_cpu_mask);
-#endif
-			if (rc != 0)
-				PRINT_ERROR("Setting CPU affinity failed: "
-					"%d", rc);
 		} else
 			thr->cmd_thread = kthread_create(scst_cmd_thread,
 				cmd_threads, "scstd%d", n++);
@@ -1594,6 +1569,24 @@ int scst_add_threads(struct scst_cmd_threads *cmd_threads,
 			PRINT_ERROR("kthread_create() failed: %d", res);
 			kfree(thr);
 			goto out_wait;
+		}
+
+		if (tgt_dev != NULL) {
+			int rc;
+			/*
+			 * sess->acg can be NULL here, if called from
+			 * scst_check_reassign_sess()!
+			 */
+#ifdef RHEL_MAJOR
+			rc = set_cpus_allowed(thr->cmd_thread,
+				tgt_dev->acg_dev->acg->acg_cpu_mask);
+#else
+			rc = set_cpus_allowed_ptr(thr->cmd_thread,
+				&tgt_dev->acg_dev->acg->acg_cpu_mask);
+#endif
+			if (rc != 0)
+				PRINT_ERROR("Setting CPU affinity failed: "
+					"%d", rc);
 		}
 
 		list_add(&thr->thread_list_entry, &cmd_threads->threads_list);

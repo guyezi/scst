@@ -1863,8 +1863,7 @@ static int scst_get_cmd_abnormal_done_state(const struct scst_cmd *cmd)
 	switch (cmd->state) {
 	case SCST_CMD_STATE_INIT_WAIT:
 	case SCST_CMD_STATE_INIT:
-	case SCST_CMD_STATE_PRE_PARSE:
-	case SCST_CMD_STATE_DEV_PARSE:
+	case SCST_CMD_STATE_PARSE:
 		if (cmd->preprocessing_only) {
 			res = SCST_CMD_STATE_PREPROCESSING_DONE;
 			break;
@@ -1949,7 +1948,7 @@ int scst_set_cmd_abnormal_done_state(struct scst_cmd *cmd)
 	switch (cmd->state) {
 	case SCST_CMD_STATE_INIT_WAIT:
 	case SCST_CMD_STATE_INIT:
-	case SCST_CMD_STATE_PRE_PARSE:
+	case SCST_CMD_STATE_PARSE:
 	case SCST_CMD_STATE_PREPROCESSING_DONE:
 	case SCST_CMD_STATE_PREPROCESSING_DONE_CALLED:
 	case SCST_CMD_STATE_PREPARE_SPACE:
@@ -1963,7 +1962,6 @@ int scst_set_cmd_abnormal_done_state(struct scst_cmd *cmd)
 	case SCST_CMD_STATE_LOCAL_EXEC:
 	case SCST_CMD_STATE_REAL_EXEC:
 	case SCST_CMD_STATE_REAL_EXECUTING:
-	case SCST_CMD_STATE_DEV_PARSE:
 	case SCST_CMD_STATE_DEV_DONE:
 	case SCST_CMD_STATE_PRE_DEV_DONE:
 	case SCST_CMD_STATE_MODE_SELECT_CHECKS:
@@ -2538,7 +2536,7 @@ out:
 }
 
 /* No locks */
-void scst_free_tgt(struct scst_tgt *tgt)
+void __scst_free_tgt(struct scst_tgt *tgt)
 {
 	TRACE_ENTRY();
 
@@ -2553,8 +2551,22 @@ void scst_free_tgt(struct scst_tgt *tgt)
 	return;
 }
 
+/* No locks */
+void scst_free_tgt(struct scst_tgt *tgt)
+{
+	TRACE_ENTRY();
+
+	if (tgt->tgt_kobj_initialized)
+		scst_tgt_sysfs_del_free(tgt);
+	else
+		__scst_free_tgt(tgt);
+
+	TRACE_EXIT();
+	return;
+}
+
 /* Called under scst_mutex and suspended activity */
-int scst_alloc_device(gfp_t gfp_mask, struct scst_device **out_dev)
+int scst_alloc_dev(gfp_t gfp_mask, struct scst_device **out_dev)
 {
 	struct scst_device *dev;
 	int res = 0;
@@ -2598,7 +2610,20 @@ out:
 	return res;
 }
 
-void scst_free_device(struct scst_device *dev)
+void __scst_free_dev(struct scst_device *dev)
+{
+	TRACE_MEM("Freeing dev %p", dev);
+
+	kfree(dev->virt_name);
+	kfree(dev);
+}
+
+/*
+ * Must not be called under scst_mutex, due to possible deadlock with
+ * sysfs ref counting in sysfs works (it is waiting for the last put, but
+ * the last ref counter holder is waiting for scst_mutex)
+ */
+void scst_free_dev(struct scst_device *dev)
 {
 	TRACE_ENTRY();
 
@@ -2613,8 +2638,10 @@ void scst_free_device(struct scst_device *dev)
 
 	scst_deinit_threads(&dev->dev_cmd_threads);
 
-	kfree(dev->virt_name);
-	kfree(dev);
+	if (dev->dev_kobj_initialized)
+		scst_dev_sysfs_del_free(dev);
+	else
+		__scst_free_dev(dev);
 
 	TRACE_EXIT();
 	return;
@@ -2658,11 +2685,17 @@ out:
 	return res;
 }
 
+void scst_free_acg_dev(struct scst_acg_dev *acg_dev)
+{
+	TRACE_MEM("Freeing acg_dev %p", acg_dev);
+	kmem_cache_free(scst_acgd_cachep, acg_dev);
+}
+
 /*
  * The activity supposed to be suspended and scst_mutex held or the
  * corresponding target supposed to be stopped.
  */
-static void scst_del_free_acg_dev(struct scst_acg_dev *acg_dev, bool del_sysfs)
+static void scst_del_free_acg_dev(struct scst_acg_dev *acg_dev)
 {
 	TRACE_ENTRY();
 
@@ -2671,10 +2704,10 @@ static void scst_del_free_acg_dev(struct scst_acg_dev *acg_dev, bool del_sysfs)
 	list_del(&acg_dev->acg_dev_list_entry);
 	list_del(&acg_dev->dev_acg_dev_list_entry);
 
-	if (del_sysfs)
-		scst_acg_dev_sysfs_del(acg_dev);
-
-	kmem_cache_free(scst_acgd_cachep, acg_dev);
+	if (acg_dev->acg_dev_kobj_initialized)
+		scst_acg_dev_sysfs_del_free(acg_dev);
+	else
+		scst_free_acg_dev(acg_dev);
 
 	TRACE_EXIT();
 	return;
@@ -2690,7 +2723,6 @@ int scst_acg_add_lun(struct scst_acg *acg, struct kobject *parent,
 	struct scst_tgt_dev *tgt_dev;
 	struct scst_session *sess;
 	LIST_HEAD(tmp_tgt_dev_list);
-	bool del_sysfs = true;
 
 	TRACE_ENTRY();
 
@@ -2720,10 +2752,8 @@ int scst_acg_add_lun(struct scst_acg *acg, struct kobject *parent,
 	}
 
 	res = scst_acg_dev_sysfs_create(acg_dev, parent);
-	if (res != 0) {
-		del_sysfs = false;
+	if (res != 0)
 		goto out_free;
-	}
 
 	if (gen_scst_report_luns_changed)
 		scst_report_luns_changed(acg);
@@ -2744,7 +2774,7 @@ out_free:
 			 extra_tgt_dev_list_entry) {
 		scst_free_tgt_dev(tgt_dev);
 	}
-	scst_del_free_acg_dev(acg_dev, del_sysfs);
+	scst_del_free_acg_dev(acg_dev);
 	goto out;
 }
 
@@ -2776,7 +2806,7 @@ int scst_acg_del_lun(struct scst_acg *acg, uint64_t lun,
 			scst_free_tgt_dev(tgt_dev);
 	}
 
-	scst_del_free_acg_dev(acg_dev, true);
+	scst_del_free_acg_dev(acg_dev);
 
 	if (gen_scst_report_luns_changed)
 		scst_report_luns_changed(acg);
@@ -2787,6 +2817,22 @@ int scst_acg_del_lun(struct scst_acg *acg, uint64_t lun,
 out:
 	TRACE_EXIT_RES(res);
 	return res;
+}
+
+void __scst_free_acg(struct scst_acg *acg)
+{
+	TRACE_MEM("Freeing acg %p", acg);
+
+	kfree(acg->acg_name);
+	kfree(acg);
+}
+
+static void scst_free_acg(struct scst_acg *acg)
+{
+	if (acg->acg_kobj_initialized)
+		scst_acg_sysfs_del_free(acg);
+	else
+		__scst_free_acg(acg);
 }
 
 /* The activity supposed to be suspended and scst_mutex held */
@@ -2846,7 +2892,7 @@ out_del:
 #endif
 
 out_free:
-	kfree(acg);
+	scst_free_acg(acg);
 	acg = NULL;
 	goto out;
 }
@@ -2873,7 +2919,7 @@ void scst_del_free_acg(struct scst_acg *acg)
 			if (tgt_dev->acg_dev == acg_dev)
 				scst_free_tgt_dev(tgt_dev);
 		}
-		scst_del_free_acg_dev(acg_dev, true);
+		scst_del_free_acg_dev(acg_dev);
 	}
 
 	/* Freeing names */
@@ -2889,8 +2935,6 @@ void scst_del_free_acg(struct scst_acg *acg)
 	if (acg->tgt_acg) {
 		TRACE_DBG("Removing acg %s from list", acg->acg_name);
 		list_del(&acg->acg_list_entry);
-
-		scst_acg_sysfs_del(acg);
 	} else
 		acg->tgt->default_acg = NULL;
 #endif
@@ -2899,8 +2943,7 @@ void scst_del_free_acg(struct scst_acg *acg)
 	sBUG_ON(!list_empty(&acg->acg_dev_list));
 	sBUG_ON(!list_empty(&acg->acn_list));
 
-	kfree(acg->acg_name);
-	kfree(acg);
+	scst_free_acg(acg);
 
 	TRACE_EXIT();
 	return;
@@ -3442,6 +3485,12 @@ void scst_nexus_loss(struct scst_tgt_dev *tgt_dev, bool queue_UA)
 	return;
 }
 
+void __scst_free_tgt_dev(struct scst_tgt_dev *tgt_dev)
+{
+	TRACE_MEM("Freeing tgt_dev %p", tgt_dev);
+	kmem_cache_free(scst_tgtd_cachep, tgt_dev);
+}
+
 /*
  * scst_mutex supposed to be held, there must not be parallel activity in this
  * session.
@@ -3457,8 +3506,6 @@ static void scst_free_tgt_dev(struct scst_tgt_dev *tgt_dev)
 	spin_unlock_bh(&dev->dev_lock);
 
 	list_del(&tgt_dev->sess_tgt_dev_list_entry);
-
-	scst_tgt_dev_sysfs_del(tgt_dev);
 
 	if (tgt_dev->sess->tgt->tgtt->get_initiator_port_transport_id == NULL)
 		dev->not_pr_supporting_tgt_devs_num--;
@@ -3478,7 +3525,10 @@ static void scst_free_tgt_dev(struct scst_tgt_dev *tgt_dev)
 
 	sBUG_ON(!list_empty(&tgt_dev->thr_data_list));
 
-	kmem_cache_free(scst_tgtd_cachep, tgt_dev);
+	if (tgt_dev->tgt_dev_kobj_initialized)
+		scst_tgt_dev_sysfs_del_free(tgt_dev);
+	else
+		__scst_free_tgt_dev(tgt_dev);
 
 	TRACE_EXIT();
 	return;
@@ -3700,7 +3750,7 @@ static struct scst_cmd *scst_create_prepare_internal_cmd(
 	if (res->tgt_dev != NULL)
 		__scst_get(0);
 
-	res->state = SCST_CMD_STATE_PRE_PARSE;
+	res->state = SCST_CMD_STATE_PARSE;
 
 out:
 	TRACE_EXIT_HRES((unsigned long)res);

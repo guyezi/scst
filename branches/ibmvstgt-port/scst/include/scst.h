@@ -158,53 +158,50 @@ static inline int set_cpus_allowed_ptr(struct task_struct *p,
  ** "switch" statements.
  *************************************************************/
 
-/* Internal parsing */
-#define SCST_CMD_STATE_PRE_PARSE     0
-
 /* Dev handler's parse() is going to be called */
-#define SCST_CMD_STATE_DEV_PARSE     1
+#define SCST_CMD_STATE_PARSE	     0
 
 /* Allocation of the cmd's data buffer */
-#define SCST_CMD_STATE_PREPARE_SPACE 2
+#define SCST_CMD_STATE_PREPARE_SPACE 1
 
 /* Calling preprocessing_done() */
-#define SCST_CMD_STATE_PREPROCESSING_DONE 3
+#define SCST_CMD_STATE_PREPROCESSING_DONE 2
 
 /* Target driver's rdy_to_xfer() is going to be called */
-#define SCST_CMD_STATE_RDY_TO_XFER   4
+#define SCST_CMD_STATE_RDY_TO_XFER   3
 
 /* Target driver's pre_exec() is going to be called */
-#define SCST_CMD_STATE_TGT_PRE_EXEC  5
+#define SCST_CMD_STATE_TGT_PRE_EXEC  4
 
 /* Cmd is going to be sent for execution */
-#define SCST_CMD_STATE_SEND_FOR_EXEC 6
+#define SCST_CMD_STATE_SEND_FOR_EXEC 5
 
 /* Cmd is being checked if it should be executed locally */
-#define SCST_CMD_STATE_LOCAL_EXEC    7
+#define SCST_CMD_STATE_LOCAL_EXEC    6
 
 /* Cmd is ready for execution */
-#define SCST_CMD_STATE_REAL_EXEC     8
+#define SCST_CMD_STATE_REAL_EXEC     7
 
 /* Internal post-exec checks */
-#define SCST_CMD_STATE_PRE_DEV_DONE  9
+#define SCST_CMD_STATE_PRE_DEV_DONE  8
 
 /* Internal MODE SELECT pages related checks */
-#define SCST_CMD_STATE_MODE_SELECT_CHECKS 10
+#define SCST_CMD_STATE_MODE_SELECT_CHECKS 9
 
 /* Dev handler's dev_done() is going to be called */
-#define SCST_CMD_STATE_DEV_DONE      11
+#define SCST_CMD_STATE_DEV_DONE      10
 
 /* Checks before target driver's xmit_response() is called */
-#define SCST_CMD_STATE_PRE_XMIT_RESP 12
+#define SCST_CMD_STATE_PRE_XMIT_RESP 11
 
 /* Target driver's xmit_response() is going to be called */
-#define SCST_CMD_STATE_XMIT_RESP     13
+#define SCST_CMD_STATE_XMIT_RESP     12
 
 /* Cmd finished */
-#define SCST_CMD_STATE_FINISHED      14
+#define SCST_CMD_STATE_FINISHED      13
 
 /* Internal cmd finished */
-#define SCST_CMD_STATE_FINISHED_INTERNAL 15
+#define SCST_CMD_STATE_FINISHED_INTERNAL 14
 
 #define SCST_CMD_STATE_LAST_ACTIVE   (SCST_CMD_STATE_FINISHED_INTERNAL+100)
 
@@ -1471,8 +1468,10 @@ struct scst_tgt {
 	char *default_group_name;
 #endif
 
+	unsigned int tgt_kobj_initialized:1;
+
 	/* sysfs release completion */
-	struct completion tgt_kobj_release_cmpl;
+	struct completion *tgt_kobj_release_cmpl;
 
 	struct kobject tgt_kobj; /* main targets/target kobject */
 	struct kobject *tgt_sess_kobj; /* target/sessions/ */
@@ -2117,6 +2116,9 @@ struct scst_device {
 	/* If set, dev is read only */
 	unsigned short rd_only:1;
 
+	/* If set, dev_kobj was initialized */
+	unsigned short dev_kobj_initialized:1;
+
 	/**************************************************************/
 
 	/*************************************************************
@@ -2257,7 +2259,7 @@ struct scst_device {
 	enum scst_dev_type_threads_pool_type threads_pool_type;
 
 	/* sysfs release completion */
-	struct completion dev_kobj_release_cmpl;
+	struct completion *dev_kobj_release_cmpl;
 
 	struct kobject dev_kobj; /* kobject for this struct */
 	struct kobject *dev_exp_kobj; /* exported groups */
@@ -2382,6 +2384,9 @@ struct scst_tgt_dev {
 	/* Set if INQUIRY DATA HAS CHANGED UA is needed */
 	unsigned int inq_changed_ua_needed:1;
 
+	/* Set if tgt_dev_kobj was initialized */
+	unsigned int tgt_dev_kobj_initialized:1;
+
 	/*
 	 * Stored Unit Attention sense and its length for possible
 	 * subsequent REQUEST SENSE. Both protected by tgt_dev_lock.
@@ -2390,7 +2395,7 @@ struct scst_tgt_dev {
 	uint8_t tgt_dev_sense[SCST_SENSE_BUFFERSIZE];
 
 	/* sysfs release completion */
-	struct completion tgt_dev_kobj_release_cmpl;
+	struct completion *tgt_dev_kobj_release_cmpl;
 
 	struct kobject tgt_dev_kobj; /* kobject for this struct */
 
@@ -2418,6 +2423,9 @@ struct scst_acg_dev {
 	/* If set, the corresponding LU is read only */
 	unsigned int rd_only:1;
 
+	/* If set acg_dev_kobj was initialized */
+	unsigned int acg_dev_kobj_initialized:1;
+
 	struct scst_acg *acg; /* parent acg */
 
 	/* List entry in dev->dev_acg_dev_list */
@@ -2430,7 +2438,7 @@ struct scst_acg_dev {
 	struct kobject acg_dev_kobj;
 
 	/* sysfs release completion */
-	struct completion acg_dev_kobj_release_cmpl;
+	struct completion *acg_dev_kobj_release_cmpl;
 
 	/* Name of the link to the corresponding LUN */
 	char acg_dev_link_name[20];
@@ -2471,9 +2479,10 @@ struct scst_acg {
 	cpumask_t acg_cpu_mask;
 
 	unsigned int tgt_acg:1;
+	unsigned int acg_kobj_initialized:1;
 
 	/* sysfs release completion */
-	struct completion acg_kobj_release_cmpl;
+	struct completion *acg_kobj_release_cmpl;
 
 	/* kobject for this structure */
 	struct kobject acg_kobj;

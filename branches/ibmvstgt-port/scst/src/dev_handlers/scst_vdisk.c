@@ -56,8 +56,8 @@
 #define TRACE_ORDER	0x80000000
 
 static struct scst_trace_log vdisk_local_trace_tbl[] = {
-    { TRACE_ORDER,		"order" },
-    { 0,			NULL }
+	{ TRACE_ORDER,		"order" },
+	{ 0,			NULL }
 };
 #define trace_log_tbl			vdisk_local_trace_tbl
 
@@ -1319,6 +1319,14 @@ static void vdisk_exec_unmap(struct scst_cmd *cmd, struct scst_vdisk_thr *thr)
 		goto out;
 	}
 
+	if (unlikely(cmd->cdb[1] & 1)) {
+		/* ANCHOR not supported */
+		TRACE_DBG("%s", "Invalid ANCHOR field");
+		scst_set_cmd_error(cmd,
+			SCST_LOAD_SENSE(scst_sense_invalid_field_in_cdb));
+		goto out;
+	}
+
 	length = scst_get_full_buf(cmd, &address);
 	if (unlikely(length <= 0)) {
 		if (length == 0)
@@ -2339,8 +2347,17 @@ static void vdisk_exec_read_capacity16(struct scst_cmd *cmd)
 		break;
 	}
 
-	if (virt_dev->thin_provisioned)
+	if (virt_dev->thin_provisioned) {
 		buffer[14] |= 0x80;     /* Add TPE */
+#if 0  /*
+	* Might be a big performance and functionality win, but might be
+	* dangerous as well, although generally nearly always it should be set,
+	* because nearly all devices should return zero for unmapped blocks.
+	* But let's be on the safe side and disable it for now.
+	*/
+		buffer[14] |= 0x40;     /* Add TPRZ */
+#endif
+	}
 
 	length = scst_get_buf_first(cmd, &address);
 	if (unlikely(length <= 0)) {
@@ -3018,7 +3035,7 @@ static int blockio_flush(struct block_device *bdev)
 
 #if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 35)           \
     && !(defined(CONFIG_SUSE_KERNEL)                        \
-         && LINUX_VERSION_CODE == KERNEL_VERSION(2, 6, 34))
+	 && LINUX_VERSION_CODE == KERNEL_VERSION(2, 6, 34))
 	res = blkdev_issue_flush(bdev, NULL);
 #else
 	res = blkdev_issue_flush(bdev, GFP_KERNEL, NULL, BLKDEV_IFL_WAIT);

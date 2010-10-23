@@ -1188,28 +1188,36 @@ sub writeConfiguration {
 		$drv_attr_buff_nk .= "\n" if ($drv_attr_buff_nk);
 
 		my $targets = $CURRENT{'assign'}->{$driver};
+		my $tgt_attrs = $SCST->targetCreateAttributes($driver);
 
 		my $target_buff;
 		foreach my $target (sort keys %{$targets}) {
 			$target_buff .= "\tTARGET $target";
 
-			my $tgt_attrs = $SCST->targetAttributes($driver, $target);
+			my $attributes = $SCST->targetAttributes($driver, $target);
 
 			my $attribute_buff;
 			my $attribute_buff_nk;
-			foreach my $attr (keys %{$tgt_attrs}) {
-				next if ($$tgt_attrs{$attr}->{'static'});
-				next if ($$tgt_attrs{$attr}->{'set'});
 
-				if (defined($$tgt_attrs{$attr}->{'keys'})) {
-					foreach my $key (keys %{$$tgt_attrs{$attr}->{'keys'}}) {
-						my $value = $$tgt_attrs{$attr}->{'keys'}->{$key}->{'value'};
+			if (defined($$attributes{'hw_target'}) &&
+			  ($$attributes{'hw_target'}->{'value'} == TRUE)) {
+				$attribute_buff = "\t\tHW_TARGET\n\n";
+			}
+
+			foreach my $attr (keys %{$attributes}) {
+				next if ($$attributes{$attr}->{'static'} &&
+					 !defined($$tgt_attrs{$attr}));
+				next if ($$attributes{$attr}->{'set'});
+
+				if (defined($$attributes{$attr}->{'keys'})) {
+					foreach my $key (keys %{$$attributes{$attr}->{'keys'}}) {
+						my $value = $$attributes{$attr}->{'keys'}->{$key}->{'value'};
 						$value = "\"$value\"" if ($value =~ / /);
 						$attribute_buff .= "\t\t$attr $value\n"
 						  if (defined($value));
 					}
-				} elsif (($attr eq 'enabled') || $nonkey) {
-					my $value = $$tgt_attrs{$attr}->{'value'};
+				} elsif (($attr eq 'hw_target') || ($attr eq 'enabled') || $nonkey) {
+					my $value = $$attributes{$attr}->{'value'};
 					$value = "\"$value\"" if ($value =~ /\s/);
 					if ($attr eq 'enabled') {
 						$attribute_buff .= "\t\t$attr $value\n"
@@ -1993,7 +2001,9 @@ sub applyTargetAssignments {
 
 	foreach my $target (keys %{$CURRENT{'assign'}->{$driver}}) {
 		if (!defined($$targets{$target})) {
-			if ($deletions) {
+			my $isVirtual = ($SCST->targetType($driver, $target) == $SCST::SCST::TGT_TYPE_VIRTUAL);
+
+			if ($deletions && $isVirtual) {
 				my $rc = removeVirtualTarget($driver, $target);
 				immediateExit($SCST->errorString($rc)) if ($rc);
 				$changes++;
@@ -2026,6 +2036,11 @@ sub applyTargetAssignments {
 				}
 
 				my $attributes = configToAttr(\%_attributes);
+
+				if (defined($$attributes{'HW_TARGET'})) {
+					immediateExit("Hardware target '$target' for driver '$driver' does not exist.");
+				}
+
 				filterCreateAttributes($possible, $attributes, FALSE);
 
 				my $rc = addVirtualTarget($driver, $target, $attributes);
@@ -2174,6 +2189,7 @@ sub clearConfiguration {
 
 			clearLuns($driver, $target);
 			removeTargetDynamicAttributes($driver, $target);
+
 			if ($SCST->targetType($driver, $target) == $SCST::SCST::TGT_TYPE_VIRTUAL) {
 				my $rc = removeVirtualTarget($driver, $target);
 				issueWarning($SCST->errorString($rc)) if ($rc);
@@ -3463,6 +3479,7 @@ sub setTargetAttributes {
 	# add/change
 	foreach my $attribute (keys %toset) {
 		foreach my $value (keys %{$toset{$attribute}}) {
+			next if ($attribute eq 'HW_TARGET');
 			if (!defined($$existing{$attribute}) &&
 			    $driverCap && !$SCST->checkTargetDynamicAttributes($driver, $attribute)) {
 				addTargetDynamicAttribute($driver, $target, $attribute, $value);
