@@ -1207,7 +1207,7 @@ static int ibmvstgt_probe(struct vio_dev *dev, const struct vio_device_id *id)
 
 	vport = kzalloc(sizeof(struct vio_port), GFP_KERNEL);
 	if (!vport)
-		return err;
+		goto out;
 
 	target = kzalloc(sizeof(struct srp_target), GFP_KERNEL);
 	if (!target)
@@ -1271,9 +1271,10 @@ static int ibmvstgt_probe(struct vio_dev *dev, const struct vio_device_id *id)
 
 	atomic_inc(&ibmvstgt_device_count);
 
-	TRACE_EXIT_RES(0);
+out:
+	TRACE_EXIT_RES(err);
 
-	return 0;
+	return err;
 
 destroy_crq_queue:
 	crq_queue_destroy(target);
@@ -1285,10 +1286,7 @@ free_target:
 	kfree(target);
 free_vport:
 	kfree(vport);
-
-	TRACE_EXIT_RES(err);
-
-	return err;
+	goto out;
 }
 
 static int ibmvstgt_remove(struct vio_dev *dev)
