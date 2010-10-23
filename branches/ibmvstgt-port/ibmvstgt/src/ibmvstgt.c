@@ -1425,6 +1425,12 @@ static int ibmvstgt_init(void)
 
 	printk("IBM eServer i/pSeries Virtual SCSI Target Driver\n");
 
+	err = get_system_info();
+	if (err) {
+		PRINT_ERROR("%s", "querying system information failed");
+		goto out;
+	}
+
 	err = class_register(&ibmvstgt_class);
 	if (err) {
 		PRINT_ERROR("%s", "ibmvstgt device class registration failed");
@@ -1441,12 +1447,6 @@ static int ibmvstgt_init(void)
 	if (!vtgtd) {
 		PRINT_ERROR("%s", "work queue creation failed");
 		goto unregister_tgt;
-	}
-
-	err = get_system_info();
-	if (err) {
-		PRINT_ERROR("%s", "querying system information failed");
-		goto destroy_wq;
 	}
 
 	err = vio_register_driver(&ibmvstgt_driver);
