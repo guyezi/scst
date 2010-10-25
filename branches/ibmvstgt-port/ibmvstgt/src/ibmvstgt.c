@@ -1100,12 +1100,12 @@ static int ibmvstgt_inq_get_vend_specific(const struct scst_tgt_dev *tgt_dev,
 }
 
 /**
- * ibmvstgt_get_ini_port_tr_id() - SCST TransportID callback function.
+ * ibmvstgt_get_transportid() - SCST TransportID callback function.
  *
  * See also SPC-3, section 7.5.4.5, TransportID for initiator ports using SRP.
  */
-static int ibmvstgt_get_ini_port_tr_id(struct scst_session *sess,
-				       uint8_t **transport_id)
+static int ibmvstgt_get_transportid(struct scst_session *sess,
+				    uint8_t **transport_id)
 {
 	struct vio_port *vport;
 	struct spc_rdma_transport_id {
@@ -1245,7 +1245,7 @@ static struct scst_tgt_template ibmvstgt_template = {
 	.rdy_to_xfer		= ibmvstgt_rdy_to_xfer,
 	.on_free_cmd		= ibmvstgt_on_free_cmd,
 	.task_mgmt_fn_done	= ibmvstgt_tsk_mgmt_done,
-	.get_initiator_port_transport_id = ibmvstgt_get_ini_port_tr_id,
+	.get_initiator_port_transport_id = ibmvstgt_get_transportid,
 };
 
 static int ibmvstgt_probe(struct vio_dev *dev, const struct vio_device_id *id)
