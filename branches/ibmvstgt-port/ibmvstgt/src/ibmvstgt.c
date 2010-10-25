@@ -392,7 +392,8 @@ static int ibmvstgt_release(struct scst_tgt *scst_tgt)
 	vport->releasing = true;
 	spin_unlock_irqrestore(&target->lock, flags);
 
-	scst_unregister_session(sess, 0, NULL);
+	if (sess)
+		scst_unregister_session(sess, 0, NULL);
 
 	return 0;
 }
