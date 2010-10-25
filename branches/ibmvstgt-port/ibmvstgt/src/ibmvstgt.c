@@ -199,13 +199,13 @@ static int send_rsp(struct iu_entry *iue, struct scst_cmd *sc,
 	iu->srp.rsp.status = status;
 	if (status) {
 		uint8_t *sense = iu->srp.rsp.data;
-		uint8_t *sc_sense;
 
-		sc_sense = sc ? scst_cmd_get_sense_buffer(sc) : NULL;
-
-		if (SCST_SENSE_VALID(sc_sense)) {
+		if (sc) {
 			int sense_data_len;
+                        uint8_t *sc_sense;
 
+			sc_sense = scst_cmd_get_sense_buffer(sc);
+			WARN_ON(!SCST_SENSE_VALID(sc_sense));
 			sense_data_len = min(scst_cmd_get_sense_buffer_len(sc),
 					     SRP_RSP_SENSE_DATA_LEN);
 			iu->srp.rsp.flags |= SRP_RSP_FLAG_SNSVALID;
@@ -1225,8 +1225,11 @@ static int ibmvstgt_probe(struct vio_dev *dev, const struct vio_device_id *id)
 	vport->target = target;
 	err = srp_target_alloc(target, &dev->dev, INITIAL_SRP_LIMIT,
 			       SRP_MAX_IU_LEN);
-	if (err)
+	if (err) {
+		PRINT_ERROR("Unit %d: SRP target allocation failed",
+			    vport->dma_dev->unit_address);
 		goto unregister_target;
+	}
 
 	dma = (unsigned int *) vio_get_attribute(dev, "ibm,my-dma-window",
 						 &dma_size);
@@ -1245,8 +1248,11 @@ static int ibmvstgt_probe(struct vio_dev *dev, const struct vio_device_id *id)
 #endif
 
 	err = crq_queue_create(&vport->crq_queue, target);
-	if (err)
+	if (err) {
+		PRINT_ERROR("Unit %d: CRQ creation failed",
+			    vport->dma_dev->unit_address);
 		goto free_srp_target;
+        }
 
 	vport->dev.class = &ibmvstgt_class;
 #if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
@@ -1264,11 +1270,14 @@ static int ibmvstgt_probe(struct vio_dev *dev, const struct vio_device_id *id)
 	dev_set_name(&vport->dev, "ibmvstgt-%d", vport->dma_dev->unit_address);
 #endif
 #if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
-	if (class_device_register(&vport->dev))
+	if (class_device_register(&vport->dev)) {
 #else
-	if (device_register(&vport->dev))
+	if (device_register(&vport->dev)) {
 #endif
+		PRINT_ERROR("Unit %d: device registration failed",
+			    vport->dma_dev->unit_address);
 		goto destroy_crq_queue;
+	}
 
 	atomic_inc(&ibmvstgt_device_count);
 
