@@ -641,13 +641,6 @@ struct scst_tgt_template {
 #endif
 
 	/*
-	 * True if SCST should report that it supports ACA although it does
-	 * not yet support ACA. Necessary for the IBM virtual SCSI target
-	 * driver.
-	 */
-	unsigned fake_aca:1;
-
-	/*
 	 * The maximum time in seconds cmd can stay inside the target
 	 * hardware, i.e. after rdy_to_xfer() and xmit_response(), before
 	 * on_hw_pending_cmd_timeout() will be called, if defined.
