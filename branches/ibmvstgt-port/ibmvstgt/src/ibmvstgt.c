@@ -1099,6 +1099,57 @@ static int ibmvstgt_inq_get_vend_specific(const struct scst_tgt_dev *tgt_dev,
 		       GETLUN(lun));
 }
 
+/**
+ * ibmvstgt_get_ini_port_tr_id() - SCST TransportID callback function.
+ *
+ * See also SPC-3, section 7.5.4.5, TransportID for initiator ports using SRP.
+ */
+static int ibmvstgt_get_ini_port_tr_id(struct scst_session *sess,
+				       uint8_t **transport_id)
+{
+	struct vio_port *vport;
+	struct spc_rdma_transport_id {
+		uint8_t protocol_identifier;
+		uint8_t reserved[7];
+		union {
+			uint8_t id8[16];
+			__be32  id32[4];
+		} i_port_id;
+	};
+	struct spc_rdma_transport_id *tr_id;
+	int res;
+
+	TRACE_ENTRY();
+
+	if (!sess) {
+		res = SCSI_TRANSPORTID_PROTOCOLID_SRP;
+		goto out;
+	}
+
+	vport = scst_sess_get_tgt_priv(sess);
+	BUG_ON(!vport);
+
+	BUILD_BUG_ON(sizeof(*tr_id) != 24);
+
+	res = -ENOMEM;
+	tr_id = kzalloc(sizeof(struct spc_rdma_transport_id), GFP_KERNEL);
+	if (!tr_id) {
+		PRINT_ERROR("%s", "Allocation of TransportID failed");
+		goto out;
+	}
+
+	res = 0;
+	tr_id->protocol_identifier = SCSI_TRANSPORTID_PROTOCOLID_SRP;
+	memset(&tr_id->i_port_id, 0, sizeof(tr_id->i_port_id));
+	tr_id->i_port_id.id32[3] = cpu_to_be32(vport->dma_dev->unit_address);
+
+	*transport_id = (uint8_t *)tr_id;
+
+out:
+	TRACE_EXIT_RES(res);
+	return res;
+}
+
 #if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
 static ssize_t system_id_show(struct class_device *dev, char *buf)
 #else
@@ -1194,6 +1245,7 @@ static struct scst_tgt_template ibmvstgt_template = {
 	.rdy_to_xfer		= ibmvstgt_rdy_to_xfer,
 	.on_free_cmd		= ibmvstgt_on_free_cmd,
 	.task_mgmt_fn_done	= ibmvstgt_tsk_mgmt_done,
+	.get_initiator_port_transport_id = ibmvstgt_get_ini_port_tr_id,
 };
 
 static int ibmvstgt_probe(struct vio_dev *dev, const struct vio_device_id *id)
