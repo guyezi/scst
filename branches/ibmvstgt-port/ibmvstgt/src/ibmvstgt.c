@@ -953,6 +953,9 @@ static void crq_queue_destroy(struct srp_target *target)
 	struct crq_queue *queue = &vport->crq_queue;
 	int err;
 
+	if (!queue->msgs)
+            return;
+
 	free_irq(vport->dma_dev->irq, target);
 	do {
 		err = h_free_crq(vport->dma_dev->unit_address);
@@ -962,6 +965,7 @@ static void crq_queue_destroy(struct srp_target *target)
 			 queue->size * sizeof(*queue->msgs), DMA_BIDIRECTIONAL);
 
 	free_page((unsigned long) queue->msgs);
+	queue->msgs = NULL;
 }
 
 static void process_crq(struct viosrp_crq *crq,	struct srp_target *target)
@@ -1277,7 +1281,7 @@ static int ibmvstgt_probe(struct vio_dev *dev, const struct vio_device_id *id)
 	err = srp_target_alloc(target, &dev->dev, INITIAL_SRP_LIMIT,
 			       SRP_MAX_IU_LEN);
 	if (err) {
-		PRINT_ERROR("Unit %d: SRP target allocation failed",
+		PRINT_ERROR("Unit %x: SRP target allocation failed",
 			    vport->dma_dev->unit_address);
 		goto unregister_target;
 	}
@@ -1300,7 +1304,7 @@ static int ibmvstgt_probe(struct vio_dev *dev, const struct vio_device_id *id)
 
 	err = crq_queue_create(&vport->crq_queue, target);
 	if (err) {
-		PRINT_ERROR("Unit %d: CRQ creation failed",
+		PRINT_ERROR("Unit %x: CRQ creation failed",
 			    vport->dma_dev->unit_address);
 		goto free_srp_target;
         }
@@ -1322,11 +1326,11 @@ static int ibmvstgt_probe(struct vio_dev *dev, const struct vio_device_id *id)
 #endif
 #if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
 	if (class_device_register(&vport->dev)) {
+		PRINT_ERROR("%s: device registration failed",
+			    vport->dev.class_id);
 #else
 	if (device_register(&vport->dev)) {
 #endif
-		PRINT_ERROR("Unit %d: device registration failed",
-			    vport->dma_dev->unit_address);
 		goto destroy_crq_queue;
 	}
 
@@ -1357,6 +1361,11 @@ static int ibmvstgt_remove(struct vio_dev *dev)
 
 	atomic_dec(&ibmvstgt_device_count);
 
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
+	class_device_unregister(&vport->dev);
+#else
+	device_unregister(&vport->dev);
+#endif
 	crq_queue_destroy(target);
 	srp_target_free(target);
 	scst_unregister_target(target->tgt);
