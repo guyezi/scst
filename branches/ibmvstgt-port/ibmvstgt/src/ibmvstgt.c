@@ -408,13 +408,14 @@ static int ibmvstgt_xmit_response(struct scst_cmd *sc)
 {
 	struct iu_entry *iue = scst_cmd_get_tgt_priv(sc);
 	int ret;
+	int res = SCST_TGT_RES_SUCCESS;
 	enum dma_data_direction dir;
 
 	TRACE_ENTRY();
 
 	if (unlikely(scst_cmd_aborted(sc))) {
 		scst_set_delivery_status(sc, SCST_CMD_DELIVERY_ABORTED);
-		goto out;
+		goto done;
 	}
 
 	dir = srp_cmd_direction(&vio_iu(iue)->srp.cmd);
@@ -424,18 +425,19 @@ static int ibmvstgt_xmit_response(struct scst_cmd *sc)
 	if (dir == DMA_FROM_DEVICE && scst_cmd_get_adjusted_resp_data_len(sc)) {
 		ret = srp_transfer_data(sc, &vio_iu(iue)->srp.cmd,
 					ibmvstgt_rdma, 1, 1);
-		if (ret)
-			scst_set_delivery_status(sc, SCST_CMD_DELIVERY_FAILED);
+		if (ret) {
+			res = SCST_TGT_RES_QUEUE_FULL;
+			goto out;
+		}
 	}
 
 	send_rsp(iue, sc, scst_cmd_get_status(sc), 0);
-
-out:
+done:
 	scst_tgt_cmd_done(sc, SCST_CONTEXT_SAME);
+out:
+	TRACE_EXIT_RES(res);
 
-	TRACE_EXIT();
-
-	return SCST_TGT_RES_SUCCESS;
+	return res;
 }
 
 /**
@@ -447,25 +449,25 @@ out:
 static int ibmvstgt_rdy_to_xfer(struct scst_cmd *sc)
 {
 	struct iu_entry *iue = scst_cmd_get_tgt_priv(sc);
-	int ret = SCST_TGT_RES_SUCCESS;
+	int res = SCST_TGT_RES_SUCCESS;
 
 	TRACE_ENTRY();
 
 	WARN_ON(srp_cmd_direction(&vio_iu(iue)->srp.cmd) != DMA_TO_DEVICE);
 
 	/* Transfer the data from the initiator to the target. */
-	ret = srp_transfer_data(sc, &vio_iu(iue)->srp.cmd, ibmvstgt_rdma, 1, 1);
-	if (ret == 0) {
+	res = srp_transfer_data(sc, &vio_iu(iue)->srp.cmd, ibmvstgt_rdma, 1, 1);
+	if (res == 0) {
 		scst_rx_data(sc, SCST_RX_STATUS_SUCCESS, SCST_CONTEXT_SAME);
 	} else {
 		PRINT_ERROR("%s: tag= %llu xfer_data failed", __func__,
 			(long long unsigned)be64_to_cpu(scst_cmd_get_tag(sc)));
-		scst_rx_data(sc, SCST_RX_STATUS_ERROR, SCST_CONTEXT_SAME);
+		res = SCST_TGT_RES_QUEUE_FULL;
 	}
 
-	TRACE_EXIT();
+	TRACE_EXIT_RES(res);
 
-	return SCST_TGT_RES_SUCCESS;
+	return res;
 }
 
 /**
