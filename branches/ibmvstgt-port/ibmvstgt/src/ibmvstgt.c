@@ -1368,7 +1368,8 @@ static int ibmvstgt_remove(struct vio_dev *dev)
 #endif
 	crq_queue_destroy(target);
 	srp_target_free(target);
-	scst_unregister_target(target->tgt);
+	if (target->tgt)
+		scst_unregister_target(target->tgt);
 	kfree(target);
 	kfree(vport);
 	return 0;

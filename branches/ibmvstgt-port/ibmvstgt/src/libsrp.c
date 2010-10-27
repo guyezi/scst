@@ -169,9 +169,13 @@ EXPORT_SYMBOL_GPL(srp_target_alloc);
 
 void srp_target_free(struct srp_target *target)
 {
+	if (!target->dev)
+		return;
+
 	srp_ring_free(target->dev, target->rx_ring, target->rx_ring_size,
 		      target->srp_iu_size);
 	srp_iu_pool_free(&target->iu_queue);
+	target->dev = NULL;
 }
 EXPORT_SYMBOL_GPL(srp_target_free);
 
