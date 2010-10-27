@@ -299,7 +299,7 @@ static int ibmvstgt_rdma(struct scst_cmd *sc, struct scatterlist *sg, int nsg,
 			if (err != H_SUCCESS) {
 				eprintk("rdma error for dir %d slen %d: %ld\n",
 					dir, slen, err);
-				return err;
+				return -EIO;
 			}
 
 			mlen -= slen;
@@ -315,7 +315,7 @@ static int ibmvstgt_rdma(struct scst_cmd *sc, struct scatterlist *sg, int nsg,
 				if (sidx > nsg) {
 					eprintk("out of sg %p %d %d\n",
 						iue, sidx, nsg);
-					return -EAGAIN;
+					return -EIO;
 				}
 			}
 		};
@@ -409,14 +409,13 @@ static int ibmvstgt_xmit_response(struct scst_cmd *sc)
 {
 	struct iu_entry *iue = scst_cmd_get_tgt_priv(sc);
 	int ret;
-	int res = SCST_TGT_RES_SUCCESS;
 	enum dma_data_direction dir;
 
 	TRACE_ENTRY();
 
 	if (unlikely(scst_cmd_aborted(sc))) {
 		scst_set_delivery_status(sc, SCST_CMD_DELIVERY_ABORTED);
-		goto done;
+		goto out;
 	}
 
 	dir = srp_cmd_direction(&vio_iu(iue)->srp.cmd);
@@ -426,19 +425,18 @@ static int ibmvstgt_xmit_response(struct scst_cmd *sc)
 	if (dir == DMA_FROM_DEVICE && scst_cmd_get_adjusted_resp_data_len(sc)) {
 		ret = srp_transfer_data(sc, &vio_iu(iue)->srp.cmd,
 					ibmvstgt_rdma, 1, 1);
-		if (ret) {
-			res = SCST_TGT_RES_QUEUE_FULL;
-			goto out;
-		}
+		if (ret)
+			scst_set_delivery_status(sc, SCST_CMD_DELIVERY_FAILED);
 	}
 
 	send_rsp(iue, sc, scst_cmd_get_status(sc), 0);
-done:
-	scst_tgt_cmd_done(sc, SCST_CONTEXT_SAME);
-out:
-	TRACE_EXIT_RES(res);
 
-	return res;
+out:
+	scst_tgt_cmd_done(sc, SCST_CONTEXT_SAME);
+
+	TRACE_EXIT();
+
+	return SCST_TGT_RES_SUCCESS;
 }
 
 /**
@@ -450,25 +448,25 @@ out:
 static int ibmvstgt_rdy_to_xfer(struct scst_cmd *sc)
 {
 	struct iu_entry *iue = scst_cmd_get_tgt_priv(sc);
-	int res = SCST_TGT_RES_SUCCESS;
+	int ret;
 
 	TRACE_ENTRY();
 
 	WARN_ON(srp_cmd_direction(&vio_iu(iue)->srp.cmd) != DMA_TO_DEVICE);
 
 	/* Transfer the data from the initiator to the target. */
-	res = srp_transfer_data(sc, &vio_iu(iue)->srp.cmd, ibmvstgt_rdma, 1, 1);
-	if (res == 0) {
+	ret = srp_transfer_data(sc, &vio_iu(iue)->srp.cmd, ibmvstgt_rdma, 1, 1);
+	if (ret == 0) {
 		scst_rx_data(sc, SCST_RX_STATUS_SUCCESS, SCST_CONTEXT_SAME);
 	} else {
 		PRINT_ERROR("%s: tag= %llu xfer_data failed", __func__,
 			(long long unsigned)be64_to_cpu(scst_cmd_get_tag(sc)));
-		res = SCST_TGT_RES_QUEUE_FULL;
+		scst_rx_data(sc, SCST_RX_STATUS_ERROR, SCST_CONTEXT_SAME);
 	}
 
-	TRACE_EXIT_RES(res);
+	TRACE_EXIT();
 
-	return res;
+	return SCST_TGT_RES_SUCCESS;
 }
 
 /**
