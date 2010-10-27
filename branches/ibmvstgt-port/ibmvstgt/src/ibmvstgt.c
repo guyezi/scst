@@ -942,6 +942,7 @@ reg_crq_failed:
 			 queue->size * sizeof(*queue->msgs), DMA_BIDIRECTIONAL);
 map_failed:
 	free_page((unsigned long) queue->msgs);
+	queue->msgs = NULL;
 
 malloc_failed:
 	return -ENOMEM;
@@ -954,7 +955,7 @@ static void crq_queue_destroy(struct srp_target *target)
 	int err;
 
 	if (!queue->msgs)
-            return;
+		return;
 
 	free_irq(vport->dma_dev->irq, target);
 	do {
@@ -1359,6 +1360,8 @@ static int ibmvstgt_remove(struct vio_dev *dev)
 	struct srp_target *target = dev_get_drvdata(&dev->dev);
 	struct vio_port *vport = target->ldata;
 
+	TRACE_ENTRY();
+
 	atomic_dec(&ibmvstgt_device_count);
 
 #if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
@@ -1372,6 +1375,9 @@ static int ibmvstgt_remove(struct vio_dev *dev)
 		scst_unregister_target(target->tgt);
 	kfree(target);
 	kfree(vport);
+
+	TRACE_EXIT();
+
 	return 0;
 }
 
