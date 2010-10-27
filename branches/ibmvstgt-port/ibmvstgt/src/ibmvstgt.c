@@ -297,8 +297,9 @@ static int ibmvstgt_rdma(struct scst_cmd *sc, struct scatterlist *sg, int nsg,
 						  md[i].va + mdone);
 
 			if (err != H_SUCCESS) {
-				eprintk("rdma error %d %d %ld\n", dir, slen, err);
-				return -EIO;
+				eprintk("rdma error for dir %d slen %d: %ld\n",
+					dir, slen, err);
+				return err;
 			}
 
 			mlen -= slen;
@@ -314,7 +315,7 @@ static int ibmvstgt_rdma(struct scst_cmd *sc, struct scatterlist *sg, int nsg,
 				if (sidx > nsg) {
 					eprintk("out of sg %p %d %d\n",
 						iue, sidx, nsg);
-					return -EIO;
+					return -EAGAIN;
 				}
 			}
 		};
@@ -549,7 +550,9 @@ static void process_login(struct iu_entry *iue)
 
 	TRACE_ENTRY();
 
-	BUG_ON(vport->sess);
+	BUG_ON(!target);
+	BUG_ON(!target->tgt);
+	BUG_ON(!vport);
 
 	memset(iu, 0, max(sizeof *rsp, sizeof *rej));
 
@@ -563,7 +566,13 @@ static void process_login(struct iu_entry *iue)
 		goto reject;
 	}
 
-	BUG_ON(!target);
+	if (vport->sess) {
+		PRINT_INFO("Closing session %s (%p) because a new login request"
+			" has been received", name, vport->sess);
+		scst_unregister_session(vport->sess, 0, NULL);
+		vport->sess = NULL;
+	}
+
 	sess = scst_register_session(target->tgt, 0, name, vport, NULL, NULL);
 	if (!sess) {
 		rej->reason =
@@ -1264,6 +1273,7 @@ static int ibmvstgt_probe(struct vio_dev *dev, const struct vio_device_id *id)
 
 	TRACE_ENTRY();
 
+	dev_set_drvdata(&dev->dev, NULL);
 	vport = kzalloc(sizeof(struct vio_port), GFP_KERNEL);
 	if (!vport)
 		goto out;
@@ -1348,6 +1358,7 @@ destroy_crq_queue:
 	crq_queue_destroy(target);
 free_srp_target:
 	srp_target_free(target);
+	dev_set_drvdata(&dev->dev, NULL);
 unregister_target:
 	scst_unregister_target(scst_tgt);
 free_target:
@@ -1360,12 +1371,15 @@ free_vport:
 static int ibmvstgt_remove(struct vio_dev *dev)
 {
 	struct srp_target *target = dev_get_drvdata(&dev->dev);
-	struct vio_port *vport = target->ldata;
+	struct vio_port *vport;
 
 	TRACE_ENTRY();
 
 	atomic_dec(&ibmvstgt_device_count);
 
+	if (!target)
+		goto out;
+	vport = target->ldata;
 #if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
 	class_device_unregister(&vport->dev);
 #else
@@ -1377,7 +1391,7 @@ static int ibmvstgt_remove(struct vio_dev *dev)
 		scst_unregister_target(target->tgt);
 	kfree(target);
 	kfree(vport);
-
+out:
 	TRACE_EXIT();
 
 	return 0;
