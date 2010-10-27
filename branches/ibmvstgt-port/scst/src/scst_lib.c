@@ -5348,6 +5348,7 @@ uint64_t scst_unpack_lun(const uint8_t *lun, int len)
 		break;
 
 	case 2:	/* logical unit addressing method */
+#if 0
 		if (*lun & 0x3f) {
 			PRINT_ERROR("Illegal BUS NUMBER in LUN logical unit "
 				    "addressing method 0x%02x, expected 0",
@@ -5360,6 +5361,7 @@ uint64_t scst_unpack_lun(const uint8_t *lun, int len)
 				    (*(lun + 1) & 0xf8) >> 5);
 			break;
 		}
+#endif
 		res = *(lun + 1) & 0x1f;
 		break;
 
