@@ -1075,10 +1075,10 @@ static void ibmvstgt_inq_get_product_id(const struct scst_tgt_dev *tgt_dev,
 	 * naming to recognize device types and their client won't work unless
 	 * we use VOPTA and VDASD.
 	 */
-	if (tgt_dev->dev->type == TYPE_DISK)
-		memcpy(buf, "VDASD blkdev    ", 16);
-	else
+	if (tgt_dev->dev->type == TYPE_ROM)
 		memcpy(buf, "VOPTA blkdev    ", 16);
+	else
+		memcpy(buf, "VDASD blkdev    ", 16);
 
 	TRACE_DBG("%s: %d -> %.*s", __FUNCTION__, tgt_dev->dev->type, 16, buf);
 }
