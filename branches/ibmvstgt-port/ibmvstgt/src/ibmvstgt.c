@@ -205,12 +205,14 @@ static int send_rsp(struct iu_entry *iue, struct scst_cmd *sc,
                         uint8_t *sc_sense;
 
 			sc_sense = scst_cmd_get_sense_buffer(sc);
-			WARN_ON(!SCST_SENSE_VALID(sc_sense));
-			sense_data_len = min(scst_cmd_get_sense_buffer_len(sc),
-					     SRP_RSP_SENSE_DATA_LEN);
-			iu->srp.rsp.flags |= SRP_RSP_FLAG_SNSVALID;
-			iu->srp.rsp.sense_data_len = sense_data_len;
-			memcpy(sense, sc_sense, sense_data_len);
+			if (SCST_SENSE_VALID(sc_sense)) {
+				sense_data_len
+					= min(scst_cmd_get_sense_buffer_len(sc),
+					      SRP_RSP_SENSE_DATA_LEN);
+				iu->srp.rsp.flags |= SRP_RSP_FLAG_SNSVALID;
+				iu->srp.rsp.sense_data_len = sense_data_len;
+				memcpy(sense, sc_sense, sense_data_len);
+			}
 		} else {
 			iu->srp.rsp.status = SAM_STAT_CHECK_CONDITION;
 			iu->srp.rsp.flags |= SRP_RSP_FLAG_SNSVALID;
