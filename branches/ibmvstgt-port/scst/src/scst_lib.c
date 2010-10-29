@@ -5348,13 +5348,18 @@ uint64_t scst_unpack_lun(const uint8_t *lun, int len)
 		break;
 
 	case 2:	/* logical unit addressing method */
-		/*
-		 * All LUNs exported by SCST have bus number 0 and target number
-		 * 0, so return NO_SUCH_LUN if either the bus number or the
-		 * target number is not zero.
-		 */
-		if ((*lun & 0x3f) || (*(lun + 1) & 0xe0))
+		if (*lun & 0x3f) {
+			PRINT_ERROR("Illegal BUS NUMBER in LUN logical unit "
+				    "addressing method 0x%02x, expected 0",
+				    *lun & 0x3f);
 			break;
+		}
+		if (*(lun + 1) & 0xe0) {
+			PRINT_ERROR("Illegal TARGET in LUN logical unit "
+				    "addressing method 0x%02x, expected 0",
+				    (*(lun + 1) & 0xf8) >> 5);
+			break;
+		}
 		res = *(lun + 1) & 0x1f;
 		break;
 
