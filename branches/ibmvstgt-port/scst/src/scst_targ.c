@@ -1649,15 +1649,9 @@ static int scst_report_luns_local(struct scst_cmd *cmd)
 						buffer_size);
 					goto out_put_hw_err;
 				}
-				if ((cmd->sess->acg->addr_method == SCST_LUN_ADDR_METHOD_FLAT) &&
-				    (tgt_dev->lun != 0)) {
-					buffer[offs] = (tgt_dev->lun >> 8) & 0x3f;
-					buffer[offs] = buffer[offs] | 0x40;
-					buffer[offs+1] = tgt_dev->lun & 0xff;
-				} else {
-					buffer[offs] = (tgt_dev->lun >> 8) & 0xff;
-					buffer[offs+1] = tgt_dev->lun & 0xff;
-				}
+				*(__force __be64 *)&buffer[offs]
+					= scst_pack_lun(tgt_dev->lun,
+						cmd->sess->acg->addr_method);
 				offs += 8;
 			}
 inc_dev_cnt:

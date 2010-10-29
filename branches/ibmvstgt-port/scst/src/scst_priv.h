@@ -117,10 +117,6 @@ extern unsigned long scst_trace_flag;
 
 #define SCST_TGT_RETRY_TIMEOUT               (3/2*HZ)
 
-/* Definitions of symbolic constants for LUN addressing method */
-#define SCST_LUN_ADDR_METHOD_PERIPHERAL	0
-#define SCST_LUN_ADDR_METHOD_FLAT	1
-
 /* Activities suspending timeout */
 #define SCST_SUSPENDING_TIMEOUT			(90 * HZ)
 

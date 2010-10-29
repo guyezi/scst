@@ -641,6 +641,11 @@ struct scst_tgt_template {
 #endif
 
 	/*
+	 * Preferred SCSI LUN addressing method.
+	 */
+	enum scst_lun_addr_method preferred_addr_method;
+
+	/*
 	 * The maximum time in seconds cmd can stay inside the target
 	 * hardware, i.e. after rdy_to_xfer() and xmit_response(), before
 	 * on_hw_pending_cmd_timeout() will be called, if defined.
@@ -2483,7 +2488,7 @@ struct scst_acg {
 	struct kobject *luns_kobj;
 	struct kobject *initiators_kobj;
 
-	unsigned int addr_method;
+	enum scst_lun_addr_method addr_method;
 };
 
 /*
