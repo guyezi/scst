@@ -263,6 +263,16 @@ retry:
 	spin_unlock_irqrestore(&target->lock, flags);
 }
 
+/**
+ * ibmvstgt_rdma() - Transfer data via RDMA.
+ * @sc: pointer to the SCST command data structure.
+ * @sg: pointer to the scatter/gather list with data.
+ * @nsg: number of elements in sg.
+ * @md: pointer to an SRP direct data buffer descriptor.
+ * @nmd: number of memory descriptors in md.
+ * @dir: data transfer direction.
+ * @rest: number of bytes to transfer.
+ */
 static int ibmvstgt_rdma(struct scst_cmd *sc, struct scatterlist *sg, int nsg,
 			 struct srp_direct_buf *md, int nmd,
 			 enum dma_data_direction dir, unsigned int rest)
@@ -272,7 +282,6 @@ static int ibmvstgt_rdma(struct scst_cmd *sc, struct scatterlist *sg, int nsg,
 	struct vio_port *vport = target_to_port(target);
 	dma_addr_t token;
 	long err;
-	unsigned int done = 0;
 	int i, sidx, soff;
 
 	sidx = soff = 0;
@@ -307,7 +316,6 @@ static int ibmvstgt_rdma(struct scst_cmd *sc, struct scatterlist *sg, int nsg,
 			mlen -= slen;
 			mdone += slen;
 			soff += slen;
-			done += slen;
 
 			if (soff == sg_dma_len(sg + sidx)) {
 				sidx++;

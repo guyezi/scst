@@ -229,14 +229,15 @@ static int srp_direct_data(struct scst_cmd *sc, struct srp_direct_buf *md,
 			sg_cnt = scst_cmd_get_sg_cnt(sc);
 		}
 
-		dprintk("%p %u %u %d\n", iue, scsi_bufflen(sc),
-			md->len, sg_cnt);
+		dprintk("%p %u %u %d\n", iue,
+                        scst_cmd_get_expected_transfer_len(sc), md->len,
+                        sg_cnt);
 
 		nsg = dma_map_sg(iue->target->dev, sg, sg_cnt,
 				 DMA_BIDIRECTIONAL);
 		if (!nsg) {
 			printk(KERN_ERR "fail to map %p %d\n", iue, sg_cnt);
-			return 0;
+			return -EBUSY;
 		}
 		len = min_t(unsigned, scst_cmd_get_expected_transfer_len(sc),
 			    md->len);
@@ -355,9 +356,14 @@ static int data_out_desc_size(struct srp_cmd *cmd)
 	return size;
 }
 
-/*
- * TODO: this can be called multiple times for a single command if it
- * has very long data.
+/**
+ * srp_transfer_data() - Perform SRP_CMD data transfer.
+ * @sc: pointer to the SCST command data structure.
+ * @cmd: pointer to the SRP_CMD information unit.
+ * @rdma_io: pointer to a function that performs the RDMA transfer.
+ * @dma_map: whether or not data must be mapped via dma_map_sg() before an
+ *           RDMA transfer.
+ * @ext_desc: whether or not this command uses an external indirect SRP buffer.
  */
 int srp_transfer_data(struct scst_cmd *sc, struct srp_cmd *cmd,
 		      srp_rdma_t rdma_io, int dma_map, int ext_desc)
