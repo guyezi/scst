@@ -582,7 +582,8 @@ EOF
     for f in \
       drivers/scsi/ibmvscsi/ibmvstgt.c \
       drivers/scsi/libsrp.c \
-      include/scsi/libsrp.h
+      include/scsi/libsrp.h \
+      include/scsi/srp.h
     do
       add_patch "ibmvstgt/in-tree-patches/${kernel_version}/$(basename $f).patch" $f
     done
