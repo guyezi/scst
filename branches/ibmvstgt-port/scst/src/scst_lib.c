@@ -2030,10 +2030,11 @@ static void scst_adjust_sg(struct scst_cmd *cmd, struct scatterlist *sg,
 
 	l = 0;
 	for (i = 0, j = 0; i < *sg_cnt; i++, j++) {
-		TRACE_DBG("i %d, j %d, sg_cnt %d, sg %p, page_link %lx", i, j,
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 24)
+		TRACE_DBG("i %d, j %d, sg_cnt %d, sg %p, page_link %lx", i, j,
 			*sg_cnt, sg, sg[j].page_link);
 #else
+		TRACE_DBG("i %d, j %d, sg_cnt %d, sg %p, page_link %lx", i, j,
 			*sg_cnt, sg, 0UL);
 #endif
 		if (unlikely(sg_is_chain(&sg[j]))) {
@@ -2536,7 +2537,7 @@ out:
 }
 
 /* No locks */
-void __scst_free_tgt(struct scst_tgt *tgt)
+void scst_free_tgt(struct scst_tgt *tgt)
 {
 	TRACE_ENTRY();
 
@@ -2551,22 +2552,8 @@ void __scst_free_tgt(struct scst_tgt *tgt)
 	return;
 }
 
-/* No locks */
-void scst_free_tgt(struct scst_tgt *tgt)
-{
-	TRACE_ENTRY();
-
-	if (tgt->tgt_kobj_initialized)
-		scst_tgt_sysfs_del_free(tgt);
-	else
-		__scst_free_tgt(tgt);
-
-	TRACE_EXIT();
-	return;
-}
-
 /* Called under scst_mutex and suspended activity */
-int scst_alloc_dev(gfp_t gfp_mask, struct scst_device **out_dev)
+int scst_alloc_device(gfp_t gfp_mask, struct scst_device **out_dev)
 {
 	struct scst_device *dev;
 	int res = 0;
@@ -2610,20 +2597,7 @@ out:
 	return res;
 }
 
-void __scst_free_dev(struct scst_device *dev)
-{
-	TRACE_MEM("Freeing dev %p", dev);
-
-	kfree(dev->virt_name);
-	kfree(dev);
-}
-
-/*
- * Must not be called under scst_mutex, due to possible deadlock with
- * sysfs ref counting in sysfs works (it is waiting for the last put, but
- * the last ref counter holder is waiting for scst_mutex)
- */
-void scst_free_dev(struct scst_device *dev)
+void scst_free_device(struct scst_device *dev)
 {
 	TRACE_ENTRY();
 
@@ -2638,10 +2612,8 @@ void scst_free_dev(struct scst_device *dev)
 
 	scst_deinit_threads(&dev->dev_cmd_threads);
 
-	if (dev->dev_kobj_initialized)
-		scst_dev_sysfs_del_free(dev);
-	else
-		__scst_free_dev(dev);
+	kfree(dev->virt_name);
+	kfree(dev);
 
 	TRACE_EXIT();
 	return;
@@ -2685,17 +2657,11 @@ out:
 	return res;
 }
 
-void scst_free_acg_dev(struct scst_acg_dev *acg_dev)
-{
-	TRACE_MEM("Freeing acg_dev %p", acg_dev);
-	kmem_cache_free(scst_acgd_cachep, acg_dev);
-}
-
 /*
  * The activity supposed to be suspended and scst_mutex held or the
  * corresponding target supposed to be stopped.
  */
-static void scst_del_free_acg_dev(struct scst_acg_dev *acg_dev)
+static void scst_del_free_acg_dev(struct scst_acg_dev *acg_dev, bool del_sysfs)
 {
 	TRACE_ENTRY();
 
@@ -2704,10 +2670,10 @@ static void scst_del_free_acg_dev(struct scst_acg_dev *acg_dev)
 	list_del(&acg_dev->acg_dev_list_entry);
 	list_del(&acg_dev->dev_acg_dev_list_entry);
 
-	if (acg_dev->acg_dev_kobj_initialized)
-		scst_acg_dev_sysfs_del_free(acg_dev);
-	else
-		scst_free_acg_dev(acg_dev);
+	if (del_sysfs)
+		scst_acg_dev_sysfs_del(acg_dev);
+
+	kmem_cache_free(scst_acgd_cachep, acg_dev);
 
 	TRACE_EXIT();
 	return;
@@ -2723,6 +2689,7 @@ int scst_acg_add_lun(struct scst_acg *acg, struct kobject *parent,
 	struct scst_tgt_dev *tgt_dev;
 	struct scst_session *sess;
 	LIST_HEAD(tmp_tgt_dev_list);
+	bool del_sysfs = true;
 
 	TRACE_ENTRY();
 
@@ -2752,8 +2719,10 @@ int scst_acg_add_lun(struct scst_acg *acg, struct kobject *parent,
 	}
 
 	res = scst_acg_dev_sysfs_create(acg_dev, parent);
-	if (res != 0)
+	if (res != 0) {
+		del_sysfs = false;
 		goto out_free;
+	}
 
 	if (gen_scst_report_luns_changed)
 		scst_report_luns_changed(acg);
@@ -2774,7 +2743,7 @@ out_free:
 			 extra_tgt_dev_list_entry) {
 		scst_free_tgt_dev(tgt_dev);
 	}
-	scst_del_free_acg_dev(acg_dev);
+	scst_del_free_acg_dev(acg_dev, del_sysfs);
 	goto out;
 }
 
@@ -2806,7 +2775,7 @@ int scst_acg_del_lun(struct scst_acg *acg, uint64_t lun,
 			scst_free_tgt_dev(tgt_dev);
 	}
 
-	scst_del_free_acg_dev(acg_dev);
+	scst_del_free_acg_dev(acg_dev, true);
 
 	if (gen_scst_report_luns_changed)
 		scst_report_luns_changed(acg);
@@ -2817,22 +2786,6 @@ int scst_acg_del_lun(struct scst_acg *acg, uint64_t lun,
 out:
 	TRACE_EXIT_RES(res);
 	return res;
-}
-
-void __scst_free_acg(struct scst_acg *acg)
-{
-	TRACE_MEM("Freeing acg %p", acg);
-
-	kfree(acg->acg_name);
-	kfree(acg);
-}
-
-static void scst_free_acg(struct scst_acg *acg)
-{
-	if (acg->acg_kobj_initialized)
-		scst_acg_sysfs_del_free(acg);
-	else
-		__scst_free_acg(acg);
 }
 
 /* The activity supposed to be suspended and scst_mutex held */
@@ -2892,7 +2845,7 @@ out_del:
 #endif
 
 out_free:
-	scst_free_acg(acg);
+	kfree(acg);
 	acg = NULL;
 	goto out;
 }
@@ -2919,7 +2872,7 @@ void scst_del_free_acg(struct scst_acg *acg)
 			if (tgt_dev->acg_dev == acg_dev)
 				scst_free_tgt_dev(tgt_dev);
 		}
-		scst_del_free_acg_dev(acg_dev);
+		scst_del_free_acg_dev(acg_dev, true);
 	}
 
 	/* Freeing names */
@@ -2935,6 +2888,8 @@ void scst_del_free_acg(struct scst_acg *acg)
 	if (acg->tgt_acg) {
 		TRACE_DBG("Removing acg %s from list", acg->acg_name);
 		list_del(&acg->acg_list_entry);
+
+		scst_acg_sysfs_del(acg);
 	} else
 		acg->tgt->default_acg = NULL;
 #endif
@@ -2943,7 +2898,8 @@ void scst_del_free_acg(struct scst_acg *acg)
 	sBUG_ON(!list_empty(&acg->acg_dev_list));
 	sBUG_ON(!list_empty(&acg->acn_list));
 
-	scst_free_acg(acg);
+	kfree(acg->acg_name);
+	kfree(acg);
 
 	TRACE_EXIT();
 	return;
@@ -3467,11 +3423,16 @@ void scst_nexus_loss(struct scst_tgt_dev *tgt_dev, bool queue_UA)
 
 	scst_clear_reservation(tgt_dev);
 
+#if 0 /* Clearing UAs and last sense isn't required by SAM and it looks to be
+       * better to not clear them to not loose important events, so let's
+       * disable it.
+       */
 	/* With activity suspended the lock isn't needed, but let's be safe */
 	spin_lock_bh(&tgt_dev->tgt_dev_lock);
 	scst_free_all_UA(tgt_dev);
 	memset(tgt_dev->tgt_dev_sense, 0, sizeof(tgt_dev->tgt_dev_sense));
 	spin_unlock_bh(&tgt_dev->tgt_dev_lock);
+#endif
 
 	if (queue_UA) {
 		uint8_t sense_buffer[SCST_STANDARD_SENSE_LEN];
@@ -3483,12 +3444,6 @@ void scst_nexus_loss(struct scst_tgt_dev *tgt_dev, bool queue_UA)
 
 	TRACE_EXIT();
 	return;
-}
-
-void __scst_free_tgt_dev(struct scst_tgt_dev *tgt_dev)
-{
-	TRACE_MEM("Freeing tgt_dev %p", tgt_dev);
-	kmem_cache_free(scst_tgtd_cachep, tgt_dev);
 }
 
 /*
@@ -3506,6 +3461,8 @@ static void scst_free_tgt_dev(struct scst_tgt_dev *tgt_dev)
 	spin_unlock_bh(&dev->dev_lock);
 
 	list_del(&tgt_dev->sess_tgt_dev_list_entry);
+
+	scst_tgt_dev_sysfs_del(tgt_dev);
 
 	if (tgt_dev->sess->tgt->tgtt->get_initiator_port_transport_id == NULL)
 		dev->not_pr_supporting_tgt_devs_num--;
@@ -3525,10 +3482,7 @@ static void scst_free_tgt_dev(struct scst_tgt_dev *tgt_dev)
 
 	sBUG_ON(!list_empty(&tgt_dev->thr_data_list));
 
-	if (tgt_dev->tgt_dev_kobj_initialized)
-		scst_tgt_dev_sysfs_del_free(tgt_dev);
-	else
-		__scst_free_tgt_dev(tgt_dev);
+	kmem_cache_free(scst_tgtd_cachep, tgt_dev);
 
 	TRACE_EXIT();
 	return;
@@ -5023,7 +4977,8 @@ static int get_trans_len_serv_act_in(struct scst_cmd *cmd, uint8_t off)
 	if ((cmd->cdb[1] & 0x1f) == SAI_READ_CAPACITY_16) {
 		cmd->op_name = "READ CAPACITY(16)";
 		cmd->bufflen = be32_to_cpu(get_unaligned((__be32 *)&cmd->cdb[10]));
-		cmd->op_flags |= SCST_IMPLICIT_HQ|SCST_REG_RESERVE_ALLOWED;
+		cmd->op_flags |= SCST_IMPLICIT_HQ | SCST_REG_RESERVE_ALLOWED |
+			SCST_WRITE_EXCL_ALLOWED | SCST_EXCL_ACCESS_ALLOWED;
 	} else
 		cmd->op_flags |= SCST_UNKNOWN_LENGTH;
 
@@ -6064,14 +6019,16 @@ void scst_process_reset(struct scst_device *dev,
 		dev_tgt_dev_list_entry) {
 		struct scst_session *sess = tgt_dev->sess;
 
+#if 0 /* Clearing UAs and last sense isn't required by SAM and it
+       * looks to be better to not clear them to not loose important
+       * events, so let's disable it.
+       */
 		spin_lock_bh(&tgt_dev->tgt_dev_lock);
-
 		scst_free_all_UA(tgt_dev);
-
 		memset(tgt_dev->tgt_dev_sense, 0,
 			sizeof(tgt_dev->tgt_dev_sense));
-
 		spin_unlock_bh(&tgt_dev->tgt_dev_lock);
+#endif
 
 		spin_lock_irq(&sess->sess_list_lock);
 
@@ -6124,6 +6081,19 @@ int scst_set_pending_UA(struct scst_cmd *cmd)
 	struct scst_session *sess = cmd->sess;
 
 	TRACE_ENTRY();
+
+	/*
+	 * RMB and recheck to sync with setting SCST_CMD_ABORTED in
+	 * scst_abort_cmd() to not set UA for the being aborted cmd, hence
+	 * possibly miss its delivery by a legitimate command while the UA is
+	 * being requeued.
+	 */
+	smp_rmb();
+	if (test_bit(SCST_CMD_ABORTED, &cmd->cmd_flags)) {
+		TRACE_MGMT_DBG("Not set pending UA for aborted cmd %p", cmd);
+		res = -1;
+		goto out;
+	}
 
 	TRACE_MGMT_DBG("Setting pending UA cmd %p", cmd);
 
@@ -6230,6 +6200,7 @@ out_unlock:
 
 	spin_unlock_bh(&cmd->tgt_dev->tgt_dev_lock);
 
+out:
 	TRACE_EXIT_RES(res);
 	return res;
 }
@@ -7544,7 +7515,10 @@ void scst_update_lat_stats(struct scst_cmd *cmd)
 	else if (data_len <= SCST_IO_SIZE_THRESHOLD_VERY_LARGE)
 		i = SCST_LATENCY_STAT_INDEX_VERY_LARGE;
 	latency_stat = &sess->sess_latency_stat[i];
-	dev_latency_stat = &cmd->tgt_dev->dev_latency_stat[i];
+	if (cmd->tgt_dev != NULL)
+		dev_latency_stat = &cmd->tgt_dev->dev_latency_stat[i];
+	else
+		dev_latency_stat = NULL;
 
 	/* Calculate the latencies */
 	scst_time = finish - cmd->start - (cmd->parse_time +
@@ -7607,27 +7581,29 @@ void scst_update_lat_stats(struct scst_cmd *cmd)
 		if (latency_stat->max_dev_time_rd < dev_time)
 			latency_stat->max_dev_time_rd = dev_time;
 
-		dev_latency_stat->scst_time_rd += scst_time;
-		dev_latency_stat->tgt_time_rd += tgt_time;
-		dev_latency_stat->dev_time_rd += dev_time;
-		dev_latency_stat->processed_cmds_rd++;
+		if (dev_latency_stat != NULL) {
+			dev_latency_stat->scst_time_rd += scst_time;
+			dev_latency_stat->tgt_time_rd += tgt_time;
+			dev_latency_stat->dev_time_rd += dev_time;
+			dev_latency_stat->processed_cmds_rd++;
 
-		if ((dev_latency_stat->min_scst_time_rd == 0) ||
-		    (dev_latency_stat->min_scst_time_rd > scst_time))
-			dev_latency_stat->min_scst_time_rd = scst_time;
-		if ((dev_latency_stat->min_tgt_time_rd == 0) ||
-		    (dev_latency_stat->min_tgt_time_rd > tgt_time))
-			dev_latency_stat->min_tgt_time_rd = tgt_time;
-		if ((dev_latency_stat->min_dev_time_rd == 0) ||
-		    (dev_latency_stat->min_dev_time_rd > dev_time))
-			dev_latency_stat->min_dev_time_rd = dev_time;
+			if ((dev_latency_stat->min_scst_time_rd == 0) ||
+			    (dev_latency_stat->min_scst_time_rd > scst_time))
+				dev_latency_stat->min_scst_time_rd = scst_time;
+			if ((dev_latency_stat->min_tgt_time_rd == 0) ||
+			    (dev_latency_stat->min_tgt_time_rd > tgt_time))
+				dev_latency_stat->min_tgt_time_rd = tgt_time;
+			if ((dev_latency_stat->min_dev_time_rd == 0) ||
+			    (dev_latency_stat->min_dev_time_rd > dev_time))
+				dev_latency_stat->min_dev_time_rd = dev_time;
 
-		if (dev_latency_stat->max_scst_time_rd < scst_time)
-			dev_latency_stat->max_scst_time_rd = scst_time;
-		if (dev_latency_stat->max_tgt_time_rd < tgt_time)
-			dev_latency_stat->max_tgt_time_rd = tgt_time;
-		if (dev_latency_stat->max_dev_time_rd < dev_time)
-			dev_latency_stat->max_dev_time_rd = dev_time;
+			if (dev_latency_stat->max_scst_time_rd < scst_time)
+				dev_latency_stat->max_scst_time_rd = scst_time;
+			if (dev_latency_stat->max_tgt_time_rd < tgt_time)
+				dev_latency_stat->max_tgt_time_rd = tgt_time;
+			if (dev_latency_stat->max_dev_time_rd < dev_time)
+				dev_latency_stat->max_dev_time_rd = dev_time;
+		}
 	} else if (cmd->data_direction & SCST_DATA_WRITE) {
 		latency_stat->scst_time_wr += scst_time;
 		latency_stat->tgt_time_wr += tgt_time;
@@ -7651,27 +7627,29 @@ void scst_update_lat_stats(struct scst_cmd *cmd)
 		if (latency_stat->max_dev_time_wr < dev_time)
 			latency_stat->max_dev_time_wr = dev_time;
 
-		dev_latency_stat->scst_time_wr += scst_time;
-		dev_latency_stat->tgt_time_wr += tgt_time;
-		dev_latency_stat->dev_time_wr += dev_time;
-		dev_latency_stat->processed_cmds_wr++;
+		if (dev_latency_stat != NULL) {
+			dev_latency_stat->scst_time_wr += scst_time;
+			dev_latency_stat->tgt_time_wr += tgt_time;
+			dev_latency_stat->dev_time_wr += dev_time;
+			dev_latency_stat->processed_cmds_wr++;
 
-		if ((dev_latency_stat->min_scst_time_wr == 0) ||
-		    (dev_latency_stat->min_scst_time_wr > scst_time))
-			dev_latency_stat->min_scst_time_wr = scst_time;
-		if ((dev_latency_stat->min_tgt_time_wr == 0) ||
-		    (dev_latency_stat->min_tgt_time_wr > tgt_time))
-			dev_latency_stat->min_tgt_time_wr = tgt_time;
-		if ((dev_latency_stat->min_dev_time_wr == 0) ||
-		    (dev_latency_stat->min_dev_time_wr > dev_time))
-			dev_latency_stat->min_dev_time_wr = dev_time;
+			if ((dev_latency_stat->min_scst_time_wr == 0) ||
+			    (dev_latency_stat->min_scst_time_wr > scst_time))
+				dev_latency_stat->min_scst_time_wr = scst_time;
+			if ((dev_latency_stat->min_tgt_time_wr == 0) ||
+			    (dev_latency_stat->min_tgt_time_wr > tgt_time))
+				dev_latency_stat->min_tgt_time_wr = tgt_time;
+			if ((dev_latency_stat->min_dev_time_wr == 0) ||
+			    (dev_latency_stat->min_dev_time_wr > dev_time))
+				dev_latency_stat->min_dev_time_wr = dev_time;
 
-		if (dev_latency_stat->max_scst_time_wr < scst_time)
-			dev_latency_stat->max_scst_time_wr = scst_time;
-		if (dev_latency_stat->max_tgt_time_wr < tgt_time)
-			dev_latency_stat->max_tgt_time_wr = tgt_time;
-		if (dev_latency_stat->max_dev_time_wr < dev_time)
-			dev_latency_stat->max_dev_time_wr = dev_time;
+			if (dev_latency_stat->max_scst_time_wr < scst_time)
+				dev_latency_stat->max_scst_time_wr = scst_time;
+			if (dev_latency_stat->max_tgt_time_wr < tgt_time)
+				dev_latency_stat->max_tgt_time_wr = tgt_time;
+			if (dev_latency_stat->max_dev_time_wr < dev_time)
+				dev_latency_stat->max_dev_time_wr = dev_time;
+		}
 	}
 
 	spin_unlock_bh(&sess->lat_lock);
