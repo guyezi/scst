@@ -276,6 +276,7 @@ static int srp_indirect_data(struct scst_cmd *sc, struct srp_cmd *cmd,
 		cmd->data_out_desc_cnt);
 
 	nmd = id->table_desc.len / sizeof(struct srp_direct_buf);
+	len = min_t(u32, tsize, id->len);
 
 	if ((dir == DMA_FROM_DEVICE && nmd == cmd->data_in_desc_cnt) ||
 	    (dir == DMA_TO_DEVICE && nmd == cmd->data_out_desc_cnt)) {
@@ -306,7 +307,6 @@ static int srp_indirect_data(struct scst_cmd *sc, struct srp_cmd *cmd,
 	}
 
 rdma:
-	len = min_t(u32, tsize, id->len);
 	if (dma_map) {
 		nsg = dma_map_sg(iue->target->dev, sg, sg_cnt,
 				 DMA_BIDIRECTIONAL);
