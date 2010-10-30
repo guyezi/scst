@@ -201,8 +201,8 @@ static int send_rsp(struct iu_entry *iue, struct scst_cmd *sc,
 		uint8_t *sense = iu->srp.rsp.data;
 
 		if (sc) {
-			int sense_data_len;
 			uint8_t *sc_sense;
+			int sense_data_len;
 
 			sc_sense = scst_cmd_get_sense_buffer(sc);
 			if (SCST_SENSE_VALID(sc_sense)) {
@@ -972,9 +972,6 @@ static void crq_queue_destroy(struct srp_target *target)
 	struct crq_queue *queue = &vport->crq_queue;
 	int err;
 
-	if (!queue->msgs)
-		return;
-
 	free_irq(vport->dma_dev->irq, target);
 	do {
 		err = h_free_crq(vport->dma_dev->unit_address);
@@ -1511,10 +1508,6 @@ static int __init ibmvstgt_init(void)
 
 	printk("IBM eServer i/pSeries Virtual SCSI Target Driver\n");
 
-	err = get_system_info();
-	if (err)
-		goto out;
-
 	err = class_register(&ibmvstgt_class);
 	if (err)
 		goto out;
@@ -1526,6 +1519,10 @@ static int __init ibmvstgt_init(void)
 	vtgtd = create_workqueue("ibmvtgtd");
 	if (!vtgtd)
 		goto unregister_tgt;
+
+	err = get_system_info();
+	if (err)
+		goto destroy_wq;
 
 	err = vio_register_driver(&ibmvstgt_driver);
 	if (err)
