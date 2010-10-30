@@ -30,8 +30,11 @@ do
   g="${f#src/orig/${kernel_version}/}"
   f1="$f"
   f2="src/$g"
-  if [ ! -e "$f2" ]; then
+  if [ "${f2#src/libsrp}" != "${f2}" ]; then
     f2="src/libsrpnew${f2#src/libsrp}"
+  fi
+  if [ "${f2#src/srp}" != "${f2}" ]; then
+    f2="src/srpnew${f2#src/srp}"
   fi
   if [ "$g" = "Makefile" ]; then
     f2="src/scsi-Makefile${f2#src/Makefile}"
