@@ -961,7 +961,6 @@ reg_crq_failed:
 			 queue->size * sizeof(*queue->msgs), DMA_BIDIRECTIONAL);
 map_failed:
 	free_page((unsigned long) queue->msgs);
-	queue->msgs = NULL;
 
 malloc_failed:
 	return -ENOMEM;
@@ -985,7 +984,6 @@ static void crq_queue_destroy(struct srp_target *target)
 			 queue->size * sizeof(*queue->msgs), DMA_BIDIRECTIONAL);
 
 	free_page((unsigned long) queue->msgs);
-	queue->msgs = NULL;
 }
 
 static void process_crq(struct viosrp_crq *crq,	struct srp_target *target)
@@ -1102,9 +1100,9 @@ static void ibmvstgt_inq_get_product_id(const struct scst_tgt_dev *tgt_dev,
 	TRACE_DBG("%s: %d -> %.*s", __func__, tgt_dev->dev->type, 16, buf);
 }
 
-#define GETTARGET(x) ((int)((((uint64_t)(x)) >> 56) & 0x003f))
-#define GETBUS(x) ((int)((((uint64_t)(x)) >> 53) & 0x0007))
-#define GETLUN(x) ((int)((((uint64_t)(x)) >> 48) & 0x001f))
+#define GETTARGET(x) ((int)(((x) >> 8) & 0x003f))
+#define GETBUS(x)    ((int)(((x) >> 5) & 0x0007))
+#define GETLUN(x)    ((int)(((x) >> 0) & 0x001f))
 
 static int ibmvstgt_inq_get_vend_specific(const struct scst_tgt_dev *tgt_dev,
 					  char *buf)
@@ -1284,7 +1282,7 @@ static int ibmvstgt_probe(struct vio_dev *dev, const struct vio_device_id *id)
 
 	vport = kzalloc(sizeof(struct vio_port), GFP_KERNEL);
 	if (!vport)
-		goto out;
+		return err;
 
 	target = kzalloc(sizeof(struct srp_target), GFP_KERNEL);
 	if (!target)
@@ -1301,11 +1299,8 @@ static int ibmvstgt_probe(struct vio_dev *dev, const struct vio_device_id *id)
 	vport->target = target;
 	err = srp_target_alloc(target, &dev->dev, INITIAL_SRP_LIMIT,
 			       SRP_MAX_IU_LEN);
-	if (err) {
-		PRINT_ERROR("Unit %x: SRP target allocation failed",
-			    vport->dma_dev->unit_address);
+	if (err)
 		goto unregister_target;
-	}
 
 	dma = (unsigned int *) vio_get_attribute(dev, "ibm,my-dma-window",
 						 &dma_size);
@@ -1324,11 +1319,8 @@ static int ibmvstgt_probe(struct vio_dev *dev, const struct vio_device_id *id)
 #endif
 
 	err = crq_queue_create(&vport->crq_queue, target);
-	if (err) {
-		PRINT_ERROR("Unit %x: CRQ creation failed",
-			    vport->dma_dev->unit_address);
+	if (err)
 		goto free_srp_target;
-	}
 
 	vport->dev.class = &ibmvstgt_class;
 #if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
@@ -1346,16 +1338,11 @@ static int ibmvstgt_probe(struct vio_dev *dev, const struct vio_device_id *id)
 	dev_set_name(&vport->dev, "ibmvstgt-%d", vport->dma_dev->unit_address);
 #endif
 #if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
-	if (class_device_register(&vport->dev)) {
-		PRINT_ERROR("%s: device registration failed",
-			    vport->dev.class_id);
+	if (class_device_register(&vport->dev))
 #else
-	if (device_register(&vport->dev)) {
+	if (device_register(&vport->dev))
 #endif
-		PRINT_ERROR("%s: device registration failed",
-			    vport->dev.kobj.name);
 		goto destroy_crq_queue;
-	}
 
 	atomic_inc(&ibmvstgt_device_count);
 
@@ -1396,8 +1383,7 @@ static int ibmvstgt_remove(struct vio_dev *dev)
 #endif
 	crq_queue_destroy(target);
 	srp_target_free(target);
-	if (target->tgt)
-		scst_unregister_target(target->tgt);
+	scst_unregister_target(target->tgt);
 	kfree(target);
 	kfree(vport);
 out:
@@ -1526,41 +1512,29 @@ static int __init ibmvstgt_init(void)
 	printk("IBM eServer i/pSeries Virtual SCSI Target Driver\n");
 
 	err = get_system_info();
-	if (err) {
-		PRINT_ERROR("%s", "querying system information failed");
+	if (err)
 		goto out;
-	}
 
 	err = class_register(&ibmvstgt_class);
-	if (err) {
-		PRINT_ERROR("%s", "ibmvstgt device class registration failed");
+	if (err)
 		goto out;
-	}
 
 	err = scst_register_target_template(&ibmvstgt_template);
-	if (err) {
-		PRINT_ERROR("%s", "target template registration failed");
+	if (err)
 		goto unregister_class;
-	}
 
 	vtgtd = create_workqueue("ibmvtgtd");
-	if (!vtgtd) {
-		PRINT_ERROR("%s", "work queue creation failed");
+	if (!vtgtd)
 		goto unregister_tgt;
-	}
 
 	err = vio_register_driver(&ibmvstgt_driver);
-	if (err) {
-		PRINT_ERROR("%s", "virtual I/O driver registration failed");
+	if (err)
 		goto destroy_wq;
-	}
 
 #ifdef CONFIG_SCST_PROC
 	err = ibmvstgt_register_procfs_entry(&ibmvstgt_template);
-	if (err) {
-		PRINT_ERROR("%s", "procfs entry registration failed");
+	if (err)
 		goto unregister_driver;
-	}
 #endif
 
 	TRACE_EXIT_RES(err);
@@ -1579,7 +1553,6 @@ unregister_class:
 	class_unregister(&ibmvstgt_class);
 out:
 	TRACE_EXIT_RES(err);
-
 	return err;
 }
 
