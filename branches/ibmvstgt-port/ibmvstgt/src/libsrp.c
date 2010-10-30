@@ -41,7 +41,7 @@ enum srp_task_attributes {
 /* tmp - will replace with SCSI logging stuff */
 #define eprintk(fmt, args...)					\
 do {								\
-	printk("%s(%d) " fmt, __func__, __LINE__, ##args);	\
+	printk(KERN_ERR "%s(%d) " fmt, __func__, __LINE__, ##args);	\
 } while (0)
 /* #define dprintk eprintk */
 #define dprintk(fmt, args...)
