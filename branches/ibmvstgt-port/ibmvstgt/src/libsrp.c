@@ -359,6 +359,9 @@ static int data_out_desc_size(struct srp_cmd *cmd)
  * @dma_map: whether or not data must be mapped via dma_map_sg() before an
  *           RDMA transfer.
  * @ext_desc: whether or not this command uses an external indirect SRP buffer.
+ *
+ * To do: Make it possible to transfer huge amounts of data via multiple
+ * srp_transfer_data() calls.
  */
 int srp_transfer_data(struct scst_cmd *sc, struct srp_cmd *cmd,
 		      srp_rdma_t rdma_io, int dma_map, int ext_desc)
