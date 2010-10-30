@@ -224,11 +224,11 @@ static int srp_direct_data(struct scst_cmd *sc, struct srp_direct_buf *md,
 	iue = scst_cmd_get_tgt_priv(sc);
 	if (dir == DMA_TO_DEVICE) {
 		scst_cmd_get_write_fields(sc, &sg, &sg_cnt);
-		tsize = scst_cmd_get_bufflen(scmnd)
+		tsize = scst_cmd_get_bufflen(sc);
 	} else {
 		sg = scst_cmd_get_sg(sc);
 		sg_cnt = scst_cmd_get_sg_cnt(sc);
-		tsize = scst_cmd_get_adjusted_resp_data_len(scmnd);
+		tsize = scst_cmd_get_adjusted_resp_data_len(sc);
 	}
 
 	dprintk("%p %u %u %d\n", iue, tsize, md->len, sg_cnt);
@@ -268,11 +268,11 @@ static int srp_indirect_data(struct scst_cmd *sc, struct srp_cmd *cmd,
 	iue = scst_cmd_get_tgt_priv(sc);
 	if (dir == DMA_TO_DEVICE) {
 		scst_cmd_get_write_fields(sc, &sg, &sg_cnt);
-		tsize = scst_cmd_get_bufflen(scmnd)
+		tsize = scst_cmd_get_bufflen(sc);
 	} else {
 		sg = scst_cmd_get_sg(sc);
 		sg_cnt = scst_cmd_get_sg_cnt(sc);
-		tsize = scst_cmd_get_adjusted_resp_data_len(scmnd);
+		tsize = scst_cmd_get_adjusted_resp_data_len(sc);
 	}
 
 	dprintk("%p %u %u %d %d\n", iue, tsize, id->len, cmd->data_in_desc_cnt,

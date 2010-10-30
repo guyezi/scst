@@ -202,7 +202,7 @@ static int send_rsp(struct iu_entry *iue, struct scst_cmd *sc,
 
 		if (sc) {
 			int sense_data_len;
-                        uint8_t *sc_sense;
+			uint8_t *sc_sense;
 
 			sc_sense = scst_cmd_get_sense_buffer(sc);
 			if (SCST_SENSE_VALID(sc_sense)) {
@@ -1099,7 +1099,7 @@ static void ibmvstgt_inq_get_product_id(const struct scst_tgt_dev *tgt_dev,
 	else
 		memcpy(buf, "VDASD blkdev    ", 16);
 
-	TRACE_DBG("%s: %d -> %.*s", __FUNCTION__, tgt_dev->dev->type, 16, buf);
+	TRACE_DBG("%s: %d -> %.*s", __func__, tgt_dev->dev->type, 16, buf);
 }
 
 #define GETTARGET(x) ((int)((((uint64_t)(x)) >> 56) & 0x003f))
@@ -1329,7 +1329,7 @@ static int ibmvstgt_probe(struct vio_dev *dev, const struct vio_device_id *id)
 		PRINT_ERROR("Unit %x: CRQ creation failed",
 			    vport->dma_dev->unit_address);
 		goto free_srp_target;
-        }
+	}
 
 	vport->dev.class = &ibmvstgt_class;
 #if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
@@ -1353,6 +1353,8 @@ static int ibmvstgt_probe(struct vio_dev *dev, const struct vio_device_id *id)
 #else
 	if (device_register(&vport->dev)) {
 #endif
+		PRINT_ERROR("%s: device registration failed",
+			    vport->dev.kobj.name);
 		goto destroy_crq_queue;
 	}
 
@@ -1535,7 +1537,7 @@ static int __init ibmvstgt_init(void)
 	if (err) {
 		PRINT_ERROR("%s", "ibmvstgt device class registration failed");
 		goto out;
-        }
+	}
 
 	err = scst_register_target_template(&ibmvstgt_template);
 	if (err) {
