@@ -148,7 +148,6 @@ int srp_target_alloc(struct srp_target *target, struct device *dev,
 	INIT_LIST_HEAD(&target->cmd_queue);
 
 	target->dev = dev;
-	dev_set_drvdata(target->dev, target);
 
 	target->srp_iu_size = iu_size;
 	target->rx_ring_size = nr;
@@ -158,6 +157,7 @@ int srp_target_alloc(struct srp_target *target, struct device *dev,
 	err = srp_iu_pool_alloc(&target->iu_queue, nr, target->rx_ring);
 	if (err)
 		goto free_ring;
+	dev_set_drvdata(target->dev, target);
 
 	return 0;
 
@@ -169,13 +169,10 @@ EXPORT_SYMBOL_GPL(srp_target_alloc);
 
 void srp_target_free(struct srp_target *target)
 {
-	if (!target->dev)
-		return;
-
+	dev_set_drvdata(target->dev, NULL);
 	srp_ring_free(target->dev, target->rx_ring, target->rx_ring_size,
 		      target->srp_iu_size);
 	srp_iu_pool_free(&target->iu_queue);
-	target->dev = NULL;
 }
 EXPORT_SYMBOL_GPL(srp_target_free);
 

@@ -1282,7 +1282,6 @@ static int ibmvstgt_probe(struct vio_dev *dev, const struct vio_device_id *id)
 
 	TRACE_ENTRY();
 
-	dev_set_drvdata(&dev->dev, NULL);
 	vport = kzalloc(sizeof(struct vio_port), GFP_KERNEL);
 	if (!vport)
 		goto out;
@@ -1369,7 +1368,6 @@ destroy_crq_queue:
 	crq_queue_destroy(target);
 free_srp_target:
 	srp_target_free(target);
-	dev_set_drvdata(&dev->dev, NULL);
 unregister_target:
 	scst_unregister_target(scst_tgt);
 free_target:
