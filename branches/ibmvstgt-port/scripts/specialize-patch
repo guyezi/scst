@@ -387,7 +387,7 @@ function dump_lines() {
     if (h[0] != "")
       printf "@@ -%d,%d +%d,%d @@%s\n",h[1],h[2],h[3],h[4]-lines_deleted,h[5]
     for (i = 0; i < lines; i++)
-    print line[i]
+      print line[i]
   }
 }
 
