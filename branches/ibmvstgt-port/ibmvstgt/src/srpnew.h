@@ -69,6 +69,13 @@ enum {
 	SRP_DATA_DESC_INDIRECT	= 2
 };
 
+enum srp_task_attribute {
+	SRP_SIMPLE_TASK		= 0,
+	SRP_HEAD_TASK		= 1,
+	SRP_ORDERED_TASK	= 2,
+	SRP_ACA_TASK		= 4
+};
+
 enum {
 	SRP_TSK_ABORT_TASK	= 0x01,
 	SRP_TSK_ABORT_TASK_SET	= 0x02,
