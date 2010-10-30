@@ -214,35 +214,35 @@ EXPORT_SYMBOL_GPL(srp_iu_put);
 
 static int srp_direct_data(struct scst_cmd *sc, struct srp_direct_buf *md,
 			   enum dma_data_direction dir, srp_rdma_t rdma_io,
-			   int dma_map, int ext_desc)
+			   int dma_map)
 {
 	struct iu_entry *iue = NULL;
 	struct scatterlist *sg = NULL;
 	int err, nsg = 0, len, sg_cnt;
+	u32 tsize;
+
+	iue = scst_cmd_get_tgt_priv(sc);
+	if (dir == DMA_TO_DEVICE) {
+		scst_cmd_get_write_fields(sc, &sg, &sg_cnt);
+		tsize = scst_cmd_get_bufflen(scmnd)
+	} else {
+		sg = scst_cmd_get_sg(sc);
+		sg_cnt = scst_cmd_get_sg_cnt(sc);
+		tsize = scst_cmd_get_adjusted_resp_data_len(scmnd);
+	}
+
+	dprintk("%p %u %u %d\n", iue, tsize, md->len, sg_cnt);
+
+	len = min_t(u32, tsize, md->len);
 
 	if (dma_map) {
-		iue = scst_cmd_get_tgt_priv(sc);
-		if (dir == DMA_TO_DEVICE) {
-			scst_cmd_get_write_fields(sc, &sg, &sg_cnt);
-		} else {
-			sg = scst_cmd_get_sg(sc);
-			sg_cnt = scst_cmd_get_sg_cnt(sc);
-		}
-
-		dprintk("%p %u %u %d\n", iue,
-                        scst_cmd_get_expected_transfer_len(sc), md->len,
-                        sg_cnt);
-
 		nsg = dma_map_sg(iue->target->dev, sg, sg_cnt,
 				 DMA_BIDIRECTIONAL);
 		if (!nsg) {
 			printk(KERN_ERR "fail to map %p %d\n", iue, sg_cnt);
 			return -EBUSY;
 		}
-		len = min_t(unsigned, scst_cmd_get_expected_transfer_len(sc),
-			    md->len);
-	} else
-		len = md->len;
+	}
 
 	err = rdma_io(sc, sg, nsg, md, 1, dir, len);
 
@@ -263,20 +263,20 @@ static int srp_indirect_data(struct scst_cmd *sc, struct srp_cmd *cmd,
 	dma_addr_t token = 0;
 	int err = 0;
 	int nmd, nsg = 0, len, sg_cnt = 0;
+	u32 tsize;
 
-	if (dma_map || ext_desc) {
-		iue = scst_cmd_get_tgt_priv(sc);
-		if (dir == DMA_TO_DEVICE) {
-			scst_cmd_get_write_fields(sc, &sg, &sg_cnt);
-		} else {
-			sg = scst_cmd_get_sg(sc);
-			sg_cnt = scst_cmd_get_sg_cnt(sc);
-		}
-
-		dprintk("%p %u %u %d %d\n",
-			iue, scsi_bufflen(sc), id->len,
-			cmd->data_in_desc_cnt, cmd->data_out_desc_cnt);
+	iue = scst_cmd_get_tgt_priv(sc);
+	if (dir == DMA_TO_DEVICE) {
+		scst_cmd_get_write_fields(sc, &sg, &sg_cnt);
+		tsize = scst_cmd_get_bufflen(scmnd)
+	} else {
+		sg = scst_cmd_get_sg(sc);
+		sg_cnt = scst_cmd_get_sg_cnt(sc);
+		tsize = scst_cmd_get_adjusted_resp_data_len(scmnd);
 	}
+
+	dprintk("%p %u %u %d %d\n", iue, tsize, id->len, cmd->data_in_desc_cnt,
+		cmd->data_out_desc_cnt);
 
 	nmd = id->table_desc.len / sizeof(struct srp_direct_buf);
 
@@ -309,6 +309,7 @@ static int srp_indirect_data(struct scst_cmd *sc, struct srp_cmd *cmd,
 	}
 
 rdma:
+	len = min_t(u32, tsize, id->len);
 	if (dma_map) {
 		nsg = dma_map_sg(iue->target->dev, sg, sg_cnt,
 				 DMA_BIDIRECTIONAL);
@@ -317,10 +318,7 @@ rdma:
 			err = -EIO;
 			goto free_mem;
 		}
-		len = min_t(unsigned, scst_cmd_get_expected_transfer_len(sc),
-			    id->len);
-	} else
-		len = id->len;
+	}
 
 	err = rdma_io(sc, sg, nsg, md, nmd, dir, len);
 
@@ -391,7 +389,7 @@ int srp_transfer_data(struct scst_cmd *sc, struct srp_cmd *cmd,
 	case SRP_DATA_DESC_DIRECT:
 		md = (struct srp_direct_buf *)
 			(cmd->add_data + offset);
-		err = srp_direct_data(sc, md, dir, rdma_io, dma_map, ext_desc);
+		err = srp_direct_data(sc, md, dir, rdma_io, dma_map);
 		break;
 	case SRP_DATA_DESC_INDIRECT:
 		id = (struct srp_indirect_buf *)
