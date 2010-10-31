@@ -909,7 +909,7 @@ static int crq_queue_create(struct crq_queue *queue, struct srp_target *target)
 
 	vio_enable_interrupts(vport->dma_dev);
 
-	h_send_crq(vport->dma_dev->unit_address, 0xC001000000000000, 0);
+	h_send_crq(vport->dma_dev->unit_address, 0xC001000000000000ULL, 0);
 
 	queue->cur = 0;
 	spin_lock_init(&queue->lock);
@@ -959,7 +959,7 @@ static void process_crq(struct viosrp_crq *crq,	struct srp_target *target)
 		switch (crq->format) {
 		case 0x01:
 			h_send_crq(vport->dma_dev->unit_address,
-				   0xC002000000000000, 0);
+				   0xC002000000000000ULL, 0);
 			break;
 		case 0x02:
 			break;

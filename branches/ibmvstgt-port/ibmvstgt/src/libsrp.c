@@ -254,7 +254,7 @@ static int srp_indirect_data(struct scst_cmd *sc, struct srp_cmd *cmd,
 	dma_addr_t token = 0;
 	int err = 0;
 	int nmd, nsg = 0, len, sg_cnt = 0;
-	u32 tsize;
+	u32 tsize = 0;
 
 	if (dma_map || ext_desc) {
 		iue = scst_cmd_get_tgt_priv(sc);
