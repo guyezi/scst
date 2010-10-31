@@ -1300,7 +1300,7 @@ static int ibmvstgt_probe(struct vio_dev *dev, const struct vio_device_id *id)
 		     vport->dma_dev->unit_address);
 #else
 	dev_set_name(&vport->dev, "ibmvstgt-%d",
-                     vport->dma_dev->unit_address);
+		     vport->dma_dev->unit_address);
 #endif
 #if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
 	if (class_device_register(&vport->dev))
