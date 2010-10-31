@@ -1669,12 +1669,12 @@ static void vdisk_exec_inquiry(struct scst_cmd *cmd)
 		buf[4] += 58 - 36;
 		num = 0;
 
-		/* Version descriptor 1: SAM-3 T10/1561-D revision 14 */
+		/* SAM-3 T10/1561-D revision 14 */
 		buf[58 + num] = 0x0;
 		buf[58 + num + 1] = 0x76;
 		num += 2;
 
-		/* Version descriptor 2: Physical transport */
+		/* Physical transport */
 		if (cmd->tgtt->get_phys_transport_version != NULL) {
 			uint16_t v = cmd->tgtt->get_phys_transport_version(cmd->tgt);
 			if (v != 0) {
@@ -1683,25 +1683,26 @@ static void vdisk_exec_inquiry(struct scst_cmd *cmd)
 			}
 		}
 
-		/* Version descriptor 3: SCSI transport */
+		/* SCSI transport */
 		if (cmd->tgtt->get_scsi_transport_version != NULL) {
 			*((__be16 *)&buf[58 + num]) =
 				cpu_to_be16(cmd->tgtt->get_scsi_transport_version(cmd->tgt));
 			num += 2;
 		}
 
-		/* Version descriptor 4: SPC-3 T10/1416-D revision 23 */
+		/* SPC-3 T10/1416-D revision 23 */
 		buf[58 + num] = 0x3;
 		buf[58 + num + 1] = 0x12;
 		num += 2;
 
-		/* Version descriptor 5: Device command set */
+		/* Device command set */
 		if (virt_dev->command_set_version != 0) {
 			*((__be16 *)&buf[58 + num]) =
 				cpu_to_be16(virt_dev->command_set_version);
 			num += 2;
 		}
 
+		/* Vendor specific information. */
 		if (cmd->tgtt->inq_get_vend_specific) {
 			/* Skip to byte 96. */
 			num = 96 - 58;

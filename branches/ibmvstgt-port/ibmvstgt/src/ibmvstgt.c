@@ -281,7 +281,7 @@ static int ibmvstgt_rdma(struct scst_cmd *sc, struct scatterlist *sg, int nsg,
 	for (i = 0; i < nmd && rest; i++) {
 		unsigned int mdone, mlen;
 
-		mlen = min_t(unsigned int, rest, md[i].len);
+		mlen = min(rest, md[i].len);
 		for (mdone = 0; mlen;) {
 			int slen = min(sg_dma_len(sg + sidx) - soff, mlen);
 
@@ -299,8 +299,7 @@ static int ibmvstgt_rdma(struct scst_cmd *sc, struct scatterlist *sg, int nsg,
 						  md[i].va + mdone);
 
 			if (err != H_SUCCESS) {
-				eprintk("rdma error for dir %d slen %d: %ld\n",
-					dir, slen, err);
+				eprintk("rdma error %d %d %ld\n", dir, slen, err);
 				return -EIO;
 			}
 
@@ -413,8 +412,6 @@ static int ibmvstgt_xmit_response(struct scst_cmd *sc)
 	int ret;
 	enum dma_data_direction dir;
 
-	TRACE_ENTRY();
-
 	if (unlikely(scst_cmd_aborted(sc))) {
 		scst_set_delivery_status(sc, SCST_CMD_DELIVERY_ABORTED);
 		goto out;
@@ -435,9 +432,6 @@ static int ibmvstgt_xmit_response(struct scst_cmd *sc)
 
 out:
 	scst_tgt_cmd_done(sc, SCST_CONTEXT_SAME);
-
-	TRACE_EXIT();
-
 	return SCST_TGT_RES_SUCCESS;
 }
 
@@ -452,8 +446,6 @@ static int ibmvstgt_rdy_to_xfer(struct scst_cmd *sc)
 	struct iu_entry *iue = scst_cmd_get_tgt_priv(sc);
 	int ret;
 
-	TRACE_ENTRY();
-
 	WARN_ON(srp_cmd_direction(&vio_iu(iue)->srp.cmd) != DMA_TO_DEVICE);
 
 	/* Transfer the data from the initiator to the target. */
@@ -465,8 +457,6 @@ static int ibmvstgt_rdy_to_xfer(struct scst_cmd *sc)
 			(long long unsigned)be64_to_cpu(scst_cmd_get_tag(sc)));
 		scst_rx_data(sc, SCST_RX_STATUS_ERROR, SCST_CONTEXT_SAME);
 	}
-
-	TRACE_EXIT();
 
 	return SCST_TGT_RES_SUCCESS;
 }
@@ -548,8 +538,6 @@ static void process_login(struct iu_entry *iue)
 	struct vio_port *vport = target_to_port(target);
 	char name[16];
 
-	TRACE_ENTRY();
-
 	BUG_ON(!target);
 	BUG_ON(!target->tgt);
 	BUG_ON(!vport);
@@ -597,8 +585,6 @@ static void process_login(struct iu_entry *iue)
 
 	send_iu(iue, sizeof(*rsp), VIOSRP_SRP_FORMAT);
 
-	TRACE_EXIT();
-
 	return;
 
 reject:
@@ -608,8 +594,6 @@ reject:
 					      | SRP_BUF_FORMAT_INDIRECT);
 
 	send_iu(iue, sizeof *rsp, VIOSRP_SRP_FORMAT);
-
-	TRACE_EXIT();
 }
 
 static inline void queue_cmd(struct iu_entry *iue)
@@ -642,8 +626,6 @@ static int process_tsk_mgmt(struct iu_entry *iue)
 	struct srp_tsk_mgmt *srp_tsk;
 	struct mgmt_ctx *mgmt_ctx;
 	int ret = 0;
-
-	TRACE_ENTRY();
 
 	srp_tsk = &iu->srp.tsk_mgmt;
 
@@ -694,12 +676,10 @@ static int process_tsk_mgmt(struct iu_entry *iue)
 
 	if (ret != SCST_MGMT_STATUS_SUCCESS)
 		goto err;
-	TRACE_EXIT_RES(ret);
 	return ret;
 
 err:
 	kfree(mgmt_ctx);
-	TRACE_EXIT_RES(ret);
 	return ret;
 }
 
@@ -734,8 +714,6 @@ static void ibmvstgt_tsk_mgmt_done(struct scst_mgmt_cmd *mcmnd)
 	struct iu_entry *iue;
 	union viosrp_iu *iu;
 
-	TRACE_ENTRY();
-
 	mgmt_ctx = scst_mgmt_cmd_get_tgt_priv(mcmnd);
 	BUG_ON(!mgmt_ctx);
 
@@ -756,8 +734,6 @@ static void ibmvstgt_tsk_mgmt_done(struct scst_mgmt_cmd *mcmnd)
 		 0/*asc*/);
 
 	kfree(mgmt_ctx);
-
-	TRACE_EXIT();
 }
 
 static int process_mad_iu(struct iu_entry *iue)
@@ -802,8 +778,6 @@ static int process_srp_iu(struct iu_entry *iue)
 	int done = 1;
 	u8 opcode = iu->srp.rsp.opcode;
 
-	TRACE_ENTRY();
-
 	spin_lock_irqsave(&target->lock, flags);
 	if (vport->releasing) {
 		spin_unlock_irqrestore(&target->lock, flags);
@@ -835,8 +809,6 @@ static int process_srp_iu(struct iu_entry *iue)
 	default:
 		eprintk("Unknown type %u\n", opcode);
 	}
-
-	TRACE_EXIT_RES(done);
 
 	return done;
 }
@@ -1077,9 +1049,8 @@ static void ibmvstgt_inq_get_product_id(const struct scst_tgt_dev *tgt_dev,
 	WARN_ON(size != 16);
 
 	/*
-	 * Don't even ask about the next bit.  AIX uses hardcoded device
-	 * naming to recognize device types and their client won't work unless
-	 * we use VOPTA and VDASD.
+	 * AIX uses hardcoded device naming to recognize device types and
+	 * their client won't work unless we use the names VDASD and VOPTA.
 	 */
 	switch (tgt_dev->dev->type) {
 	case TYPE_DISK:
@@ -1094,9 +1065,12 @@ static void ibmvstgt_inq_get_product_id(const struct scst_tgt_dev *tgt_dev,
 	}
 }
 
-#define GETTARGET(x) ((int)(((x) >> 8) & 0x003f))
-#define GETBUS(x)    ((int)(((x) >> 5) & 0x0007))
-#define GETLUN(x)    ((int)(((x) >> 0) & 0x001f))
+/*
+ * Extract target, bus and LUN information from a 64-bit LUN in CPU-order.
+ */
+#define GETTARGET(x) ((((uint16_t)(x) >> 8) & 0x003f))
+#define GETBUS(x)    ((((uint16_t)(x) >> 5) & 0x0007))
+#define GETLUN(x)    ((((uint16_t)(x) >> 0) & 0x001f))
 
 static int ibmvstgt_inq_get_vend_specific(const struct scst_tgt_dev *tgt_dev,
 					  char *buf)
@@ -1135,8 +1109,6 @@ static int ibmvstgt_get_transportid(struct scst_session *sess,
 	struct spc_rdma_transport_id *tr_id;
 	int res;
 
-	TRACE_ENTRY();
-
 	if (!sess) {
 		res = SCSI_TRANSPORTID_PROTOCOLID_SRP;
 		goto out;
@@ -1162,7 +1134,6 @@ static int ibmvstgt_get_transportid(struct scst_session *sess,
 	*transport_id = (uint8_t *)tr_id;
 
 out:
-	TRACE_EXIT_RES(res);
 	return res;
 }
 
@@ -1272,8 +1243,6 @@ static int ibmvstgt_probe(struct vio_dev *dev, const struct vio_device_id *id)
 	unsigned int *dma, dma_size;
 	int err = -ENOMEM;
 
-	TRACE_ENTRY();
-
 	vport = kzalloc(sizeof(struct vio_port), GFP_KERNEL);
 	if (!vport)
 		return err;
@@ -1329,7 +1298,8 @@ static int ibmvstgt_probe(struct vio_dev *dev, const struct vio_device_id *id)
 	snprintf(vport->dev.bus_id, BUS_ID_SIZE, "ibmvstgt-%d",
 		     vport->dma_dev->unit_address);
 #else
-	dev_set_name(&vport->dev, "ibmvstgt-%d", vport->dma_dev->unit_address);
+	dev_set_name(&vport->dev, "ibmvstgt-%d",
+                     vport->dma_dev->unit_address);
 #endif
 #if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
 	if (class_device_register(&vport->dev))
@@ -1340,10 +1310,7 @@ static int ibmvstgt_probe(struct vio_dev *dev, const struct vio_device_id *id)
 
 	atomic_inc(&ibmvstgt_device_count);
 
-out:
-	TRACE_EXIT_RES(err);
-
-	return err;
+	return 0;
 
 destroy_crq_queue:
 	crq_queue_destroy(target);
@@ -1355,20 +1322,20 @@ free_target:
 	kfree(target);
 free_vport:
 	kfree(vport);
-	goto out;
+	return err;
 }
 
 static int ibmvstgt_remove(struct vio_dev *dev)
 {
-	struct srp_target *target = dev_get_drvdata(&dev->dev);
+	struct srp_target *target;
 	struct vio_port *vport;
 
-	TRACE_ENTRY();
+	target = dev_get_drvdata(&dev->dev);
+	if (!target)
+		return 0;
 
 	atomic_dec(&ibmvstgt_device_count);
 
-	if (!target)
-		goto out;
 	vport = target->ldata;
 #if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
 	class_device_unregister(&vport->dev);
@@ -1380,9 +1347,6 @@ static int ibmvstgt_remove(struct vio_dev *dev)
 	scst_unregister_target(target->tgt);
 	kfree(target);
 	kfree(vport);
-out:
-	TRACE_EXIT();
-
 	return 0;
 }
 
@@ -1501,8 +1465,6 @@ static int __init ibmvstgt_init(void)
 {
 	int err = -ENOMEM;
 
-	TRACE_ENTRY();
-
 	printk("IBM eServer i/pSeries Virtual SCSI Target Driver\n");
 
 	err = get_system_info();
@@ -1531,8 +1493,6 @@ static int __init ibmvstgt_init(void)
 		goto unregister_driver;
 #endif
 
-	TRACE_EXIT_RES(err);
-
 	return 0;
 
 #ifdef CONFIG_SCST_PROC
@@ -1546,14 +1506,11 @@ unregister_tgt:
 unregister_class:
 	class_unregister(&ibmvstgt_class);
 out:
-	TRACE_EXIT_RES(err);
 	return err;
 }
 
 static void __exit ibmvstgt_exit(void)
 {
-	TRACE_ENTRY();
-
 	printk("Unregister IBM virtual SCSI driver\n");
 
 #ifdef CONFIG_SCST_PROC
@@ -1563,8 +1520,6 @@ static void __exit ibmvstgt_exit(void)
 	destroy_workqueue(vtgtd);
 	scst_unregister_target_template(&ibmvstgt_template);
 	class_unregister(&ibmvstgt_class);
-
-	TRACE_EXIT();
 }
 
 MODULE_DESCRIPTION("IBM Virtual SCSI Target");
