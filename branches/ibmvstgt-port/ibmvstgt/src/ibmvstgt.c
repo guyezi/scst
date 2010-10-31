@@ -57,7 +57,7 @@
 
 #include "ibmvscsi.h"
 
-#define	INITIAL_SRP_LIMIT	16
+#define	SRP_REQ_LIM		48
 #define	DEFAULT_MAX_SECTORS	256
 
 #define	TGT_NAME	"ibmvstgt"
@@ -576,7 +576,12 @@ static void process_login(struct iu_entry *iue)
 	 * buffer format is wrong
 	 */
 	rsp->opcode = SRP_LOGIN_RSP;
-	rsp->req_lim_delta = INITIAL_SRP_LIMIT;
+	/*
+	 * Avoid BUSY conditions by limiting the number of buffers used
+	 * for the SRP protocol to the SCST SCSI command queue size.
+	 */
+	rsp->req_lim_delta = min(SRP_REQ_LIM,
+				 scst_get_max_lun_commands(NULL, 0));
 	rsp->tag = tag;
 	rsp->max_it_iu_len = sizeof(union srp_iu);
 	rsp->max_ti_iu_len = sizeof(union srp_iu);
@@ -1261,8 +1266,7 @@ static int ibmvstgt_probe(struct vio_dev *dev, const struct vio_device_id *id)
 	vport->dma_dev = dev;
 	target->ldata = vport;
 	vport->target = target;
-	err = srp_target_alloc(target, &dev->dev, INITIAL_SRP_LIMIT,
-			       SRP_MAX_IU_LEN);
+	err = srp_target_alloc(target, &dev->dev, SRP_REQ_LIM, SRP_MAX_IU_LEN);
 	if (err)
 		goto unregister_target;
 
