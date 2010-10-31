@@ -5213,14 +5213,16 @@ out:
 EXPORT_SYMBOL_GPL(scst_get_cdb_info);
 
 /* Packs SCST LUN back to SCSI form */
-__be64 scst_pack_lun(const uint64_t lun, unsigned int addr_method)
+__be64 scst_pack_lun(const uint64_t lun, enum scst_lun_addr_method addr_method)
 {
-	uint64_t res;
+	uint64_t res = 0;
 
-	res = lun ? (uint64_t)((addr_method << 14) | (uint16_t)lun) << 48 : 0;
+	if (lun) {
+		res = (addr_method << 14) | (lun & 0x3fff);
+		res = res << 48;
+	}
 
 	TRACE_EXIT_HRES(res >> 48);
-
 	return cpu_to_be64(res);
 }
 
