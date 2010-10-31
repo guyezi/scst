@@ -77,7 +77,7 @@
 /* tmp - will replace with SCSI logging stuff */
 #define eprintk(fmt, args...)					\
 do {								\
-	printk("%s(%d) " fmt, __func__, __LINE__, ##args);	\
+	printk(KERN_ERR "%s(%d) " fmt, __func__, __LINE__, ##args); \
 } while (0)
 /* #define dprintk eprintk */
 #define dprintk(fmt, args...)
@@ -424,7 +424,7 @@ static int ibmvstgt_xmit_response(struct scst_cmd *sc)
 	if (dir == DMA_FROM_DEVICE && scst_cmd_get_adjusted_resp_data_len(sc)) {
 		ret = srp_transfer_data(sc, &vio_iu(iue)->srp.cmd,
 					ibmvstgt_rdma, 1, 1);
-		if (ret == -EBUSY)
+		if (ret == -ENOMEM)
 			return SCST_TGT_RES_QUEUE_FULL;
 		else if (ret) {
 			PRINT_ERROR("%s: tag= %llu xmit_response failed",
@@ -459,7 +459,7 @@ static int ibmvstgt_rdy_to_xfer(struct scst_cmd *sc)
 	ret = srp_transfer_data(sc, &vio_iu(iue)->srp.cmd, ibmvstgt_rdma, 1, 1);
 	if (ret == 0)
 		scst_rx_data(sc, SCST_RX_STATUS_SUCCESS, SCST_CONTEXT_SAME);
-	else if (ret == -EBUSY)
+	else if (ret == -ENOMEM)
 		return SCST_TGT_RES_QUEUE_FULL;
 	else {
 		PRINT_ERROR("%s: tag= %llu xfer_data failed", __func__,
@@ -1478,7 +1478,7 @@ static int __init ibmvstgt_init(void)
 {
 	int err = -ENOMEM;
 
-	printk("IBM eServer i/pSeries Virtual SCSI Target Driver\n");
+	printk(KERN_INFO "IBM eServer i/pSeries Virtual SCSI Target Driver\n");
 
 	err = get_system_info();
 	if (err)
@@ -1524,7 +1524,7 @@ out:
 
 static void __exit ibmvstgt_exit(void)
 {
-	printk("Unregister IBM virtual SCSI driver\n");
+	printk(KERN_INFO "Unregister IBM virtual SCSI driver\n");
 
 #ifdef CONFIG_SCST_PROC
 	ibmvstgt_unregister_procfs_entry(&ibmvstgt_template);

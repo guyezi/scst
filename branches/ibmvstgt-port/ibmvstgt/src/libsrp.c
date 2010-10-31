@@ -35,7 +35,7 @@
 /* tmp - will replace with SCSI logging stuff */
 #define eprintk(fmt, args...)					\
 do {								\
-	printk("%s(%d) " fmt, __func__, __LINE__, ##args);	\
+	printk(KERN_ERR "%s(%d) " fmt, __func__, __LINE__, ##args); \
 } while (0)
 /* #define dprintk eprintk */
 #define dprintk(fmt, args...)
@@ -228,8 +228,8 @@ static int srp_direct_data(struct scst_cmd *sc, struct srp_direct_buf *md,
 		nsg = dma_map_sg(iue->target->dev, sg, sg_cnt,
 				 DMA_BIDIRECTIONAL);
 		if (!nsg) {
-			printk(KERN_ERR "fail to map %p %d\n", iue, sg_cnt);
-			return -EBUSY;
+			eprintk(KERN_ERR "fail to map %p %d\n", iue, sg_cnt);
+			return -ENOMEM;
 		}
 		len = min(tsize, md->len);
 	} else
@@ -307,7 +307,7 @@ rdma:
 				 DMA_BIDIRECTIONAL);
 		if (!nsg) {
 			eprintk("fail to map %p %d\n", iue, sg_cnt);
-			err = -EIO;
+			err = -ENOMEM;
 			goto free_mem;
 		}
 		len = min(tsize, id->len);
