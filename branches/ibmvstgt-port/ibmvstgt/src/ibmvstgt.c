@@ -131,6 +131,18 @@ static inline union viosrp_iu *vio_iu(struct iu_entry *iue)
 	return (union viosrp_iu *) (iue->sbuf->buf);
 }
 
+static void ibmvstgt_iu_put(struct iu_entry *iue)
+{
+	struct srp_target *target = iue->target;
+	unsigned long flags;
+
+	spin_lock_irqsave(&target->lock, flags);
+	list_del(&iue->ilist);
+	spin_unlock_irqrestore(&target->lock, flags);
+
+	srp_iu_put(iue);
+}
+
 static int send_iu(struct iu_entry *iue, uint64_t length, uint8_t format)
 {
 	struct srp_target *target = iue->target;
@@ -144,6 +156,8 @@ static int send_iu(struct iu_entry *iue, uint64_t length, uint8_t format)
 	/* First copy the SRP */
 	rc = h_copy_rdma(length, vport->liobn, iue->sbuf->dma,
 			 vport->riobn, iue->remote_token);
+
+	ibmvstgt_iu_put(iue);
 
 	if (rc)
 		eprintk("Error %ld transferring data\n", rc);
@@ -479,15 +493,6 @@ static int ibmvstgt_rdy_to_xfer(struct scst_cmd *sc)
  */
 static void ibmvstgt_on_free_cmd(struct scst_cmd *sc)
 {
-	unsigned long flags;
-	struct iu_entry *iue = scst_cmd_get_tgt_priv(sc);
-	struct srp_target *target = iue->target;
-
-	spin_lock_irqsave(&target->lock, flags);
-	list_del(&iue->ilist);
-	spin_unlock_irqrestore(&target->lock, flags);
-
-	srp_iu_put(iue);
 }
 
 static int send_adapter_info(struct iu_entry *iue,
