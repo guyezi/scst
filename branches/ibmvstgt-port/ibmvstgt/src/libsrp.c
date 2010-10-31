@@ -345,14 +345,9 @@ static int data_out_desc_size(struct srp_cmd *cmd)
 	return size;
 }
 
-/**
- * srp_transfer_data() - Perform SRP_CMD data transfer.
- * @sc: pointer to the SCST command data structure.
- * @cmd: pointer to the SRP_CMD information unit.
- * @rdma_io: pointer to a function that performs the RDMA transfer.
- * @dma_map: whether or not data must be mapped via dma_map_sg() before an
- *           RDMA transfer.
- * @ext_desc: whether or not this command uses an external indirect SRP buffer.
+/*
+ * TODO: this can be called multiple times for a single command if it
+ * has very long data.
  *
  * To do: Make it possible to transfer huge amounts of data via multiple
  * srp_transfer_data() calls.
