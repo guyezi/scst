@@ -232,7 +232,7 @@ static int send_rsp(struct iu_entry *iue, struct scst_cmd *sc,
 			iu->srp.rsp.status = SAM_STAT_CHECK_CONDITION;
 			iu->srp.rsp.flags |= SRP_RSP_FLAG_SNSVALID;
 			iu->srp.rsp.sense_data_len
-				= __constant_cpu_to_be32(SRP_RSP_SENSE_DATA_LEN);
+			      = __constant_cpu_to_be32(SRP_RSP_SENSE_DATA_LEN);
 
 			/* Valid bit and 'current errors' */
 			sense[0] = (0x1 << 7 | 0x70);
@@ -302,16 +302,16 @@ static int ibmvstgt_rdma(struct scst_cmd *sc, struct scatterlist *sg, int nsg,
 
 			if (dir == DMA_TO_DEVICE)
 				err = h_copy_rdma(slen,
-						  vport->riobn,
-						  be64_to_cpu(md[i].va) + mdone,
-						  vport->liobn,
-						  token + soff);
+						vport->riobn,
+						be64_to_cpu(md[i].va) + mdone,
+						vport->liobn,
+						token + soff);
 			else
 				err = h_copy_rdma(slen,
-						  vport->liobn,
-						  token + soff,
-						  vport->riobn,
-						  be64_to_cpu(md[i].va) + mdone);
+						vport->liobn,
+						token + soff,
+						vport->riobn,
+						be64_to_cpu(md[i].va) + mdone);
 
 			if (err != H_SUCCESS) {
 				eprintk("rdma error %d %d %ld\n", dir, slen, err);
@@ -594,7 +594,7 @@ static void process_login(struct iu_entry *iue)
 	 * for the SRP protocol to the SCST SCSI command queue size.
 	 */
 	rsp->req_lim_delta = cpu_to_be32(min(SRP_REQ_LIM,
-					    scst_get_max_lun_commands(NULL, 0)));
+					   scst_get_max_lun_commands(NULL, 0)));
 	rsp->tag = tag;
 	rsp->max_it_iu_len = __constant_cpu_to_be32(sizeof(union srp_iu));
 	rsp->max_ti_iu_len = __constant_cpu_to_be32(sizeof(union srp_iu));
