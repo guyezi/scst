@@ -400,7 +400,7 @@ int srp_transfer_data(struct scst_cmd *sc, struct srp_cmd *cmd,
 }
 EXPORT_SYMBOL_GPL(srp_transfer_data);
 
-static int vscsis_data_length(struct srp_cmd *cmd, enum dma_data_direction dir)
+int srp_data_length(struct srp_cmd *cmd, enum dma_data_direction dir)
 {
 	struct srp_direct_buf *md;
 	struct srp_indirect_buf *id;
@@ -431,6 +431,7 @@ static int vscsis_data_length(struct srp_cmd *cmd, enum dma_data_direction dir)
 	}
 	return len;
 }
+EXPORT_SYMBOL_GPL(srp_data_length);
 
 int srp_cmd_queue(struct scst_session *sess, struct srp_cmd *cmd, void *info)
 {
@@ -457,7 +458,7 @@ int srp_cmd_queue(struct scst_session *sess, struct srp_cmd *cmd, void *info)
 	}
 
 	dir = srp_cmd_direction(cmd);
-	len = vscsis_data_length(cmd, dir);
+	len = srp_data_length(cmd, dir);
 
 	dprintk("%p %x %lx %d %d %d %llx\n", info, cmd->cdb[0],
 		cmd->lun, dir, len, tag, (unsigned long long) cmd->tag);
