@@ -288,7 +288,6 @@ static int ibmvstgt_rdma(struct scst_cmd *sc, struct scatterlist *sg, int nsg,
 	struct vio_port *vport = target_to_port(target);
 	dma_addr_t token;
 	long err;
-	unsigned int done = 0;
 	int i, sidx, soff;
 
 	sidx = soff = 0;
@@ -322,7 +321,6 @@ static int ibmvstgt_rdma(struct scst_cmd *sc, struct scatterlist *sg, int nsg,
 			mlen -= slen;
 			mdone += slen;
 			soff += slen;
-			done += slen;
 
 			if (soff == sg_dma_len(sg + sidx)) {
 				sidx++;
@@ -335,7 +333,7 @@ static int ibmvstgt_rdma(struct scst_cmd *sc, struct scatterlist *sg, int nsg,
 					return -EIO;
 				}
 			}
-		};
+		}
 
 		rest -= mlen;
 	}
