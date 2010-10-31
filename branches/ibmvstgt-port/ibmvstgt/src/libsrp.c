@@ -310,7 +310,7 @@ rdma:
 			err = -EIO;
 			goto free_mem;
 		}
-		len = min_t(u32, tsize, id->len);
+		len = min(tsize, id->len);
 	} else
 		len = id->len;
 

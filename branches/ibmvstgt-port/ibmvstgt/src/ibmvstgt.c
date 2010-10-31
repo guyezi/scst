@@ -432,6 +432,7 @@ static int ibmvstgt_xmit_response(struct scst_cmd *sc)
 
 out:
 	scst_tgt_cmd_done(sc, SCST_CONTEXT_SAME);
+
 	return SCST_TGT_RES_SUCCESS;
 }
 
@@ -1049,8 +1050,8 @@ static void ibmvstgt_inq_get_product_id(const struct scst_tgt_dev *tgt_dev,
 	WARN_ON(size != 16);
 
 	/*
-	 * AIX uses hardcoded device naming to recognize device types and
-	 * their client won't work unless we use the names VDASD and VOPTA.
+	 * AIX uses hardcoded device names. The AIX SCSI initiator even won't
+	 * work unless we use the names VDASD and VOPTA.
 	 */
 	switch (tgt_dev->dev->type) {
 	case TYPE_DISK:

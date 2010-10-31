@@ -1664,7 +1664,7 @@ static void vdisk_exec_inquiry(struct scst_cmd *cmd)
 		else
 			memcpy(&buf[32], SCST_FIO_REV, 4);
 
-		/** Bytes [36,58) contain vendor specific data. **/
+		/** Version descriptors **/
 
 		buf[4] += 58 - 36;
 		num = 0;
