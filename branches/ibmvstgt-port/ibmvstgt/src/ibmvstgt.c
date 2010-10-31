@@ -184,7 +184,7 @@ static int send_rsp(struct iu_entry *iue, struct scst_cmd *sc,
 
 	memset(iu, 0, sizeof(struct srp_rsp));
 	iu->srp.rsp.opcode = SRP_RSP;
-	iu->srp.rsp.req_lim_delta = 1;
+	iu->srp.rsp.req_lim_delta = __constant_cpu_to_be32(1);
 	iu->srp.rsp.tag = tag;
 
 	if (test_bit(V_DIOVER, &iue->flags))
@@ -210,13 +210,15 @@ static int send_rsp(struct iu_entry *iue, struct scst_cmd *sc,
 					= min(scst_cmd_get_sense_buffer_len(sc),
 					      SRP_RSP_SENSE_DATA_LEN);
 				iu->srp.rsp.flags |= SRP_RSP_FLAG_SNSVALID;
-				iu->srp.rsp.sense_data_len = sense_data_len;
+				iu->srp.rsp.sense_data_len
+					= cpu_to_be32(sense_data_len);
 				memcpy(sense, sc_sense, sense_data_len);
 			}
 		} else {
 			iu->srp.rsp.status = SAM_STAT_CHECK_CONDITION;
 			iu->srp.rsp.flags |= SRP_RSP_FLAG_SNSVALID;
-			iu->srp.rsp.sense_data_len = SRP_RSP_SENSE_DATA_LEN;
+			iu->srp.rsp.sense_data_len
+				= __constant_cpu_to_be32(SRP_RSP_SENSE_DATA_LEN);
 
 			/* Valid bit and 'current errors' */
 			sense[0] = (0x1 << 7 | 0x70);
@@ -281,14 +283,14 @@ static int ibmvstgt_rdma(struct scst_cmd *sc, struct scatterlist *sg, int nsg,
 	for (i = 0; i < nmd && rest; i++) {
 		unsigned int mdone, mlen;
 
-		mlen = min(rest, md[i].len);
+		mlen = min(rest, be32_to_cpu(md[i].len));
 		for (mdone = 0; mlen;) {
 			int slen = min(sg_dma_len(sg + sidx) - soff, mlen);
 
 			if (dir == DMA_TO_DEVICE)
 				err = h_copy_rdma(slen,
 						  vport->riobn,
-						  md[i].va + mdone,
+						  be64_to_cpu(md[i].va) + mdone,
 						  vport->liobn,
 						  token + soff);
 			else
@@ -296,7 +298,7 @@ static int ibmvstgt_rdma(struct scst_cmd *sc, struct scatterlist *sg, int nsg,
 						  vport->liobn,
 						  token + soff,
 						  vport->riobn,
-						  md[i].va + mdone);
+						  be64_to_cpu(md[i].va) + mdone);
 
 			if (err != H_SUCCESS) {
 				eprintk("rdma error %d %d %ld\n", dir, slen, err);
@@ -429,7 +431,7 @@ static int ibmvstgt_xmit_response(struct scst_cmd *sc)
 		else if (ret) {
 			PRINT_ERROR("%s: tag= %llu xmit_response failed",
 				    __func__, (long long unsigned)
-				    be64_to_cpu(scst_cmd_get_tag(sc)));
+				    scst_cmd_get_tag(sc));
 			scst_set_delivery_status(sc, SCST_CMD_DELIVERY_FAILED);
 		}
 	}
@@ -463,7 +465,7 @@ static int ibmvstgt_rdy_to_xfer(struct scst_cmd *sc)
 		return SCST_TGT_RES_QUEUE_FULL;
 	else {
 		PRINT_ERROR("%s: tag= %llu xfer_data failed", __func__,
-			(long long unsigned)be64_to_cpu(scst_cmd_get_tag(sc)));
+			(long long unsigned)scst_cmd_get_tag(sc));
 		scst_rx_data(sc, SCST_RX_STATUS_ERROR, SCST_CONTEXT_SAME);
 	}
 
@@ -588,11 +590,11 @@ static void process_login(struct iu_entry *iue)
 	 * Avoid BUSY conditions by limiting the number of buffers used
 	 * for the SRP protocol to the SCST SCSI command queue size.
 	 */
-	rsp->req_lim_delta = min(SRP_REQ_LIM,
-				 scst_get_max_lun_commands(NULL, 0));
+	rsp->req_lim_delta = cpu_to_be32(min(SRP_REQ_LIM,
+					    scst_get_max_lun_commands(NULL, 0)));
 	rsp->tag = tag;
-	rsp->max_it_iu_len = sizeof(union srp_iu);
-	rsp->max_ti_iu_len = sizeof(union srp_iu);
+	rsp->max_it_iu_len = __constant_cpu_to_be32(sizeof(union srp_iu));
+	rsp->max_ti_iu_len = __constant_cpu_to_be32(sizeof(union srp_iu));
 	/* direct and indirect */
 	rsp->buf_fmt = __constant_cpu_to_be16(SRP_BUF_FORMAT_DIRECT
 					      | SRP_BUF_FORMAT_INDIRECT);
@@ -740,7 +742,7 @@ static void ibmvstgt_tsk_mgmt_done(struct scst_mgmt_cmd *mcmnd)
 	iu = vio_iu(iue);
 
 	TRACE_DBG("%s: tag %lld status %d",
-		  __func__, (long long unsigned)be64_to_cpu(iu->srp.rsp.tag),
+		  __func__, (long long unsigned)iu->srp.rsp.tag,
 		  scst_mgmt_cmd_get_status(mcmnd));
 
 	send_rsp(iue, NULL,
