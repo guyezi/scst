@@ -1089,12 +1089,17 @@ static void ibmvstgt_inq_get_product_id(const struct scst_tgt_dev *tgt_dev,
 	 * naming to recognize device types and their client won't work unless
 	 * we use VOPTA and VDASD.
 	 */
-	if (tgt_dev->dev->type == TYPE_ROM)
-		memcpy(buf, "VOPTA blkdev    ", 16);
-	else
+	switch (tgt_dev->dev->type) {
+	case TYPE_DISK:
 		memcpy(buf, "VDASD blkdev    ", 16);
-
-	TRACE_DBG("%s: %d -> %.*s", __func__, tgt_dev->dev->type, 16, buf);
+		break;
+	case TYPE_ROM:
+		memcpy(buf, "VOPTA blkdev    ", 16);
+		break;
+	default:
+		snprintf(buf, size, "(devtype %d)     ", tgt_dev->dev->type);
+		break;
+	}
 }
 
 #define GETTARGET(x) ((int)(((x) >> 8) & 0x003f))
@@ -1508,6 +1513,10 @@ static int __init ibmvstgt_init(void)
 
 	printk("IBM eServer i/pSeries Virtual SCSI Target Driver\n");
 
+	err = get_system_info();
+	if (err)
+		goto out;
+
 	err = class_register(&ibmvstgt_class);
 	if (err)
 		goto out;
@@ -1519,10 +1528,6 @@ static int __init ibmvstgt_init(void)
 	vtgtd = create_workqueue("ibmvtgtd");
 	if (!vtgtd)
 		goto unregister_tgt;
-
-	err = get_system_info();
-	if (err)
-		goto destroy_wq;
 
 	err = vio_register_driver(&ibmvstgt_driver);
 	if (err)
