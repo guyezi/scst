@@ -1702,7 +1702,7 @@ static ssize_t scst_proc_scsi_tgt_gen_write(struct file *file,
 					if (strcasecmp(pp, "FLAT") == 0)
 						addr_method = SCST_LUN_ADDR_METHOD_FLAT;
 					else if (strcasecmp(pp, "LUN") == 0)
-						addr_method = SCST_LUN_ADDR_METHOD_FLAT;
+						addr_method = SCST_LUN_ADDR_METHOD_LUN;
 					else {
 						PRINT_ERROR("Unexpected "
 							"argument %s", pp);
