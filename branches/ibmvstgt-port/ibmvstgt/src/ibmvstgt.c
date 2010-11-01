@@ -144,9 +144,11 @@ static void ibmvstgt_iu_put(struct iu_entry *iue)
 	struct srp_target *target = iue->target;
 	unsigned long flags;
 
-	spin_lock_irqsave(&target->lock, flags);
-	list_del(&iue->ilist);
-	spin_unlock_irqrestore(&target->lock, flags);
+	if (test_bit(V_FLYING, &iue->flags)) {
+		spin_lock_irqsave(&target->lock, flags);
+		list_del(&iue->ilist);
+		spin_unlock_irqrestore(&target->lock, flags);
+	}
 
 	srp_iu_put(iue);
 }
@@ -278,7 +280,7 @@ retry:
 			err = srp_cmd_queue(sess, cmd, iue);
 			if (err) {
 				eprintk("cannot queue cmd %p %d\n", cmd, err);
-				srp_iu_put(iue);
+				ibmvstgt_iu_put(iue);
 			}
 			goto retry;
 		}
@@ -774,7 +776,7 @@ static void process_mad_iu(struct iu_entry *iue)
 	switch (iu->mad.empty_iu.common.type) {
 	case VIOSRP_EMPTY_IU_TYPE:
 		eprintk("%s\n", "Unsupported EMPTY MAD IU");
-		ibmvstgt_iu_put(iue);
+		srp_iu_put(iue);
 		break;
 	case VIOSRP_ERROR_LOG_TYPE:
 		eprintk("%s\n", "Unsupported ERROR LOG MAD IU");
@@ -794,7 +796,7 @@ static void process_mad_iu(struct iu_entry *iue)
 		break;
 	default:
 		eprintk("Unknown type %u\n", iu->srp.rsp.opcode);
-		ibmvstgt_iu_put(iue);
+		srp_iu_put(iue);
 	}
 }
 
@@ -809,7 +811,7 @@ static void process_srp_iu(struct iu_entry *iue)
 	spin_lock_irqsave(&target->lock, flags);
 	if (vport->releasing) {
 		spin_unlock_irqrestore(&target->lock, flags);
-		ibmvstgt_iu_put(iue);
+		srp_iu_put(iue);
 		return;
 	}
 	spin_unlock_irqrestore(&target->lock, flags);
@@ -833,11 +835,11 @@ static void process_srp_iu(struct iu_entry *iue)
 	case SRP_AER_REQ:
 	case SRP_AER_RSP:
 		eprintk("Unsupported type %u\n", opcode);
-		ibmvstgt_iu_put(iue);
+		srp_iu_put(iue);
 		break;
 	default:
 		eprintk("Unknown type %u\n", opcode);
-		ibmvstgt_iu_put(iue);
+		srp_iu_put(iue);
 	}
 }
 
@@ -860,7 +862,7 @@ static void process_iu(struct viosrp_crq *crq, struct srp_target *target)
 
 	if (err != H_SUCCESS) {
 		eprintk("%ld transferring data error %p\n", err, iue);
-		ibmvstgt_iu_put(iue);
+		srp_iu_put(iue);
 	}
 
 	if (crq->format == VIOSRP_MAD_FORMAT)
