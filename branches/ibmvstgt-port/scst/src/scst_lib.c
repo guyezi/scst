@@ -2814,7 +2814,7 @@ struct scst_acg *scst_alloc_add_acg(struct scst_tgt *tgt,
 	}
 
 	acg->addr_method = tgt && tgt->tgtt ? tgt->tgtt->preferred_addr_method
-		: SCST_LUN_ADDR_METHOD_PERIPHERAL;
+		: scst_default_lun_addr_method;
 
 #ifdef CONFIG_SCST_PROC
 	TRACE_DBG("Adding acg %s to scst_acg_list", acg_name);
