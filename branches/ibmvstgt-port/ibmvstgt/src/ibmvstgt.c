@@ -390,6 +390,7 @@ static int ibmvstgt_release(struct scst_tgt *scst_tgt)
 static int ibmvstgt_xmit_response(struct scst_cmd *sc)
 {
 	struct iu_entry *iue = scst_cmd_get_tgt_priv(sc);
+	struct srp_cmd *srp_cmd;
 	int ret;
 	enum dma_data_direction dir;
 
@@ -399,13 +400,13 @@ static int ibmvstgt_xmit_response(struct scst_cmd *sc)
 		goto out;
 	}
 
-	dir = srp_cmd_direction(&vio_iu(iue)->srp.cmd);
+	srp_cmd = &vio_iu(iue)->srp.cmd;
+	dir = srp_cmd_direction(srp_cmd);
 	WARN_ON(dir != DMA_FROM_DEVICE && dir != DMA_TO_DEVICE);
 
 	/* For read commands, transfer the data to the initiator. */
 	if (dir == DMA_FROM_DEVICE && scst_cmd_get_adjusted_resp_data_len(sc)) {
-		ret = srp_transfer_data(sc, &vio_iu(iue)->srp.cmd,
-					ibmvstgt_rdma, 1, 1);
+		ret = srp_transfer_data(sc, srp_cmd, ibmvstgt_rdma, 1, 1);
 		if (ret == -ENOMEM)
 			return SCST_TGT_RES_QUEUE_FULL;
 		else if (ret) {
@@ -433,12 +434,13 @@ out:
 static int ibmvstgt_rdy_to_xfer(struct scst_cmd *sc)
 {
 	struct iu_entry *iue = scst_cmd_get_tgt_priv(sc);
+	struct srp_cmd *srp_cmd = &vio_iu(iue)->srp.cmd;
 	int ret;
 
-	WARN_ON(srp_cmd_direction(&vio_iu(iue)->srp.cmd) != DMA_TO_DEVICE);
+	WARN_ON(srp_cmd_direction(srp_cmd) != DMA_TO_DEVICE);
 
 	/* Transfer the data from the initiator to the target. */
-	ret = srp_transfer_data(sc, &vio_iu(iue)->srp.cmd, ibmvstgt_rdma, 1, 1);
+	ret = srp_transfer_data(sc, srp_cmd, ibmvstgt_rdma, 1, 1);
 	if (ret == 0)
 		scst_rx_data(sc, SCST_RX_STATUS_SUCCESS, SCST_CONTEXT_SAME);
 	else if (ret == -ENOMEM)
