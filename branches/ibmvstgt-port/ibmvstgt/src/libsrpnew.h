@@ -10,13 +10,6 @@
 #endif
 #include <scsi/srp.h>
 
-enum iue_flags {
-	V_DIOVER,
-	V_WRITE,
-	V_LINKED,
-	V_FLYING,
-};
-
 struct srp_buf {
 	dma_addr_t dma;
 	void *buf;

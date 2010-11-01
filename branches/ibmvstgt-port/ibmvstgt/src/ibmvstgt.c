@@ -82,6 +82,14 @@ do {								\
 /* #define dprintk eprintk */
 #define dprintk(fmt, args...)
 
+/* iu_entry.flags */
+enum iue_flags {
+	V_DIOVER,
+	V_WRITE,
+	V_LINKED,
+	V_FLYING,
+};
+
 struct vio_port {
 	struct vio_dev *dma_dev;
 
