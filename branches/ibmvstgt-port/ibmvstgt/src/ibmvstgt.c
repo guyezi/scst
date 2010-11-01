@@ -165,8 +165,6 @@ static int send_iu(struct iu_entry *iue, uint64_t length, uint8_t format)
 	rc = h_copy_rdma(length, vport->liobn, iue->sbuf->dma,
 			 vport->riobn, iue->remote_token);
 
-	ibmvstgt_iu_put(iue);
-
 	if (rc)
 		eprintk("Error %ld transferring data\n", rc);
 
@@ -181,6 +179,8 @@ static int send_iu(struct iu_entry *iue, uint64_t length, uint8_t format)
 		crq.cooked.status = 0x99;	/* Just needs to be non-zero */
 	else
 		crq.cooked.status = 0x00;
+
+	ibmvstgt_iu_put(iue);
 
 	rc1 = h_send_crq(vport->dma_dev->unit_address, crq.raw[0], crq.raw[1]);
 
