@@ -1022,52 +1022,6 @@ static void handle_crq(struct work_struct *work)
 	}
 }
 
-static void ibmvstgt_inq_get_product_id(const struct scst_tgt_dev *tgt_dev,
-					char *buf, const int size)
-{
-	WARN_ON(size != 16);
-
-	/*
-	 * AIX uses hardcoded device names. The AIX SCSI initiator even won't
-	 * work unless we use the names VDASD and VOPTA.
-	 */
-	switch (tgt_dev->dev->type) {
-	case TYPE_DISK:
-		memcpy(buf, "VDASD blkdev    ", 16);
-		break;
-	case TYPE_ROM:
-		memcpy(buf, "VOPTA blkdev    ", 16);
-		break;
-	default:
-		snprintf(buf, size, "(devtype %d)     ", tgt_dev->dev->type);
-		break;
-	}
-}
-
-/*
- * Extract target, bus and LUN information from a 64-bit LUN in CPU-order.
- */
-#define GETTARGET(x) ((((uint16_t)(x) >> 8) & 0x003f))
-#define GETBUS(x)    ((((uint16_t)(x) >> 5) & 0x0007))
-#define GETLUN(x)    ((((uint16_t)(x) >> 0) & 0x001f))
-
-static int ibmvstgt_inq_get_vend_specific(const struct scst_tgt_dev *tgt_dev,
-					  char *buf)
-{
-	struct scst_session *sess = tgt_dev->sess;
-	struct vio_port *vport = scst_sess_get_tgt_priv(sess);
-	uint64_t lun = tgt_dev->lun;
-
-	return sprintf(buf,
-		       "IBM-VSCSI-%s-P%d-%x-%d-%d-%d\n",
-		       system_id,
-		       partition_number,
-		       vport->dma_dev->unit_address,
-		       GETBUS(lun),
-		       GETTARGET(lun),
-		       GETLUN(lun));
-}
-
 /**
  * ibmvstgt_get_transportid() - SCST TransportID callback function.
  *
@@ -1192,11 +1146,6 @@ static struct scst_tgt_template ibmvstgt_template = {
 #else
 	.sg_tablesize		= SCSI_MAX_SG_SEGMENTS,
 #endif
-	.inq_vendor		= "IBM     ",
-	.inq_revision		= "0001",
-	.inq_get_product_id	= ibmvstgt_inq_get_product_id,
-	.inq_get_vend_specific	= ibmvstgt_inq_get_vend_specific,
-
 #if defined(CONFIG_SCST_DEBUG) || defined(CONFIG_SCST_TRACING)
 	.default_trace_flags	= DEFAULT_IBMVSTGT_TRACE_FLAGS,
 	.trace_flags		= &trace_flag,
