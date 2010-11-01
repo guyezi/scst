@@ -2970,6 +2970,9 @@ static ssize_t __scst_acg_addr_method_show(struct scst_acg *acg, char *buf)
 	case SCST_LUN_ADDR_METHOD_PERIPHERAL:
 		res = sprintf(buf, "PERIPHERAL\n");
 		break;
+	case SCST_LUN_ADDR_METHOD_LUN:
+		res = sprintf(buf, "LUN\n");
+		break;
 	default:
 		res = sprintf(buf, "UNKNOWN\n");
 		break;
@@ -2987,6 +2990,8 @@ static ssize_t __scst_acg_addr_method_store(struct scst_acg *acg,
 		acg->addr_method = SCST_LUN_ADDR_METHOD_FLAT;
 	else if (strncasecmp(buf, "PERIPHERAL", min_t(int, 10, count)) == 0)
 		acg->addr_method = SCST_LUN_ADDR_METHOD_PERIPHERAL;
+	else if (strncasecmp(buf, "LUN", min_t(int, 3, count)) == 0)
+		acg->addr_method = SCST_LUN_ADDR_METHOD_LUN;
 	else {
 		PRINT_ERROR("Unknown address method %s", buf);
 		res = -EINVAL;
