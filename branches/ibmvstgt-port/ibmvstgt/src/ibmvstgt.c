@@ -436,6 +436,7 @@ static int ibmvstgt_xmit_response(struct scst_cmd *sc)
 
 	if (unlikely(scst_cmd_aborted(sc))) {
 		scst_set_delivery_status(sc, SCST_CMD_DELIVERY_ABORTED);
+		ibmvstgt_iu_put(iue);
 		goto out;
 	}
 
@@ -707,6 +708,7 @@ static int process_tsk_mgmt(struct iu_entry *iue)
 
 err:
 	kfree(mgmt_ctx);
+	ibmvstgt_iu_put(iue);
 	return ret;
 }
 
@@ -763,7 +765,7 @@ static void ibmvstgt_tsk_mgmt_done(struct scst_mgmt_cmd *mcmnd)
 	kfree(mgmt_ctx);
 }
 
-static int process_mad_iu(struct iu_entry *iue)
+static void process_mad_iu(struct iu_entry *iue)
 {
 	union viosrp_iu *iu = vio_iu(iue);
 	struct viosrp_adapter_info *info;
@@ -772,6 +774,7 @@ static int process_mad_iu(struct iu_entry *iue)
 	switch (iu->mad.empty_iu.common.type) {
 	case VIOSRP_EMPTY_IU_TYPE:
 		eprintk("%s\n", "Unsupported EMPTY MAD IU");
+		ibmvstgt_iu_put(iue);
 		break;
 	case VIOSRP_ERROR_LOG_TYPE:
 		eprintk("%s\n", "Unsupported ERROR LOG MAD IU");
@@ -791,24 +794,23 @@ static int process_mad_iu(struct iu_entry *iue)
 		break;
 	default:
 		eprintk("Unknown type %u\n", iu->srp.rsp.opcode);
+		ibmvstgt_iu_put(iue);
 	}
-
-	return 1;
 }
 
-static int process_srp_iu(struct iu_entry *iue)
+static void process_srp_iu(struct iu_entry *iue)
 {
 	unsigned long flags;
 	union viosrp_iu *iu = vio_iu(iue);
 	struct srp_target *target = iue->target;
 	struct vio_port *vport = target_to_port(target);
-	int done = 1;
 	u8 opcode = iu->srp.rsp.opcode;
 
 	spin_lock_irqsave(&target->lock, flags);
 	if (vport->releasing) {
 		spin_unlock_irqrestore(&target->lock, flags);
-		return done;
+		ibmvstgt_iu_put(iue);
+		return;
 	}
 	spin_unlock_irqrestore(&target->lock, flags);
 
@@ -817,11 +819,10 @@ static int process_srp_iu(struct iu_entry *iue)
 		process_login(iue);
 		break;
 	case SRP_TSK_MGMT:
-		done = process_tsk_mgmt(iue) != SCST_MGMT_STATUS_SUCCESS;
+		process_tsk_mgmt(iue);
 		break;
 	case SRP_CMD:
 		queue_cmd(iue);
-		done = 0;
 		break;
 	case SRP_LOGIN_RSP:
 	case SRP_I_LOGOUT:
@@ -832,12 +833,12 @@ static int process_srp_iu(struct iu_entry *iue)
 	case SRP_AER_REQ:
 	case SRP_AER_RSP:
 		eprintk("Unsupported type %u\n", opcode);
+		ibmvstgt_iu_put(iue);
 		break;
 	default:
 		eprintk("Unknown type %u\n", opcode);
+		ibmvstgt_iu_put(iue);
 	}
-
-	return done;
 }
 
 static void process_iu(struct viosrp_crq *crq, struct srp_target *target)
@@ -845,7 +846,6 @@ static void process_iu(struct viosrp_crq *crq, struct srp_target *target)
 	struct vio_port *vport = target_to_port(target);
 	struct iu_entry *iue;
 	long err;
-	int done = 1;
 
 	iue = srp_iu_get(target);
 	if (!iue) {
@@ -860,16 +860,13 @@ static void process_iu(struct viosrp_crq *crq, struct srp_target *target)
 
 	if (err != H_SUCCESS) {
 		eprintk("%ld transferring data error %p\n", err, iue);
-		goto out;
+		ibmvstgt_iu_put(iue);
 	}
 
 	if (crq->format == VIOSRP_MAD_FORMAT)
-		done = process_mad_iu(iue);
+		process_mad_iu(iue);
 	else
-		done = process_srp_iu(iue);
-out:
-	if (done)
-		srp_iu_put(iue);
+		process_srp_iu(iue);
 }
 
 #ifdef RHEL_MAJOR
