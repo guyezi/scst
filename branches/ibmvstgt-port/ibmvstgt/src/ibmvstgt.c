@@ -57,7 +57,8 @@
 
 #include "ibmvscsi.h"
 
-#define	SRP_REQ_LIM		48
+/* Note: SRP_REQ_LIM must be a power of two because of kfifo. */
+#define	SRP_REQ_LIM		16
 #define	DEFAULT_MAX_SECTORS	256
 
 #define	TGT_NAME	"ibmvstgt"
