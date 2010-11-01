@@ -31,7 +31,6 @@ struct srp_target {
 	struct device *dev;
 
 	spinlock_t lock;
-	struct list_head cmd_queue;
 
 	size_t srp_iu_size;
 	struct srp_queue iu_queue;
@@ -44,7 +43,6 @@ struct srp_target {
 struct iu_entry {
 	struct srp_target *target;
 
-	struct list_head ilist;
 	dma_addr_t remote_token;
 	unsigned long flags;
 

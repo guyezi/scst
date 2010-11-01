@@ -139,7 +139,6 @@ int srp_target_alloc(struct srp_target *target, struct device *dev,
 	int err;
 
 	spin_lock_init(&target->lock);
-	INIT_LIST_HEAD(&target->cmd_queue);
 
 	target->dev = dev;
 
@@ -186,7 +185,6 @@ struct iu_entry *srp_iu_get(struct srp_target *target)
 	if (!iue)
 		return iue;
 	iue->target = target;
-	INIT_LIST_HEAD(&iue->ilist);
 	iue->flags = 0;
 	return iue;
 }

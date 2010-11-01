@@ -87,7 +87,6 @@ enum iue_flags {
 	V_DIOVER,
 	V_WRITE,
 	V_LINKED,
-	V_FLYING,
 };
 
 struct vio_port {
@@ -139,20 +138,6 @@ static inline union viosrp_iu *vio_iu(struct iu_entry *iue)
 	return (union viosrp_iu *) (iue->sbuf->buf);
 }
 
-static void ibmvstgt_iu_put(struct iu_entry *iue)
-{
-	struct srp_target *target = iue->target;
-	unsigned long flags;
-
-	if (test_bit(V_FLYING, &iue->flags)) {
-		spin_lock_irqsave(&target->lock, flags);
-		list_del(&iue->ilist);
-		spin_unlock_irqrestore(&target->lock, flags);
-	}
-
-	srp_iu_put(iue);
-}
-
 static int send_iu(struct iu_entry *iue, uint64_t length, uint8_t format)
 {
 	struct srp_target *target = iue->target;
@@ -182,7 +167,7 @@ static int send_iu(struct iu_entry *iue, uint64_t length, uint8_t format)
 	else
 		crq.cooked.status = 0x00;
 
-	ibmvstgt_iu_put(iue);
+	srp_iu_put(iue);
 
 	rc1 = h_send_crq(vport->dma_dev->unit_address, crq.raw[0], crq.raw[1]);
 
@@ -259,34 +244,6 @@ static int send_rsp(struct iu_entry *iue, struct scst_cmd *sc,
 		VIOSRP_SRP_FORMAT);
 
 	return 0;
-}
-
-static void handle_cmd_queue(struct srp_target *target)
-{
-	struct vio_port *vport = target_to_port(target);
-	struct scst_session *sess = vport->sess;
-	struct iu_entry *iue;
-	struct srp_cmd *cmd;
-	unsigned long flags;
-	int err;
-
-retry:
-	spin_lock_irqsave(&target->lock, flags);
-
-	list_for_each_entry(iue, &target->cmd_queue, ilist) {
-		if (!test_and_set_bit(V_FLYING, &iue->flags)) {
-			spin_unlock_irqrestore(&target->lock, flags);
-			cmd = iue->sbuf->buf;
-			err = srp_cmd_queue(sess, cmd, iue);
-			if (err) {
-				eprintk("cannot queue cmd %p %d\n", cmd, err);
-				ibmvstgt_iu_put(iue);
-			}
-			goto retry;
-		}
-	}
-
-	spin_unlock_irqrestore(&target->lock, flags);
 }
 
 static int ibmvstgt_rdma(struct scst_cmd *sc, struct scatterlist *sg, int nsg,
@@ -438,7 +395,7 @@ static int ibmvstgt_xmit_response(struct scst_cmd *sc)
 
 	if (unlikely(scst_cmd_aborted(sc))) {
 		scst_set_delivery_status(sc, SCST_CMD_DELIVERY_ABORTED);
-		ibmvstgt_iu_put(iue);
+		srp_iu_put(iue);
 		goto out;
 	}
 
@@ -626,16 +583,6 @@ reject:
 	send_iu(iue, sizeof *rsp, VIOSRP_SRP_FORMAT);
 }
 
-static inline void queue_cmd(struct iu_entry *iue)
-{
-	struct srp_target *target = iue->target;
-	unsigned long flags;
-
-	spin_lock_irqsave(&target->lock, flags);
-	list_add_tail(&iue->ilist, &target->cmd_queue);
-	spin_unlock_irqrestore(&target->lock, flags);
-}
-
 /**
  * struct mgmt_ctx - management command context information.
  * @iue:  VIO SRP information unit associated with the management command.
@@ -710,7 +657,7 @@ static int process_tsk_mgmt(struct iu_entry *iue)
 
 err:
 	kfree(mgmt_ctx);
-	ibmvstgt_iu_put(iue);
+	srp_iu_put(iue);
 	return ret;
 }
 
@@ -806,6 +753,7 @@ static void process_srp_iu(struct iu_entry *iue)
 	union viosrp_iu *iu = vio_iu(iue);
 	struct srp_target *target = iue->target;
 	struct vio_port *vport = target_to_port(target);
+	int err;
 	u8 opcode = iu->srp.rsp.opcode;
 
 	spin_lock_irqsave(&target->lock, flags);
@@ -824,7 +772,11 @@ static void process_srp_iu(struct iu_entry *iue)
 		process_tsk_mgmt(iue);
 		break;
 	case SRP_CMD:
-		queue_cmd(iue);
+		err = srp_cmd_queue(vport->sess, &iu->srp.cmd, iue);
+		if (err) {
+			eprintk("cannot queue cmd %p %d\n", &iu->srp.cmd, err);
+			srp_iu_put(iue);
+		}
 		break;
 	case SRP_LOGIN_RSP:
 	case SRP_I_LOGOUT:
@@ -1065,8 +1017,6 @@ static void handle_crq(struct work_struct *work)
 		} else
 			done = 1;
 	}
-
-	handle_cmd_queue(target);
 }
 
 static void ibmvstgt_inq_get_product_id(const struct scst_tgt_dev *tgt_dev,
