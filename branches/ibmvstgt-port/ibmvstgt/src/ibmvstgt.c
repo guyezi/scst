@@ -96,6 +96,7 @@ struct vio_port {
 	struct crq_queue crq_queue;
 	struct work_struct crq_work;
 
+	atomic_t req_lim_delta;
 	unsigned long liobn;
 	unsigned long riobn;
 	struct srp_target *target;
@@ -185,6 +186,8 @@ static int send_iu(struct iu_entry *iue, uint64_t length, uint8_t format)
 static int send_rsp(struct iu_entry *iue, struct scst_cmd *sc,
 		    unsigned char status, unsigned char asc)
 {
+	struct srp_target *target = iue->target;
+	struct vio_port *vport = target_to_port(target);
 	union viosrp_iu *iu = vio_iu(iue);
 	uint64_t tag = iu->srp.rsp.tag;
 
@@ -194,7 +197,8 @@ static int send_rsp(struct iu_entry *iue, struct scst_cmd *sc,
 
 	memset(iu, 0, sizeof(struct srp_rsp));
 	iu->srp.rsp.opcode = SRP_RSP;
-	iu->srp.rsp.req_lim_delta = __constant_cpu_to_be32(1);
+	iu->srp.rsp.req_lim_delta = __constant_cpu_to_be32(1
+					+ atomic_xchg(&vport->req_lim_delta, 0));
 	iu->srp.rsp.tag = tag;
 
 	if (test_bit(V_DIOVER, &iue->flags))
@@ -391,12 +395,15 @@ static int ibmvstgt_release(struct scst_tgt *scst_tgt)
 static int ibmvstgt_xmit_response(struct scst_cmd *sc)
 {
 	struct iu_entry *iue = scst_cmd_get_tgt_priv(sc);
+	struct srp_target *target = iue->target;
+	struct vio_port *vport = target_to_port(target);
 	struct srp_cmd *srp_cmd;
 	int ret;
 	enum dma_data_direction dir;
 
 	if (unlikely(scst_cmd_aborted(sc))) {
 		scst_set_delivery_status(sc, SCST_CMD_DELIVERY_ABORTED);
+		atomic_inc(&vport->req_lim_delta);
 		srp_iu_put(iue);
 		goto out;
 	}
