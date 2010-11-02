@@ -854,7 +854,7 @@ static int crq_queue_create(struct crq_queue *queue, struct srp_target *target)
 	struct vio_port *vport = target_to_port(target);
 
 	queue->msgs = dma_alloc_coherent(target->dev, PAGE_SIZE,
-					 &queue->msg_token, 0);
+					 &queue->msg_token, GFP_KERNEL);
 	if (!queue->msgs)
 		goto malloc_failed;
 	queue->size = PAGE_SIZE / sizeof(*queue->msgs);
