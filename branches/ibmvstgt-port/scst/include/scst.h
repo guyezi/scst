@@ -641,6 +641,13 @@ struct scst_tgt_template {
 #endif
 
 	/*
+	 * True if SCST should report that it supports ACA although it does
+	 * not yet support ACA. Necessary for the IBM virtual SCSI target
+	 * driver.
+	 */
+	unsigned fake_aca:1;
+
+	/*
 	 * Preferred SCSI LUN addressing method.
 	 */
 	enum scst_lun_addr_method preferred_addr_method;

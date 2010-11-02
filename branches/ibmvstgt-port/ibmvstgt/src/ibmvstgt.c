@@ -1192,6 +1192,7 @@ static struct scst_tgt_template ibmvstgt_template = {
 #else
 	.sg_tablesize		= SCSI_MAX_SG_SEGMENTS,
 #endif
+	.fake_aca		= true,
 	.inq_vendor		= "IBM     ",
 	.inq_revision		= "0001",
 	.inq_get_product_id	= ibmvstgt_inq_get_product_id,
