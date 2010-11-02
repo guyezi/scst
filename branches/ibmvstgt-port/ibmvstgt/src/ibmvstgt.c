@@ -853,11 +853,21 @@ static int crq_queue_create(struct crq_queue *queue, struct srp_target *target)
 	int err;
 	struct vio_port *vport = target_to_port(target);
 
-	queue->msgs = dma_alloc_coherent(target->dev, PAGE_SIZE,
-					 &queue->msg_token, GFP_KERNEL);
+	queue->msgs = (struct viosrp_crq *) get_zeroed_page(GFP_KERNEL);
 	if (!queue->msgs)
 		goto malloc_failed;
 	queue->size = PAGE_SIZE / sizeof(*queue->msgs);
+
+	queue->msg_token = dma_map_single(target->dev, queue->msgs,
+					  queue->size * sizeof(*queue->msgs),
+					  DMA_BIDIRECTIONAL);
+
+#ifdef RHEL_MAJOR
+	if (dma_mapping_error(queue->msg_token))
+#else
+	if (dma_mapping_error(target->dev, queue->msg_token))
+#endif
+		goto map_failed;
 
 	err = h_reg_crq(vport->dma_dev->unit_address, queue->msg_token,
 			PAGE_SIZE);
@@ -899,8 +909,10 @@ req_irq_failed:
 	} while (err == H_BUSY || H_IS_LONG_BUSY(err));
 
 reg_crq_failed:
-	dma_free_coherent(target->dev, PAGE_SIZE, queue->msgs,
-			  queue->msg_token);
+	dma_unmap_single(target->dev, queue->msg_token,
+			 queue->size * sizeof(*queue->msgs), DMA_BIDIRECTIONAL);
+map_failed:
+	free_page((unsigned long) queue->msgs);
 
 malloc_failed:
 	return -ENOMEM;
@@ -917,8 +929,10 @@ static void crq_queue_destroy(struct srp_target *target)
 		err = h_free_crq(vport->dma_dev->unit_address);
 	} while (err == H_BUSY || H_IS_LONG_BUSY(err));
 
-	dma_free_coherent(target->dev, PAGE_SIZE, queue->msgs,
-			  queue->msg_token);
+	dma_unmap_single(target->dev, queue->msg_token,
+			 queue->size * sizeof(*queue->msgs), DMA_BIDIRECTIONAL);
+
+	free_page((unsigned long) queue->msgs);
 }
 
 static void process_crq(struct viosrp_crq *crq,	struct srp_target *target)
