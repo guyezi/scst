@@ -697,9 +697,7 @@ static int scst_parse_cmd(struct scst_cmd *cmd)
 			TRACE(TRACE_MINOR, "Warning: expected "
 				"transfer length %d for opcode 0x%02x "
 				"(handler %s, target %s) doesn't match "
-				"decoded value %d. Faulty initiator "
-				"(e.g. VMware is known to be such) or "
-				"scst_scsi_op_table should be updated?",
+				"decoded value %d",
 				cmd->expected_transfer_len, cmd->cdb[0],
 				dev->handler->name, cmd->tgtt->name,
 				cmd->bufflen);
@@ -713,9 +711,7 @@ static int scst_parse_cmd(struct scst_cmd *cmd)
 			TRACE(TRACE_MINOR, "Warning: expected bidirectional OUT "
 				"transfer length %d for opcode 0x%02x "
 				"(handler %s, target %s) doesn't match "
-				"decoded value %d. Faulty initiator "
-				"(e.g. VMware is known to be such) or "
-				"scst_scsi_op_table should be updated?",
+				"decoded value %d",
 				cmd->expected_out_transfer_len, cmd->cdb[0],
 				dev->handler->name, cmd->tgtt->name,
 				cmd->out_bufflen);
@@ -3693,7 +3689,7 @@ static int scst_translate_lun(struct scst_cmd *cmd)
 	TRACE_ENTRY();
 
 	/* See comment about smp_mb() in scst_suspend_activity() */
-	__scst_get(1);
+	__scst_get();
 
 	if (likely(!test_bit(SCST_FLAG_SUSPENDED, &scst_flags))) {
 		struct list_head *head =
@@ -4271,7 +4267,7 @@ static int scst_mgmt_translate_lun(struct scst_mgmt_cmd *mcmd)
 	      (long long unsigned int)mcmd->lun);
 
 	/* See comment about smp_mb() in scst_suspend_activity() */
-	__scst_get(1);
+	__scst_get();
 
 	if (unlikely(test_bit(SCST_FLAG_SUSPENDED, &scst_flags) &&
 		     !test_bit(SCST_FLAG_SUSPENDING, &scst_flags))) {
