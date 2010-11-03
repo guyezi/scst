@@ -1031,13 +1031,24 @@ static void handle_crq(struct work_struct *work)
 #endif
 	struct srp_target *target = vport->target;
 	struct viosrp_crq *crq;
+	int done = 0;
 
-	while ((crq = next_crq(&vport->crq_queue)) != NULL) {
-		process_crq(crq, target);
-		crq->valid = 0x00;
+	while (!done) {
+		while ((crq = next_crq(&vport->crq_queue)) != NULL) {
+			process_crq(crq, target);
+			crq->valid = 0x00;
+		}
+
+		vio_enable_interrupts(vport->dma_dev);
+
+		crq = next_crq(&vport->crq_queue);
+		if (crq) {
+			vio_disable_interrupts(vport->dma_dev);
+			process_crq(crq, target);
+			crq->valid = 0x00;
+		} else
+			done = 1;
 	}
-
-	vio_enable_interrupts(vport->dma_dev);
 }
 
 static void ibmvstgt_inq_get_product_id(const struct scst_tgt_dev *tgt_dev,
