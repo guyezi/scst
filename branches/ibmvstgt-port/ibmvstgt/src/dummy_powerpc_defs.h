@@ -43,6 +43,7 @@ static inline void of_node_put(struct device_node *node)
 /* From arch/powerpc/include/asm/hvcall.h */
 
 #define H_SUCCESS       0
+#define H_Success       0
 #define H_BUSY          1       /* Hardware busy -- retry later */
 
 #define H_RESOURCE      -16

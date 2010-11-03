@@ -347,10 +347,6 @@ static int data_out_desc_size(struct srp_cmd *cmd)
 	return size;
 }
 
-/*
- * TODO: this can be called multiple times for a single command if it
- * has very long data.
- */
 int srp_transfer_data(struct scst_cmd *sc, struct srp_cmd *cmd,
 		      srp_rdma_t rdma_io, int dma_map, int ext_desc)
 {

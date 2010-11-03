@@ -60,14 +60,13 @@
 /* Note: SRP_REQ_LIM must be a power of two because of kfifo. */
 #define	SRP_REQ_LIM		16
 #define	DEFAULT_MAX_SECTORS	256
+#define	MAX_H_COPY_RDMA		(128*1024)
 
 #define	TGT_NAME	"ibmvstgt"
 
 /*
  * Hypervisor calls.
  */
-#define h_copy_rdma(l, sa, sb, da, db) \
-			plpar_hcall_norets(H_COPY_RDMA, l, sa, sb, da, db)
 #define h_send_crq(ua, l, h) \
 			plpar_hcall_norets(H_SEND_CRQ, ua, l, h)
 #define h_reg_crq(ua, tok, sz)\
@@ -129,6 +128,29 @@ MODULE_PARM_DESC(trace_flag, "SCST trace flags.");
 static char system_id[64] = "";
 static char partition_name[97] = "UNKNOWN";
 static unsigned int partition_number = -1;
+
+static long h_copy_rdma(u64 length, unsigned long siobn, dma_addr_t saddr,
+			unsigned long diobn, dma_addr_t daddr)
+{
+	u64 bytes_copied = 0;
+	long rc;
+
+	while (bytes_copied < length) {
+		u64 bytes_to_copy;
+
+		bytes_to_copy = min_t(u64, length - bytes_copied,
+				      MAX_H_COPY_RDMA);
+		rc = plpar_hcall_norets(H_COPY_RDMA, bytes_to_copy, siobn,
+					saddr, diobn, daddr);
+		if (rc != H_Success)
+			return rc;
+
+		bytes_copied += bytes_to_copy;
+		saddr += bytes_to_copy;
+		daddr += bytes_to_copy;
+	}
+	return H_Success;
+}
 
 static struct vio_port *target_to_port(struct srp_target *target)
 {
