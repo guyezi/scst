@@ -142,14 +142,14 @@ static long h_copy_rdma(u64 length, unsigned long siobn, dma_addr_t saddr,
 				      MAX_H_COPY_RDMA);
 		rc = plpar_hcall_norets(H_COPY_RDMA, bytes_to_copy, siobn,
 					saddr, diobn, daddr);
-		if (rc != H_Success)
+		if (rc != H_SUCCESS)
 			return rc;
 
 		bytes_copied += bytes_to_copy;
 		saddr += bytes_to_copy;
 		daddr += bytes_to_copy;
 	}
-	return H_Success;
+	return H_SUCCESS;
 }
 
 static struct vio_port *target_to_port(struct srp_target *target)
