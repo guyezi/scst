@@ -208,23 +208,25 @@ static int srp_direct_data(struct scst_cmd *sc, struct srp_direct_buf *md,
 	struct scatterlist *sg = NULL;
 	int err, nsg = 0, len, sg_cnt;
 	u32 tsize;
+	enum dma_data_direction dma_dir;
 
 	iue = scst_cmd_get_tgt_priv(sc);
 	if (dir == DMA_TO_DEVICE) {
 		scst_cmd_get_write_fields(sc, &sg, &sg_cnt);
 		tsize = scst_cmd_get_bufflen(sc);
+		dma_dir = DMA_FROM_DEVICE;
 	} else {
 		sg = scst_cmd_get_sg(sc);
 		sg_cnt = scst_cmd_get_sg_cnt(sc);
 		tsize = scst_cmd_get_adjusted_resp_data_len(sc);
+		dma_dir = DMA_TO_DEVICE;
 	}
 
 	dprintk("%p %u %u %d\n", iue, tsize, be32_to_cpu(md->len), sg_cnt);
 
 	len = min(tsize, be32_to_cpu(md->len));
 
-	nsg = dma_map_sg(iue->target->dev, sg, sg_cnt,
-				 DMA_BIDIRECTIONAL);
+	nsg = dma_map_sg(iue->target->dev, sg, sg_cnt, dma_dir);
 	if (!nsg) {
 		eprintk(KERN_ERR "fail to map %p %d\n", iue, sg_cnt);
 		return -ENOMEM;
@@ -232,7 +234,7 @@ static int srp_direct_data(struct scst_cmd *sc, struct srp_direct_buf *md,
 
 	err = rdma_io(sc, sg, nsg, md, 1, dir, len);
 
-	dma_unmap_sg(iue->target->dev, sg, nsg, DMA_BIDIRECTIONAL);
+	dma_unmap_sg(iue->target->dev, sg, nsg, dma_dir);
 
 	return err;
 }
@@ -249,15 +251,18 @@ static int srp_indirect_data(struct scst_cmd *sc, struct srp_cmd *cmd,
 	int err = 0;
 	int nmd, nsg = 0, len, sg_cnt = 0;
 	u32 tsize = 0;
+	enum dma_data_direction dma_dir;
 
 	iue = scst_cmd_get_tgt_priv(sc);
 	if (dir == DMA_TO_DEVICE) {
 		scst_cmd_get_write_fields(sc, &sg, &sg_cnt);
 		tsize = scst_cmd_get_bufflen(sc);
+		dma_dir = DMA_FROM_DEVICE;
 	} else {
 		sg = scst_cmd_get_sg(sc);
 		sg_cnt = scst_cmd_get_sg_cnt(sc);
 		tsize = scst_cmd_get_adjusted_resp_data_len(sc);
+		dma_dir = DMA_TO_DEVICE;
 	}
 
 	dprintk("%p %u %u %d %d\n", iue, tsize, be32_to_cpu(id->len),
@@ -298,8 +303,7 @@ static int srp_indirect_data(struct scst_cmd *sc, struct srp_cmd *cmd,
 	}
 
 rdma:
-	nsg = dma_map_sg(iue->target->dev, sg, sg_cnt,
-				 DMA_BIDIRECTIONAL);
+	nsg = dma_map_sg(iue->target->dev, sg, sg_cnt, dma_dir);
 	if (!nsg) {
 		eprintk("fail to map %p %d\n", iue, sg_cnt);
 		err = -ENOMEM;
@@ -308,7 +312,7 @@ rdma:
 
 	err = rdma_io(sc, sg, nsg, md, nmd, dir, len);
 
-	dma_unmap_sg(iue->target->dev, sg, nsg, DMA_BIDIRECTIONAL);
+	dma_unmap_sg(iue->target->dev, sg, nsg, dma_dir);
 
 free_mem:
 	if (token)
