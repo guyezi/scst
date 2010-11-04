@@ -202,8 +202,7 @@ void srp_iu_put(struct iu_entry *iue)
 EXPORT_SYMBOL_GPL(srp_iu_put);
 
 static int srp_direct_data(struct scst_cmd *sc, struct srp_direct_buf *md,
-			   enum dma_data_direction dir, srp_rdma_t rdma_io,
-			   int dma_map)
+			   enum dma_data_direction dir, srp_rdma_t rdma_io)
 {
 	struct iu_entry *iue = NULL;
 	struct scatterlist *sg = NULL;
@@ -224,19 +223,16 @@ static int srp_direct_data(struct scst_cmd *sc, struct srp_direct_buf *md,
 
 	len = min(tsize, be32_to_cpu(md->len));
 
-	if (dma_map) {
-		nsg = dma_map_sg(iue->target->dev, sg, sg_cnt,
+	nsg = dma_map_sg(iue->target->dev, sg, sg_cnt,
 				 DMA_BIDIRECTIONAL);
-		if (!nsg) {
-			eprintk(KERN_ERR "fail to map %p %d\n", iue, sg_cnt);
-			return -ENOMEM;
-		}
+	if (!nsg) {
+		eprintk(KERN_ERR "fail to map %p %d\n", iue, sg_cnt);
+		return -ENOMEM;
 	}
 
 	err = rdma_io(sc, sg, nsg, md, 1, dir, len);
 
-	if (dma_map)
-		dma_unmap_sg(iue->target->dev, sg, nsg, DMA_BIDIRECTIONAL);
+	dma_unmap_sg(iue->target->dev, sg, nsg, DMA_BIDIRECTIONAL);
 
 	return err;
 }
@@ -244,7 +240,7 @@ static int srp_direct_data(struct scst_cmd *sc, struct srp_direct_buf *md,
 static int srp_indirect_data(struct scst_cmd *sc, struct srp_cmd *cmd,
 			     struct srp_indirect_buf *id,
 			     enum dma_data_direction dir, srp_rdma_t rdma_io,
-			     int dma_map, int ext_desc)
+			     int ext_desc)
 {
 	struct iu_entry *iue = NULL;
 	struct srp_direct_buf *md = NULL;
@@ -278,7 +274,7 @@ static int srp_indirect_data(struct scst_cmd *sc, struct srp_cmd *cmd,
 		goto rdma;
 	}
 
-	if (ext_desc && dma_map) {
+	if (ext_desc) {
 		md = dma_alloc_coherent(iue->target->dev,
 					be32_to_cpu(id->table_desc.len),
 					&token, GFP_KERNEL);
@@ -302,23 +298,20 @@ static int srp_indirect_data(struct scst_cmd *sc, struct srp_cmd *cmd,
 	}
 
 rdma:
-	if (dma_map) {
-		nsg = dma_map_sg(iue->target->dev, sg, sg_cnt,
+	nsg = dma_map_sg(iue->target->dev, sg, sg_cnt,
 				 DMA_BIDIRECTIONAL);
-		if (!nsg) {
-			eprintk("fail to map %p %d\n", iue, sg_cnt);
-			err = -ENOMEM;
-			goto free_mem;
-		}
+	if (!nsg) {
+		eprintk("fail to map %p %d\n", iue, sg_cnt);
+		err = -ENOMEM;
+		goto free_mem;
 	}
 
 	err = rdma_io(sc, sg, nsg, md, nmd, dir, len);
 
-	if (dma_map)
-		dma_unmap_sg(iue->target->dev, sg, nsg, DMA_BIDIRECTIONAL);
+	dma_unmap_sg(iue->target->dev, sg, nsg, DMA_BIDIRECTIONAL);
 
 free_mem:
-	if (token && dma_map)
+	if (token)
 		dma_free_coherent(iue->target->dev,
 				  be32_to_cpu(id->table_desc.len), md, token);
 
@@ -348,7 +341,7 @@ static int data_out_desc_size(struct srp_cmd *cmd)
 }
 
 int srp_transfer_data(struct scst_cmd *sc, struct srp_cmd *cmd,
-		      srp_rdma_t rdma_io, int dma_map, int ext_desc)
+		      srp_rdma_t rdma_io, int ext_desc)
 {
 	struct srp_direct_buf *md;
 	struct srp_indirect_buf *id;
@@ -373,13 +366,12 @@ int srp_transfer_data(struct scst_cmd *sc, struct srp_cmd *cmd,
 	case SRP_DATA_DESC_DIRECT:
 		md = (struct srp_direct_buf *)
 			(cmd->add_data + offset);
-		err = srp_direct_data(sc, md, dir, rdma_io, dma_map);
+		err = srp_direct_data(sc, md, dir, rdma_io);
 		break;
 	case SRP_DATA_DESC_INDIRECT:
 		id = (struct srp_indirect_buf *)
 			(cmd->add_data + offset);
-		err = srp_indirect_data(sc, cmd, id, dir, rdma_io, dma_map,
-					ext_desc);
+		err = srp_indirect_data(sc, cmd, id, dir, rdma_io, ext_desc);
 		break;
 	default:
 		eprintk("Unknown format %d %x\n", dir, format);
