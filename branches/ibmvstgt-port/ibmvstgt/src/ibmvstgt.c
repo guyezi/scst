@@ -91,7 +91,6 @@ enum iue_flags {
 
 struct vio_port {
 	struct vio_dev *dma_dev;
-	unsigned max_vdma_size;
 
 	struct crq_queue crq_queue;
 	struct work_struct crq_work;
@@ -113,6 +112,7 @@ struct vio_port {
 
 static atomic_t ibmvstgt_device_count;
 static struct workqueue_struct *vtgtd;
+static unsigned max_vdma_size = MAX_H_COPY_RDMA;
 
 #if defined(CONFIG_SCST_DEBUG) || defined(CONFIG_SCST_TRACING)
 #define DEFAULT_IBMVSTGT_TRACE_FLAGS \
@@ -131,7 +131,7 @@ static char partition_name[97] = "UNKNOWN";
 static unsigned int partition_number = -1;
 
 static long h_copy_rdma(u64 length, unsigned long siobn, dma_addr_t saddr,
-			unsigned long diobn, dma_addr_t daddr, u64 max_vdma_size)
+			unsigned long diobn, dma_addr_t daddr)
 {
 	u64 bytes_copied = 0;
 	long rc;
@@ -175,8 +175,7 @@ static int send_iu(struct iu_entry *iue, uint64_t length, uint8_t format)
 
 	/* First copy the SRP */
 	rc = h_copy_rdma(length, vport->liobn, iue->sbuf->dma,
-			 vport->riobn, iue->remote_token,
-			 vport->max_vdma_size);
+			 vport->riobn, iue->remote_token);
 
 	if (rc)
 		eprintk("Error %ld transferring data\n", rc);
@@ -301,15 +300,13 @@ static int ibmvstgt_rdma(struct scst_cmd *sc, struct scatterlist *sg, int nsg,
 						vport->riobn,
 						be64_to_cpu(md[i].va) + mdone,
 						vport->liobn,
-						token + soff,
-						vport->max_vdma_size);
+						token + soff);
 			else
 				err = h_copy_rdma(slen,
 						vport->liobn,
 						token + soff,
 						vport->riobn,
-						be64_to_cpu(md[i].va) + mdone,
-						vport->max_vdma_size);
+						be64_to_cpu(md[i].va) + mdone);
 
 			if (err != H_SUCCESS) {
 				eprintk("rdma error %d %d %ld\n", dir, slen, err);
@@ -515,7 +512,7 @@ static int send_adapter_info(struct iu_entry *iue,
 
 	/* Get remote info */
 	err = h_copy_rdma(sizeof(*info), vport->riobn, remote_buffer,
-			  vport->liobn, data_token, vport->max_vdma_size);
+			  vport->liobn, data_token);
 	if (err == H_SUCCESS) {
 		dprintk("Client connect: %s (%d)\n",
 			info->partition_name, info->partition_number);
@@ -533,7 +530,7 @@ static int send_adapter_info(struct iu_entry *iue,
 
 	/* Send our info to remote */
 	err = h_copy_rdma(sizeof(*info), vport->liobn, data_token,
-			  vport->riobn, remote_buffer, vport->max_vdma_size);
+			  vport->riobn, remote_buffer);
 
 	dma_free_coherent(target->dev, sizeof(*info), info, data_token);
 
@@ -846,8 +843,7 @@ static void process_iu(struct viosrp_crq *crq, struct srp_target *target)
 	iue->remote_token = crq->IU_data_ptr;
 
 	err = h_copy_rdma(crq->IU_length, vport->riobn,
-			  iue->remote_token, vport->liobn, iue->sbuf->dma,
-			  vport->max_vdma_size);
+			  iue->remote_token, vport->liobn, iue->sbuf->dma);
 
 	if (err != H_SUCCESS) {
 		eprintk("%ld transferring data error %p\n", err, iue);
@@ -1254,7 +1250,7 @@ static int ibmvstgt_probe(struct vio_dev *dev, const struct vio_device_id *id)
 	struct scst_tgt *scst_tgt;
 	struct srp_target *target;
 	struct vio_port *vport;
-	const unsigned int *dma, *max_vdma_size;
+	const unsigned int *dma;
 	unsigned dma_size;
 	int err = -ENOMEM;
 
@@ -1273,7 +1269,6 @@ static int ibmvstgt_probe(struct vio_dev *dev, const struct vio_device_id *id)
 	scst_tgt_set_tgt_priv(scst_tgt, target);
 	target->tgt = scst_tgt;
 	vport->dma_dev = dev;
-	vport->max_vdma_size = MAX_H_COPY_RDMA;
 	target->ldata = vport;
 	vport->target = target;
 	err = srp_target_alloc(target, &dev->dev, SRP_REQ_LIM, SRP_MAX_IU_LEN);
@@ -1289,13 +1284,6 @@ static int ibmvstgt_probe(struct vio_dev *dev, const struct vio_device_id *id)
 	}
 	vport->liobn = dma[0];
 	vport->riobn = dma[5];
-	max_vdma_size = vio_get_attribute(dev, "ibm,max-virtual-dma-size",
-					  NULL);
-	if (max_vdma_size) {
-		printk(KERN_INFO "[%d] ibm,max-virtual-dma-size = %d\n",
-		     	vport->dma_dev->unit_address, *max_vdma_size);
-		vport->max_vdma_size = *max_vdma_size;
-	}
 
 #if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 20) && !defined(BACKPORT_LINUX_WORKQUEUE_TO_2_6_19)
 	INIT_WORK(&vport->crq_work, handle_crq, vport);
@@ -1450,7 +1438,7 @@ static struct vio_driver ibmvstgt_driver = {
 
 static int get_system_info(void)
 {
-	struct device_node *rootdn;
+	struct device_node *rootdn, *vdevdn;
 	const char *id, *model, *name;
 	const unsigned int *num;
 
@@ -1472,6 +1460,18 @@ static int get_system_info(void)
 		partition_number = *num;
 
 	of_node_put(rootdn);
+
+	vdevdn = of_find_node_by_path("/vdevice");
+	if (vdevdn) {
+		const unsigned *mvds;
+
+		mvds = of_get_property(vdevdn, "ibm,max-virtual-dma-size",
+				       NULL);
+		if (mvds)
+			max_vdma_size = *mvds;
+		of_node_put(vdevdn);
+	}
+
 	return 0;
 }
 
