@@ -2965,7 +2965,7 @@ static ssize_t __scst_acg_addr_method_show(struct scst_acg *acg, char *buf)
 
 	switch (acg->addr_method) {
 	case SCST_LUN_ADDR_METHOD_FLAT:
-		res = sprintf(buf, "FLAT\n%s\n", SCST_SYSFS_KEY_MARK);
+		res = sprintf(buf, "FLAT\n");
 		break;
 	case SCST_LUN_ADDR_METHOD_PERIPHERAL:
 		res = sprintf(buf, "PERIPHERAL\n");
@@ -2977,6 +2977,9 @@ static ssize_t __scst_acg_addr_method_show(struct scst_acg *acg, char *buf)
 		res = sprintf(buf, "UNKNOWN\n");
 		break;
 	}
+
+	if (acg->addr_method != acg->tgt->tgtt->preferred_addr_method)
+		res += sprintf(&buf[res], "%s\n", SCST_SYSFS_KEY_MARK);
 
 	return res;
 }
