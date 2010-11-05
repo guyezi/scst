@@ -24,8 +24,7 @@ cc-option = $(shell if $(CC) $(CFLAGS) $(1) -S -o /dev/null -xc /dev/null \
              > /dev/null 2>&1; then echo "$(1)"; else echo "$(2)"; fi ;)
 
 EXTRA_CFLAGS += -I$(src)/../include -I$(SCST_INC_DIR)
-EXTRA_CFLAGS += -Wextra $(call cc-option,-Wno-old-style-declaration) \
-	-Wno-unused-parameter -Wno-missing-field-initializers
+EXTRA_CFLAGS += -Wextra -Wno-unused-parameter -Wno-missing-field-initializers
 
 EXTRA_CFLAGS += -DCONFIG_SCST_EXTRACHECKS
 #EXTRA_CFLAGS += -DCONFIG_SCST_TRACING
