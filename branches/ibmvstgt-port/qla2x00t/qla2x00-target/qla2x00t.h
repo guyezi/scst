@@ -54,7 +54,7 @@
 #define IMM_NTFY_ELS                0x0046
 
 /* Immediate notify task flags */
-#define IMM_NTFY_TASK_MGMT_SHIFT    9
+#define IMM_NTFY_TASK_MGMT_SHIFT    8
 
 #define Q2T_CLEAR_ACA               0x40
 #define Q2T_TARGET_RESET            0x20
@@ -196,6 +196,7 @@ struct q2t_cmd {
 	struct scst_cmd *scst_cmd;
 
 	unsigned int conf_compl_supported:1;/* to save extra sess dereferences */
+	unsigned int sg_mapped:1;
 	unsigned int free_sg:1;
 	unsigned int aborted:1; /* Needed in case of SRR */
 	unsigned int write_data_transferred:1;

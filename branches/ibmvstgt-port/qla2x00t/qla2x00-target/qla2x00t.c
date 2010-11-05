@@ -133,29 +133,36 @@ static ssize_t q2t_abort_isp_store(struct kobject *kobj,
 struct kobj_attribute q2t_abort_isp_attr =
 	__ATTR(abort_isp, S_IWUSR, NULL, q2t_abort_isp_store);
 
-static const struct attribute *q2t_tgt_attrs[] = {
-	&q2t_expl_conf_attr.attr,
-	&q2t_abort_isp_attr.attr,
-	NULL,
-};
-
 static ssize_t q2t_hw_target_show(struct kobject *kobj,
 	struct kobj_attribute *attr, char *buf);
 
 static struct kobj_attribute q2t_hw_target_attr =
 	__ATTR(hw_target, S_IRUGO, q2t_hw_target_show, NULL);
 
-static ssize_t q2t_vp_node_name_show(struct kobject *kobj,
+static ssize_t q2t_node_name_show(struct kobject *kobj,
 	struct kobj_attribute *attr, char *buf);
 
 static struct kobj_attribute q2t_vp_node_name_attr =
-	__ATTR(node_name, S_IRUGO, q2t_vp_node_name_show, NULL);
+	__ATTR(node_name, S_IRUGO, q2t_node_name_show, NULL);
+
+static ssize_t q2t_node_name_store(struct kobject *kobj,
+	struct kobj_attribute *attr, const char *buffer, size_t size);
+
+static struct kobj_attribute q2t_hw_node_name_attr =
+	__ATTR(node_name, S_IRUGO|S_IWUSR, q2t_node_name_show,
+		q2t_node_name_store);
 
 static ssize_t q2t_vp_parent_host_show(struct kobject *kobj,
 	struct kobj_attribute *attr, char *buf);
 
 static struct kobj_attribute q2t_vp_parent_host_attr =
 	__ATTR(parent_host, S_IRUGO, q2t_vp_parent_host_show, NULL);
+
+static const struct attribute *q2t_tgt_attrs[] = {
+	&q2t_expl_conf_attr.attr,
+	&q2t_abort_isp_attr.attr,
+	NULL,
+};
 
 #endif /* CONFIG_SCST_PROC */
 
@@ -525,12 +532,13 @@ static int q2t_target_detect(struct scst_tgt_template *tgtt)
 	rc = qla2xxx_tgt_register_driver(&t);
 	if (rc < 0) {
 		res = rc;
-		PRINT_ERROR("Unable to register driver: %d", res);
+		PRINT_ERROR("qla2x00t: Unable to register driver: %d", res);
 		goto out;
 	}
 
 	if (rc != QLA2X_INITIATOR_MAGIC) {
-		PRINT_ERROR("Wrong version of the initiator part: %d", rc);
+		PRINT_ERROR("qla2x00t: Wrong version of the initiator part: "
+			"%d", rc);
 		res = -EINVAL;
 		goto out;
 	}
@@ -539,7 +547,7 @@ static int q2t_target_detect(struct scst_tgt_template *tgtt)
 
 	res = 0;
 
-	PRINT_INFO("%s", "Target mode driver for QLogic 2x00 controller "
+	PRINT_INFO("qla2x00t: %s", "Target mode driver for QLogic 2x00 controller "
 		"registered successfully");
 
 out:
@@ -692,7 +700,7 @@ static void q2t_clear_tgt_db(struct q2t_tgt *tgt, bool local_only)
 
 	TRACE_ENTRY();
 
-	TRACE(TRACE_MGMT, "Clearing targets DB %p", tgt);
+	TRACE(TRACE_MGMT, "qla2x00t: Clearing targets DB %p", tgt);
 
 	list_for_each_entry_safe(sess, sess_tmp, &tgt->sess_list,
 					sess_list_entry) {
@@ -776,6 +784,12 @@ static void q2t_del_sess_timer_fn(unsigned long arg)
 	return;
 }
 
+static void q2t_undelete_sess(struct q2t_sess *sess)
+{
+	list_del(&sess->del_list_entry);
+	sess->deleted = 0;
+}
+
 /*
  * Must be called under tgt_mutex.
  *
@@ -806,16 +820,14 @@ static struct q2t_sess *q2t_create_sess(scsi_qla_host_t *ha, fc_port_t *fcport,
 		    (sess->port_name[7] == fcport->port_name[7])) {
 			TRACE_MGMT_DBG("Double sess %p found (s_id %x:%x:%x, "
 				"loop_id %d), updating to d_id %x:%x:%x, "
-				"loop_id %d", sess, sess->s_id.b.al_pa,
-				sess->s_id.b.area, sess->s_id.b.domain,
-				sess->loop_id, fcport->d_id.b.al_pa,
-				fcport->d_id.b.area, fcport->d_id.b.domain,
+				"loop_id %d", sess, sess->s_id.b.domain,
+				sess->s_id.b.al_pa, sess->s_id.b.area,
+				sess->loop_id, fcport->d_id.b.domain,
+				fcport->d_id.b.al_pa, fcport->d_id.b.area,
 				fcport->loop_id);
 
-			if (sess->deleted) {
-				list_del(&sess->del_list_entry);
-				sess->deleted = 0;
-			}
+			if (sess->deleted)
+				q2t_undelete_sess(sess);
 
 			q2t_sess_get(sess);
 			sess->s_id = fcport->d_id;
@@ -874,7 +886,7 @@ static struct q2t_sess *q2t_create_sess(scsi_qla_host_t *ha, fc_port_t *fcport,
 	sess->scst_sess = scst_register_session(tgt->scst_tgt, 1, wwn_str,
 				sess, sess, q2t_alloc_session_done);
 	if (sess->scst_sess == NULL) {
-		PRINT_CRIT_ERROR("qla2x00t(%ld): scst_register_session() "
+		PRINT_ERROR("qla2x00t(%ld): scst_register_session() "
 			"failed for host %ld (wwn %s, loop_id %d), all "
 			"commands from it will be refused", ha->instance,
 			ha->host_no, wwn_str, fcport->loop_id);
@@ -890,7 +902,7 @@ static struct q2t_sess *q2t_create_sess(scsi_qla_host_t *ha, fc_port_t *fcport,
 	PRINT_INFO("qla2x00t(%ld): %ssession for wwn %s (loop_id %d, "
 		"s_id %x:%x:%x, confirmed completion %ssupported) added",
 		ha->instance, local ? "local " : "", wwn_str, fcport->loop_id,
-		sess->s_id.b.al_pa, sess->s_id.b.area, sess->s_id.b.domain,
+		sess->s_id.b.domain, sess->s_id.b.al_pa, sess->s_id.b.area,
 		sess->conf_compl_supported ? "" : "not ");
 
 	kfree(wwn_str);
@@ -907,6 +919,20 @@ out_free_sess:
 	kfree(sess);
 	sess = NULL;
 	goto out;
+}
+
+static void q2t_reappear_sess(struct q2t_sess *sess, const char *reason)
+{
+	q2t_undelete_sess(sess);
+
+	PRINT_INFO("qla2x00t(%ld): session for port %02x:"
+		"%02x:%02x:%02x:%02x:%02x:%02x:%02x (loop ID %d) "
+		"reappeared%s", sess->tgt->ha->instance, sess->port_name[0],
+		sess->port_name[1], sess->port_name[2],
+		sess->port_name[3], sess->port_name[4],
+		sess->port_name[5], sess->port_name[6],
+		sess->port_name[7], sess->loop_id, reason);
+	TRACE_MGMT_DBG("Appeared sess %p", sess);
 }
 
 static void q2t_fc_port_added(scsi_qla_host_t *ha, fc_port_t *fcport)
@@ -937,19 +963,9 @@ static void q2t_fc_port_added(scsi_qla_host_t *ha, fc_port_t *fcport)
 		if (sess != NULL)
 			q2t_sess_put(sess); /* put the extra creation ref */
 	} else {
-		if (sess->deleted) {
-			list_del(&sess->del_list_entry);
-			sess->deleted = 0;
-
-			PRINT_INFO("qla2x00t(%ld): session for port %02x:"
-				"%02x:%02x:%02x:%02x:%02x:%02x:%02x (loop ID %d) "
-				"reappeared", ha->instance, fcport->port_name[0],
-				fcport->port_name[1], fcport->port_name[2],
-				fcport->port_name[3], fcport->port_name[4],
-				fcport->port_name[5], fcport->port_name[6],
-				fcport->port_name[7], sess->loop_id);
-			TRACE_MGMT_DBG("Appeared sess %p", sess);
-		} else if (sess->local) {
+		if (sess->deleted)
+			q2t_reappear_sess(sess, "");
+		else if (sess->local) {
 			TRACE(TRACE_MGMT, "qla2x00t(%ld): local session for "
 				"port %02x:%02x:%02x:%02x:%02x:%02x:%02x:%02x "
 				"(loop ID %d) became global", ha->instance,
@@ -959,8 +975,9 @@ static void q2t_fc_port_added(scsi_qla_host_t *ha, fc_port_t *fcport)
 				fcport->port_name[6], fcport->port_name[7],
 				sess->loop_id);
 		}
-		sess->local = 0;
 	}
+
+	sess->local = 0;
 
 	spin_unlock_irq(&pha->hardware_lock);
 
@@ -1242,7 +1259,8 @@ static void q2x_send_notify_ack(scsi_qla_host_t *ha, notify_entry_t *iocb,
 			NOTIFY_ACK_TM_RESP_CODE_VALID);
 	}
 
-	TRACE(TRACE_SCSI, "Sending Notify Ack Seq %#x -> I %#x St %#x RC %#x",
+	TRACE(TRACE_SCSI, "qla2x00t(%ld): Sending Notify Ack Seq %#x -> I %#x "
+		"St %#x RC %#x", ha->instance,
 		le16_to_cpu(iocb->seq_id), GET_TARGET_ID(ha, iocb),
 		le16_to_cpu(iocb->status), le16_to_cpu(ntfy->resp_code));
 	TRACE_BUFFER("Notify Ack packet data", ntfy, REQUEST_ENTRY_SIZE);
@@ -1415,8 +1433,8 @@ static void q24_handle_abts(scsi_qla_host_t *ha, abts24_recv_entry_t *abts)
 	}
 
 	TRACE(TRACE_MGMT, "qla2x00t(%ld): task abort (s_id=%x:%x:%x, "
-		"tag=%d, param=%x)", ha->instance, abts->fcp_hdr_le.s_id[0],
-		abts->fcp_hdr_le.s_id[1], abts->fcp_hdr_le.s_id[2], tag,
+		"tag=%d, param=%x)", ha->instance, abts->fcp_hdr_le.s_id[2],
+		abts->fcp_hdr_le.s_id[1], abts->fcp_hdr_le.s_id[0], tag,
 		le32_to_cpu(abts->fcp_hdr_le.parameter));
 
 	sess = q2t_find_sess_by_s_id_le(ha->tgt, abts->fcp_hdr_le.s_id);
@@ -1429,7 +1447,8 @@ static void q24_handle_abts(scsi_qla_host_t *ha, abts24_recv_entry_t *abts)
 
 	mcmd = mempool_alloc(q2t_mgmt_cmd_mempool, GFP_ATOMIC);
 	if (mcmd == NULL) {
-		PRINT_ERROR("%s: Allocation of ABORT cmd failed", __func__);
+		PRINT_ERROR("qla2x00t(%ld): %s: Allocation of ABORT cmd failed",
+			ha->instance, __func__);
 		goto out_err;
 	}
 	memset(mcmd, 0, sizeof(*mcmd));
@@ -1554,7 +1573,8 @@ static void q24_send_notify_ack(scsi_qla_host_t *ha,
 	nack->ox_id = iocb->ox_id;
 	nack->vp_index = iocb->vp_index;
 
-	TRACE(TRACE_SCSI, "Sending 24xx Notify Ack %d", nack->status);
+	TRACE(TRACE_SCSI, "qla2x00t(%ld): Sending 24xx Notify Ack %d",
+		ha->instance, nack->status);
 	TRACE_BUFFER("24xx Notify Ack packet data", nack, sizeof(*nack));
 
 	q2t_exec_queue(ha);
@@ -1604,7 +1624,7 @@ static void q2t_task_mgmt_fn_done(struct scst_mgmt_cmd *scst_mcmd)
 
 	mcmd = scst_mgmt_cmd_get_tgt_priv(scst_mcmd);
 	if (unlikely(mcmd == NULL)) {
-		PRINT_ERROR("scst_mcmd %p tgt_spec is NULL", mcmd);
+		PRINT_ERROR("qla2x00t: scst_mcmd %p tgt_spec is NULL", mcmd);
 		goto out;
 	}
 
@@ -1654,6 +1674,9 @@ static int q2t_pci_map_calc_cnt(struct q2t_prm *prm)
 		prm->cmd->sg_cnt, prm->cmd->dma_data_direction);
 	if (unlikely(prm->seg_cnt == 0))
 		goto out_err;
+
+	prm->cmd->sg_mapped = 1;
+
 	/*
 	 * If greater than four sg entries then we need to allocate
 	 * the continuation entries
@@ -1677,6 +1700,13 @@ out_err:
 		prm->tgt->ha->instance, prm->cmd->sg_cnt);
 	res = -1;
 	goto out;
+}
+
+static inline void q2t_unmap_sg(scsi_qla_host_t *ha, struct q2t_cmd *cmd)
+{
+	EXTRACHECKS_BUG_ON(!cmd->sg_mapped);
+	pci_unmap_sg(ha->pdev, cmd->sg, cmd->sg_cnt, cmd->dma_data_direction);
+	cmd->sg_mapped = 0;
 }
 
 static int q2t_check_reserve_free_req(scsi_qla_host_t *ha, uint32_t req_cnt)
@@ -1708,9 +1738,10 @@ static int q2t_check_reserve_free_req(scsi_qla_host_t *ha, uint32_t req_cnt)
 	}
 
 	if (unlikely(ha->req_q_cnt < (req_cnt + 2))) {
-		TRACE(TRACE_OUT_OF_MEM, "There is no room in the request ring: "
-			"ha->req_ring_index=%d, ha->req_q_cnt=%d, req_cnt=%d",
-			ha->req_ring_index, ha->req_q_cnt, req_cnt);
+		TRACE(TRACE_OUT_OF_MEM, "qla2x00t(%ld): There is no room in the "
+			"request ring: ha->req_ring_index=%d, ha->req_q_cnt=%d, "
+			"req_cnt=%d", ha->instance, ha->req_ring_index,
+			ha->req_q_cnt, req_cnt);
 		res = SCST_TGT_RES_QUEUE_FULL;
 		goto out;
 	}
@@ -1752,8 +1783,8 @@ static inline uint32_t q2t_make_handle(scsi_qla_host_t *ha)
 		if (h > MAX_OUTSTANDING_COMMANDS)
 			h = 1; /* 0 is Q2T_NULL_HANDLE */
 		if (h == ha->current_handle) {
-			TRACE(TRACE_OUT_OF_MEM,
-			      "Ran out of empty cmd slots in ha %p", ha);
+			TRACE(TRACE_OUT_OF_MEM, "qla2x00t(%ld): Ran out of "
+				"empty cmd slots in ha %p", ha->instance, ha);
 			h = Q2T_NULL_HANDLE;
 			break;
 		}
@@ -1799,11 +1830,11 @@ static void q2x_build_ctio_pkt(struct q2t_prm *prm)
 	pkt->common.rx_id = prm->cmd->atio.atio2x.rx_id;
 	pkt->common.relative_offset = cpu_to_le32(prm->cmd->offset);
 
-	TRACE(TRACE_DEBUG|TRACE_SCSI,
-	      "handle(scst_cmd) -> %08x, timeout %d L %#x -> I %#x E %#x",
-	      pkt->common.handle, Q2T_TIMEOUT,
-	      le16_to_cpu(prm->cmd->atio.atio2x.lun),
-	      GET_TARGET_ID(ha, &pkt->common), pkt->common.rx_id);
+	TRACE(TRACE_DEBUG|TRACE_SCSI, "qla2x00t(%ld): handle(scst_cmd) -> %08x, "
+		"timeout %d L %#x -> I %#x E %#x", ha->instance,
+		pkt->common.handle, Q2T_TIMEOUT,
+		le16_to_cpu(prm->cmd->atio.atio2x.lun),
+		GET_TARGET_ID(ha, &pkt->common), pkt->common.rx_id);
 }
 
 /* pha->hardware_lock supposed to be held on entry */
@@ -1849,9 +1880,9 @@ static int q24_build_ctio_pkt(struct q2t_prm *prm)
 	pkt->relative_offset = cpu_to_le32(prm->cmd->offset);
 
 out:
-	TRACE(TRACE_DEBUG|TRACE_SCSI, "handle(scst_cmd) -> %08x, timeout %d "
-		"ox_id %#x", pkt->common.handle, Q2T_TIMEOUT,
-		le16_to_cpu(pkt->ox_id));
+	TRACE(TRACE_DEBUG|TRACE_SCSI, "qla2x00t(%ld): handle(scst_cmd) -> %08x, "
+		"timeout %d, ox_id %#x", ha->instance, pkt->common.handle,
+		Q2T_TIMEOUT, le16_to_cpu(pkt->ox_id));
 	TRACE_EXIT_RES(res);
 	return res;
 }
@@ -2088,7 +2119,8 @@ static int q2t_pre_xmit_response(struct q2t_cmd *cmd,
 		goto out;
 	}
 
-	TRACE(TRACE_SCSI, "tag=%lld", scst_cmd_get_tag(scst_cmd));
+	TRACE(TRACE_SCSI, "qla2x00t(%ld): tag=%lld", ha->instance,
+		scst_cmd_get_tag(scst_cmd));
 
 	prm->cmd = cmd;
 	prm->tgt = tgt;
@@ -2173,9 +2205,8 @@ out:
 	return res;
 
 out_unlock_free_unmap:
-	if (q2t_has_data(cmd))
-		pci_unmap_sg(ha->pdev, cmd->sg, cmd->sg_cnt,
-		     cmd->dma_data_direction);
+	if (cmd->sg_mapped)
+		q2t_unmap_sg(ha, cmd);
 
 	/* Release ring specific lock */
 	spin_unlock_irqrestore(&pha->hardware_lock, *flags);
@@ -2551,9 +2582,8 @@ out:
 	return res;
 
 out_unmap_unlock:
-	if (q2t_has_data(cmd))
-		pci_unmap_sg(ha->pdev, cmd->sg, cmd->sg_cnt,
-			cmd->dma_data_direction);
+	if (cmd->sg_mapped)
+		q2t_unmap_sg(ha, cmd);
 	goto out_unlock;
 }
 
@@ -2632,10 +2662,8 @@ out:
 	return res;
 
 out_unlock_free_unmap:
-	if (q2t_has_data(cmd)) {
-		pci_unmap_sg(ha->pdev, cmd->sg, cmd->sg_cnt,
-		     cmd->dma_data_direction);
-	}
+	if (cmd->sg_mapped)
+		q2t_unmap_sg(ha, cmd);
 	goto out_unlock;
 }
 
@@ -2646,7 +2674,7 @@ static int q2t_rdy_to_xfer(struct scst_cmd *scst_cmd)
 
 	TRACE_ENTRY();
 
-	TRACE(TRACE_SCSI, "tag=%lld", scst_cmd_get_tag(scst_cmd));
+	TRACE(TRACE_SCSI, "qla2x00t: tag=%lld", scst_cmd_get_tag(scst_cmd));
 
 	cmd = (struct q2t_cmd *)scst_cmd_get_tgt_priv(scst_cmd);
 	cmd->bufflen = scst_cmd_get_write_fields(scst_cmd, &cmd->sg,
@@ -2813,6 +2841,8 @@ out:
 
 static inline void q2t_free_cmd(struct q2t_cmd *cmd)
 {
+	EXTRACHECKS_BUG_ON(cmd->sg_mapped);
+
 	if (unlikely(cmd->free_sg))
 		kfree(cmd->sg);
 	kmem_cache_free(q2t_cmd_cachep, cmd);
@@ -2824,8 +2854,8 @@ static void q2t_on_free_cmd(struct scst_cmd *scst_cmd)
 
 	TRACE_ENTRY();
 
-	TRACE(TRACE_SCSI, "Freeing command %p, tag %lld", scst_cmd,
-		scst_cmd_get_tag(scst_cmd));
+	TRACE(TRACE_SCSI, "qla2x00t: Freeing command %p, tag %lld",
+		scst_cmd, scst_cmd_get_tag(scst_cmd));
 
 	cmd = (struct q2t_cmd *)scst_cmd_get_tgt_priv(scst_cmd);
 	scst_cmd_set_tgt_priv(scst_cmd, NULL);
@@ -2899,8 +2929,8 @@ static int q2t_prepare_srr_ctio(scsi_qla_host_t *ha, struct q2t_cmd *cmd,
 		spin_unlock(&tgt->srr_lock);
 	} else {
 		struct srr_imm *ti;
-		PRINT_CRIT_ERROR("qla2x00t(%ld): Unable to "
-		    "allocate SRR CTIO entry", ha->instance);
+		PRINT_ERROR("qla2x00t(%ld): Unable to allocate SRR CTIO entry",
+			ha->instance);
 		spin_lock(&tgt->srr_lock);
 		list_for_each_entry_safe(imm, ti, &tgt->srr_imm_list,
 					srr_list_entry) {
@@ -3060,8 +3090,8 @@ static void q2t_do_ctio_completion(scsi_qla_host_t *ha, uint32_t handle,
 	context = SCST_CONTEXT_TASKLET;
 #endif
 
-	TRACE(TRACE_DEBUG|TRACE_SCSI, "handle(ctio %p status %#x) <- %08x",
-	      ctio, status, handle);
+	TRACE(TRACE_DEBUG|TRACE_SCSI, "qla2x00t(%ld): handle(ctio %p "
+		"status %#x) <- %08x", ha->instance, ctio, status, handle);
 
 	if (handle & CTIO_INTERMEDIATE_HANDLE_MARK) {
 		/* That could happen only in case of an error/reset/abort */
@@ -3080,6 +3110,9 @@ static void q2t_do_ctio_completion(scsi_qla_host_t *ha, uint32_t handle,
 	}
 
 	scst_cmd = cmd->scst_cmd;
+
+	if (cmd->sg_mapped)
+		q2t_unmap_sg(ha, cmd);
 
 	if (unlikely(status != CTIO_SUCCESS)) {
 		switch (status & 0xFFFF) {
@@ -3127,10 +3160,6 @@ static void q2t_do_ctio_completion(scsi_qla_host_t *ha, uint32_t handle,
 
 	if (cmd->state == Q2T_STATE_PROCESSED) {
 		TRACE_DBG("Command %p finished", cmd);
-		if (q2t_has_data(cmd)) {
-			pci_unmap_sg(ha->pdev, cmd->sg, cmd->sg_cnt,
-				cmd->dma_data_direction);
-		}
 	} else if (cmd->state == Q2T_STATE_NEED_DATA) {
 		int rx_status = SCST_RX_STATUS_SUCCESS;
 
@@ -3143,9 +3172,6 @@ static void q2t_do_ctio_completion(scsi_qla_host_t *ha, uint32_t handle,
 
 		TRACE_DBG("Data received, context %x, rx_status %d",
 		      context, rx_status);
-
-		pci_unmap_sg(ha->pdev, cmd->sg, cmd->sg_cnt,
-				cmd->dma_data_direction);
 
 		scst_rx_data(scst_cmd, rx_status, context);
 		goto out;
@@ -3260,7 +3286,7 @@ static int q2x_do_send_cmd_to_scst(struct q2t_cmd *cmd)
 #endif
 
 	TRACE_DBG("Context %x", context);
-	TRACE(TRACE_SCSI, "START Command (tag %d, queue_type %d)",
+	TRACE(TRACE_SCSI, "qla2x00t: START Command (tag %d, queue_type %d)",
 		cmd->tag, scst_cmd_get_queue_type(cmd->scst_cmd));
 	scst_cmd_init_done(cmd->scst_cmd, context);
 
@@ -3335,8 +3361,8 @@ static int q24_do_send_cmd_to_scst(struct q2t_cmd *cmd)
 #endif
 
 	TRACE_DBG("Context %x", context);
-	TRACE(TRACE_SCSI, "START Command %p (tag %d, queue type %x)", cmd,
-		cmd->tag, scst_cmd_get_queue_type(cmd->scst_cmd));
+	TRACE(TRACE_SCSI, "qla2x00t: START Command %p (tag %d, queue type %x)",
+		cmd, cmd->tag, scst_cmd_get_queue_type(cmd->scst_cmd));
 	scst_cmd_init_done(cmd->scst_cmd, context);
 
 out:
@@ -3384,7 +3410,8 @@ static int q2t_send_cmd_to_scst(scsi_qla_host_t *ha, atio_t *atio)
 
 	cmd = kmem_cache_zalloc(q2t_cmd_cachep, GFP_ATOMIC);
 	if (cmd == NULL) {
-		TRACE(TRACE_OUT_OF_MEM, "%s", "Allocation of cmd failed");
+		TRACE(TRACE_OUT_OF_MEM, "qla2x00t(%ld): Allocation of cmd "
+			"failed", ha->instance);
 		res = -ENOMEM;
 		goto out;
 	}
@@ -3416,6 +3443,9 @@ static int q2t_send_cmd_to_scst(scsi_qla_host_t *ha, atio_t *atio)
 		}
 	}
 
+	if (unlikely(sess->deleted))
+		q2t_reappear_sess(sess, " by new commands");
+
 	res = q2t_do_send_cmd_to_scst(ha, cmd, sess);
 	if (unlikely(res != 0))
 		goto out_free_cmd;
@@ -3435,8 +3465,8 @@ out_sched:
 
 		prm = kzalloc(sizeof(*prm), GFP_ATOMIC);
 		if (prm == NULL) {
-			PRINT_ERROR("%s", "Unable to create session work, "
-				"command will be refused");
+			PRINT_ERROR("qla2x00t(%ld): Unable to create session "
+				"work, command will be refused", ha->instance);
 			res = -1;
 			goto out_free_cmd;
 		}
@@ -3486,57 +3516,66 @@ static int q2t_issue_task_mgmt(struct q2t_sess *sess, uint8_t *lun,
 
 	switch (fn) {
 	case Q2T_CLEAR_ACA:
-		TRACE(TRACE_MGMT, "%s", "CLEAR_ACA received");
+		TRACE(TRACE_MGMT, "qla2x00t(%ld): CLEAR_ACA received",
+			sess->tgt->ha->instance);
 		rc = scst_rx_mgmt_fn_lun(sess->scst_sess, SCST_CLEAR_ACA,
 					 lun, lun_size, SCST_ATOMIC, mcmd);
 		break;
 
 	case Q2T_TARGET_RESET:
-		TRACE(TRACE_MGMT, "%s", "TARGET_RESET received");
+		TRACE(TRACE_MGMT, "qla2x00t(%ld): TARGET_RESET received",
+			sess->tgt->ha->instance);
 		rc = scst_rx_mgmt_fn_lun(sess->scst_sess, SCST_TARGET_RESET,
 					 lun, lun_size, SCST_ATOMIC, mcmd);
 		break;
 
 	case Q2T_LUN_RESET:
-		TRACE(TRACE_MGMT, "%s", "LUN_RESET received");
+		TRACE(TRACE_MGMT, "qla2x00t(%ld): LUN_RESET received",
+			sess->tgt->ha->instance);
 		rc = scst_rx_mgmt_fn_lun(sess->scst_sess, SCST_LUN_RESET,
 					 lun, lun_size, SCST_ATOMIC, mcmd);
 		break;
 
 	case Q2T_CLEAR_TS:
-		TRACE(TRACE_MGMT, "%s", "CLEAR_TS received");
+		TRACE(TRACE_MGMT, "qla2x00t(%ld): CLEAR_TS received",
+			sess->tgt->ha->instance);
 		rc = scst_rx_mgmt_fn_lun(sess->scst_sess, SCST_CLEAR_TASK_SET,
 					 lun, lun_size, SCST_ATOMIC, mcmd);
 		break;
 
 	case Q2T_ABORT_TS:
-		TRACE(TRACE_MGMT, "%s", "ABORT_TS received");
+		TRACE(TRACE_MGMT, "qla2x00t(%ld): ABORT_TS received",
+			sess->tgt->ha->instance);
 		rc = scst_rx_mgmt_fn_lun(sess->scst_sess, SCST_ABORT_TASK_SET,
 					 lun, lun_size, SCST_ATOMIC, mcmd);
 		break;
 
 	case Q2T_ABORT_ALL:
-		TRACE(TRACE_MGMT, "%s", "Doing ABORT_ALL_TASKS");
+		TRACE(TRACE_MGMT, "qla2x00t(%ld): Doing ABORT_ALL_TASKS",
+			sess->tgt->ha->instance);
 		rc = scst_rx_mgmt_fn_lun(sess->scst_sess,
 					 SCST_ABORT_ALL_TASKS,
 					 lun, lun_size, SCST_ATOMIC, mcmd);
 		break;
 
 	case Q2T_ABORT_ALL_SESS:
-		TRACE(TRACE_MGMT, "%s", "Doing ABORT_ALL_TASKS_SESS");
+		TRACE(TRACE_MGMT, "qla2x00t(%ld): Doing ABORT_ALL_TASKS_SESS",
+			sess->tgt->ha->instance);
 		rc = scst_rx_mgmt_fn_lun(sess->scst_sess,
 					 SCST_ABORT_ALL_TASKS_SESS,
 					 lun, lun_size, SCST_ATOMIC, mcmd);
 		break;
 
 	case Q2T_NEXUS_LOSS_SESS:
-		TRACE(TRACE_MGMT, "%s", "Doing NEXUS_LOSS_SESS");
+		TRACE(TRACE_MGMT, "qla2x00t(%ld): Doing NEXUS_LOSS_SESS",
+			sess->tgt->ha->instance);
 		rc = scst_rx_mgmt_fn_lun(sess->scst_sess, SCST_NEXUS_LOSS_SESS,
 					 lun, lun_size, SCST_ATOMIC, mcmd);
 		break;
 
 	case Q2T_NEXUS_LOSS:
-		TRACE(TRACE_MGMT, "%s", "Doing NEXUS_LOSS");
+		TRACE(TRACE_MGMT, "qla2x00t(%ld): Doing NEXUS_LOSS",
+			sess->tgt->ha->instance);
 		rc = scst_rx_mgmt_fn_lun(sess->scst_sess, SCST_NEXUS_LOSS,
 					 lun, lun_size, SCST_ATOMIC, mcmd);
 		break;
@@ -3639,7 +3678,8 @@ static int q2t_abort_task(scsi_qla_host_t *ha, notify_entry_t *iocb)
 
 	mcmd = mempool_alloc(q2t_mgmt_cmd_mempool, GFP_ATOMIC);
 	if (mcmd == NULL) {
-		PRINT_ERROR("%s: Allocation of ABORT cmd failed", __func__);
+		PRINT_ERROR("qla2x00t(%ld): %s: Allocation of ABORT cmd failed",
+			ha->instance, __func__);
 		res = -ENOMEM;
 		goto out;
 	}
@@ -3676,7 +3716,8 @@ static int q24_handle_els(scsi_qla_host_t *ha, notify24xx_entry_t *iocb)
 
 	TRACE_ENTRY();
 
-	TRACE(TRACE_MGMT, "ELS opcode %x", iocb->status_subcode);
+	TRACE(TRACE_MGMT, "qla2x00t(%ld): ELS opcode %x", ha->instance,
+		iocb->status_subcode);
 
 	switch (iocb->status_subcode) {
 	case ELS_PLOGI:
@@ -3765,7 +3806,7 @@ static int q2t_cut_cmd_data_head(struct q2t_cmd *cmd, unsigned int offset)
 
 	sg = kmalloc(cnt * sizeof(sg[0]), GFP_KERNEL);
 	if (sg == NULL) {
-		PRINT_CRIT_ERROR("qla2x00t(%ld): Unable to allocate cut "
+		PRINT_ERROR("qla2x00t(%ld): Unable to allocate cut "
 			"SG (len %zd)", cmd->tgt->ha->instance,
 			cnt * sizeof(sg[0]));
 		res = -ENOMEM;
@@ -3878,8 +3919,6 @@ static void q24_handle_srr(scsi_qla_host_t *ha, struct srr_ctio *sctio,
 		if (q2t_has_data(cmd)) {
 			uint32_t offset;
 			int xmit_type;
-			pci_unmap_sg(ha->pdev, cmd->sg, cmd->sg_cnt,
-				cmd->dma_data_direction);
 			offset = le32_to_cpu(imm->imm.notify_entry24.srr_rel_offs);
 			if (q2t_srr_adjust_data(cmd, offset, &xmit_type) != 0)
 				goto out_reject;
@@ -3902,8 +3941,6 @@ static void q24_handle_srr(scsi_qla_host_t *ha, struct srr_ctio *sctio,
 		if (q2t_has_data(cmd)) {
 			uint32_t offset;
 			int xmit_type;
-			pci_unmap_sg(ha->pdev, cmd->sg, cmd->sg_cnt,
-				cmd->dma_data_direction);
 			offset = le32_to_cpu(imm->imm.notify_entry24.srr_rel_offs);
 			if (q2t_srr_adjust_data(cmd, offset, &xmit_type) != 0)
 				goto out_reject;
@@ -3911,7 +3948,8 @@ static void q24_handle_srr(scsi_qla_host_t *ha, struct srr_ctio *sctio,
 			q24_send_notify_ack(ha, ntfy,
 				NOTIFY_ACK_SRR_FLAGS_ACCEPT, 0, 0);
 			spin_unlock_irq(&pha->hardware_lock);
-			__q2t_rdy_to_xfer(cmd);
+			if (xmit_type & Q2T_XMIT_DATA)
+				__q2t_rdy_to_xfer(cmd);
 		} else {
 			PRINT_ERROR("qla2x00t(%ld): SRR for out data for cmd "
 				"without them (tag %d, SCSI status %d), "
@@ -3923,18 +3961,12 @@ static void q24_handle_srr(scsi_qla_host_t *ha, struct srr_ctio *sctio,
 	default:
 		PRINT_ERROR("qla2x00t(%ld): Unknown srr_ui value %x",
 			ha->instance, ntfy->srr_ui);
-		goto out_unmap_reject;
+		goto out_reject;
 	}
 
 out:
 	TRACE_EXIT();
 	return;
-
-out_unmap_reject:
-	if (q2t_has_data(sctio->cmd)) {
-		pci_unmap_sg(ha->pdev, cmd->sg, cmd->sg_cnt,
-			cmd->dma_data_direction);
-	}
 
 out_reject:
 	spin_lock_irq(&pha->hardware_lock);
@@ -3943,10 +3975,6 @@ out_reject:
 		NOTIFY_ACK_SRR_FLAGS_REJECT_EXPL_NO_EXPL);
 	if (cmd->state == Q2T_STATE_NEED_DATA) {
 		cmd->state = Q2T_STATE_DATA_IN;
-
-		pci_unmap_sg(ha->pdev, cmd->sg, cmd->sg_cnt,
-				cmd->dma_data_direction);
-
 		scst_rx_data(cmd->scst_cmd, SCST_RX_STATUS_ERROR,
 			SCST_CONTEXT_THREAD);
 	} else
@@ -3980,8 +4008,6 @@ static void q2x_handle_srr(scsi_qla_host_t *ha, struct srr_ctio *sctio,
 		if (q2t_has_data(cmd)) {
 			uint32_t offset;
 			int xmit_type;
-			pci_unmap_sg(ha->pdev, cmd->sg, cmd->sg_cnt,
-				cmd->dma_data_direction);
 			offset = le32_to_cpu(imm->imm.notify_entry.srr_rel_offs);
 			if (q2t_srr_adjust_data(cmd, offset, &xmit_type) != 0)
 				goto out_reject;
@@ -4004,8 +4030,6 @@ static void q2x_handle_srr(scsi_qla_host_t *ha, struct srr_ctio *sctio,
 		if (q2t_has_data(cmd)) {
 			uint32_t offset;
 			int xmit_type;
-			pci_unmap_sg(ha->pdev, cmd->sg, cmd->sg_cnt,
-				cmd->dma_data_direction);
 			offset = le32_to_cpu(imm->imm.notify_entry.srr_rel_offs);
 			if (q2t_srr_adjust_data(cmd, offset, &xmit_type) != 0)
 				goto out_reject;
@@ -4013,7 +4037,8 @@ static void q2x_handle_srr(scsi_qla_host_t *ha, struct srr_ctio *sctio,
 			q2x_send_notify_ack(ha, ntfy, 0, 0, 0,
 				NOTIFY_ACK_SRR_FLAGS_ACCEPT, 0, 0);
 			spin_unlock_irq(&pha->hardware_lock);
-			__q2t_rdy_to_xfer(cmd);
+			if (xmit_type & Q2T_XMIT_DATA)
+				__q2t_rdy_to_xfer(cmd);
 		} else {
 			PRINT_ERROR("qla2x00t(%ld): SRR for out data for cmd "
 				"without them (tag %d, SCSI status %d), "
@@ -4025,18 +4050,12 @@ static void q2x_handle_srr(scsi_qla_host_t *ha, struct srr_ctio *sctio,
 	default:
 		PRINT_ERROR("qla2x00t(%ld): Unknown srr_ui value %x",
 			ha->instance, ntfy->srr_ui);
-		goto out_unmap_reject;
+		goto out_reject;
 	}
 
 out:
 	TRACE_EXIT();
 	return;
-
-out_unmap_reject:
-	if (q2t_has_data(sctio->cmd)) {
-		pci_unmap_sg(ha->pdev, cmd->sg, cmd->sg_cnt,
-			cmd->dma_data_direction);
-	}
 
 out_reject:
 	spin_lock_irq(&pha->hardware_lock);
@@ -4045,10 +4064,6 @@ out_reject:
 		NOTIFY_ACK_SRR_FLAGS_REJECT_EXPL_NO_EXPL);
 	if (cmd->state == Q2T_STATE_NEED_DATA) {
 		cmd->state = Q2T_STATE_DATA_IN;
-
-		pci_unmap_sg(ha->pdev, cmd->sg, cmd->sg_cnt,
-				cmd->dma_data_direction);
-
 		scst_rx_data(cmd->scst_cmd, SCST_RX_STATUS_ERROR,
 			SCST_CONTEXT_THREAD);
 	} else
@@ -4215,7 +4230,7 @@ static void q2t_prepare_srr_imm(scsi_qla_host_t *ha, void *iocb)
 	} else {
 		struct srr_ctio *ts;
 
-		PRINT_CRIT_ERROR("qla2x00t(%ld): Unable to allocate SRR IMM "
+		PRINT_ERROR("qla2x00t(%ld): Unable to allocate SRR IMM "
 			"entry, SRR request will be rejected", ha->instance);
 
 		/* IRQ is already OFF */
@@ -4280,12 +4295,13 @@ static void q2t_handle_imm_notify(scsi_qla_host_t *ha, void *iocb)
 	case IMM_NTFY_LIP_RESET:
 	{
 		if (IS_FWI2_CAPABLE(ha)) {
-			TRACE(TRACE_MGMT, "LIP reset (loop %#x), subcode %x",
+			TRACE(TRACE_MGMT, "qla2x00t(%ld): LIP reset (loop %#x), "
+				"subcode %x", ha->instance,
 				le16_to_cpu(iocb24->nport_handle),
 				iocb24->status_subcode);
 		} else {
-			TRACE(TRACE_MGMT, "LIP reset (I %#x)",
-				GET_TARGET_ID(ha, iocb2x));
+			TRACE(TRACE_MGMT, "qla2x00t(%ld): LIP reset (I %#x)",
+				ha->instance, GET_TARGET_ID(ha, iocb2x));
 			/* set the Clear LIP reset event flag */
 			add_flags |= NOTIFY_ACK_CLEAR_LIP_RESET;
 		}
@@ -4297,7 +4313,8 @@ static void q2t_handle_imm_notify(scsi_qla_host_t *ha, void *iocb)
 	case IMM_NTFY_LIP_LINK_REINIT:
 	{
 		struct q2t_tgt *tgt = ha->tgt;
-		TRACE(TRACE_MGMT, "LINK REINIT (loop %#x, subcode %x)",
+		TRACE(TRACE_MGMT, "qla2x00t(%ld): LINK REINIT (loop %#x, "
+			"subcode %x)", ha->instance,
 			le16_to_cpu(iocb24->nport_handle),
 			iocb24->status_subcode);
 		if (tgt->link_reinit_iocb_pending)
@@ -4314,11 +4331,13 @@ static void q2t_handle_imm_notify(scsi_qla_host_t *ha, void *iocb)
 
 	case IMM_NTFY_PORT_LOGOUT:
 		if (IS_FWI2_CAPABLE(ha)) {
-			TRACE(TRACE_MGMT, "Port logout (loop %#x, subcode %x)",
+			TRACE(TRACE_MGMT, "qla2x00t(%ld): Port logout (loop "
+				"%#x, subcode %x)", ha->instance,
 				le16_to_cpu(iocb24->nport_handle),
 				iocb24->status_subcode);
 		} else {
-			TRACE(TRACE_MGMT, "Port logout (S %08x -> L %#x)",
+			TRACE(TRACE_MGMT, "qla2x00t(%ld): Port logout (S "
+				"%08x -> L %#x)", ha->instance,
 				le16_to_cpu(iocb2x->seq_id),
 				le16_to_cpu(iocb2x->lun));
 		}
@@ -4328,21 +4347,23 @@ static void q2t_handle_imm_notify(scsi_qla_host_t *ha, void *iocb)
 		break;
 
 	case IMM_NTFY_GLBL_TPRLO:
-		TRACE(TRACE_MGMT, "Global TPRLO (%x)", status);
+		TRACE(TRACE_MGMT, "qla2x00t(%ld): Global TPRLO (%x)",
+			ha->instance, status);
 		if (q2t_reset(ha, iocb, Q2T_NEXUS_LOSS) == 0)
 			send_notify_ack = 0;
 		/* The sessions will be cleared in the callback, if needed */
 		break;
 
 	case IMM_NTFY_PORT_CONFIG:
-		TRACE(TRACE_MGMT, "Port config changed (%x)", status);
+		TRACE(TRACE_MGMT, "qla2x00t(%ld): Port config changed (%x)",
+			ha->instance, status);
 		if (q2t_reset(ha, iocb, Q2T_ABORT_ALL) == 0)
 			send_notify_ack = 0;
 		/* The sessions will be cleared in the callback, if needed */
 		break;
 
 	case IMM_NTFY_GLBL_LOGO:
-		PRINT_ERROR("qla2x00t(%ld): Link failure detected",
+		PRINT_WARNING("qla2x00t(%ld): Link failure detected",
 			ha->instance);
 		/* I_T nexus loss */
 		if (q2t_reset(ha, iocb, Q2T_NEXUS_LOSS) == 0)
@@ -4356,9 +4377,9 @@ static void q2t_handle_imm_notify(scsi_qla_host_t *ha, void *iocb)
 		break;
 
 	case IMM_NTFY_ABORT_TASK:
-		TRACE(TRACE_MGMT, "Abort Task (S %08x I %#x -> L %#x)",
-		      le16_to_cpu(iocb2x->seq_id), GET_TARGET_ID(ha, iocb2x),
-		      le16_to_cpu(iocb2x->lun));
+		TRACE(TRACE_MGMT, "qla2x00t(%ld): Abort Task (S %08x I %#x -> "
+			"L %#x)", ha->instance, le16_to_cpu(iocb2x->seq_id),
+			GET_TARGET_ID(ha, iocb2x), le16_to_cpu(iocb2x->lun));
 		if (q2t_abort_task(ha, iocb2x) == 0)
 			send_notify_ack = 0;
 		break;
@@ -4369,7 +4390,8 @@ static void q2t_handle_imm_notify(scsi_qla_host_t *ha, void *iocb)
 		break;
 
 	case IMM_NTFY_MSG_RX:
-		TRACE(TRACE_MGMT, "Immediate notify task %x", iocb2x->task_flags);
+		TRACE(TRACE_MGMT, "qla2x00t(%ld): Immediate notify task %x",
+			ha->instance, iocb2x->task_flags);
 		if (q2t_handle_task_mgmt(ha, iocb2x) == 0)
 			send_notify_ack = 0;
 		break;
@@ -4521,8 +4543,8 @@ static void q24_atio_pkt(scsi_qla_host_t *ha, atio7_entry_t *atio)
 		goto out;
 	}
 
-	TRACE(TRACE_SCSI, "ATIO pkt %p: type %02x count %02x",
-	      atio, atio->entry_type, atio->entry_count);
+	TRACE(TRACE_SCSI, "qla2x00t(%ld): ATIO pkt %p: type %02x count %02x",
+	      ha->instance, atio, atio->entry_type, atio->entry_count);
 
 	/*
 	 * In tgt_stop mode we also should allow all requests to pass.
@@ -4541,14 +4563,13 @@ static void q24_atio_pkt(scsi_qla_host_t *ha, atio7_entry_t *atio)
 				atio->fcp_cmnd.add_cdb_len);
 			break;
 		}
-		TRACE_DBG("ATIO_TYPE7 instance %ld "
-			  "lun %Lx read/write %d/%d data_length %04x "
-			  "s_id %x:%x:%x",
-			  ha->instance, atio->fcp_cmnd.lun,
-			  atio->fcp_cmnd.rddata, atio->fcp_cmnd.wrdata,
-			  be32_to_cpu(atio->fcp_cmnd.data_length),
-			  atio->fcp_hdr.s_id[0], atio->fcp_hdr.s_id[1],
-			  atio->fcp_hdr.s_id[2]);
+		TRACE_DBG("ATIO_TYPE7 instance %ld, lun %Lx, read/write %d/%d, "
+			"data_length %04x, s_id %x:%x:%x", ha->instance,
+			atio->fcp_cmnd.lun, atio->fcp_cmnd.rddata,
+			atio->fcp_cmnd.wrdata,
+			be32_to_cpu(atio->fcp_cmnd.data_length),
+			atio->fcp_hdr.s_id[0], atio->fcp_hdr.s_id[1],
+			atio->fcp_hdr.s_id[2]);
 		TRACE_BUFFER("Incoming ATIO7 packet data", atio,
 			REQUEST_ENTRY_SIZE);
 		PRINT_BUFF_FLAG(TRACE_SCSI, "FCP CDB", atio->fcp_cmnd.cdb,
@@ -4617,14 +4638,14 @@ static void q2t_response_pkt(scsi_qla_host_t *ha, response_t *pkt)
 	TRACE_ENTRY();
 
 	if (unlikely(tgt == NULL)) {
-		PRINT_ERROR("Response pkt %x received, but no tgt (ha %p)",
-			pkt->entry_type, ha);
+		PRINT_ERROR("qla2x00t(%ld): Response pkt %x received, but no "
+			"tgt (ha %p)", ha->instance, pkt->entry_type, ha);
 		goto out;
 	}
 
-	TRACE(TRACE_SCSI, "pkt %p: T %02x C %02x S %02x handle %#x",
-	      pkt, pkt->entry_type, pkt->entry_count, pkt->entry_status,
-	      pkt->handle);
+	TRACE(TRACE_SCSI, "qla2x00t(%ld): pkt %p: T %02x C %02x S %02x "
+		"handle %#x", ha->instance, pkt, pkt->entry_type,
+		pkt->entry_count, pkt->entry_status, pkt->handle);
 
 	/*
 	 * In tgt_stop mode we also should allow all requests to pass.
@@ -4884,15 +4905,16 @@ static void q2t_async_event(uint16_t code, scsi_qla_host_t *ha,
 	case MBA_REQ_TRANSFER_ERR:	/* Request Transfer Error */
 	case MBA_RSP_TRANSFER_ERR:	/* Response Transfer Error */
 	case MBA_ATIO_TRANSFER_ERR:	/* ATIO Queue Transfer Error */
-		TRACE(TRACE_MGMT, "System error async event %#x occured", code);
+		TRACE(TRACE_MGMT, "qla2x00t(%ld): System error async event %#x "
+			"occured", ha->instance, code);
 		break;
 
 	case MBA_LOOP_UP:
 	{
-		TRACE(TRACE_MGMT, "Async LOOP_UP occured (m[1]=%x, m[2]=%x, "
-			"m[3]=%x, m[4]=%x)", le16_to_cpu(mailbox[1]),
-			le16_to_cpu(mailbox[2]), le16_to_cpu(mailbox[3]),
-			le16_to_cpu(mailbox[4]));
+		TRACE(TRACE_MGMT, "qla2x00t(%ld): Async LOOP_UP occured "
+			"(m[1]=%x, m[2]=%x, m[3]=%x, m[4]=%x)", ha->instance,
+			le16_to_cpu(mailbox[1]), le16_to_cpu(mailbox[2]),
+			le16_to_cpu(mailbox[3]), le16_to_cpu(mailbox[4]));
 		if (tgt->link_reinit_iocb_pending) {
 			q24_send_notify_ack(ha, &tgt->link_reinit_iocb, 0, 0, 0);
 			tgt->link_reinit_iocb_pending = 0;
@@ -4903,25 +4925,26 @@ static void q2t_async_event(uint16_t code, scsi_qla_host_t *ha,
 	case MBA_LIP_OCCURRED:
 	case MBA_LOOP_DOWN:
 	case MBA_LIP_RESET:
-		TRACE(TRACE_MGMT, "Async event %#x occured (m[1]=%x, m[2]=%x, "
-			"m[3]=%x, m[4]=%x)", code,
-			le16_to_cpu(mailbox[1]), le16_to_cpu(mailbox[2]),
+		TRACE(TRACE_MGMT, "qla2x00t(%ld): Async event %#x occured "
+			"(m[1]=%x, m[2]=%x, m[3]=%x, m[4]=%x)", ha->instance,
+			code, le16_to_cpu(mailbox[1]), le16_to_cpu(mailbox[2]),
 			le16_to_cpu(mailbox[3]), le16_to_cpu(mailbox[4]));
 		break;
 
 	case MBA_PORT_UPDATE:
 	case MBA_RSCN_UPDATE:
-		TRACE(TRACE_MGMT, "Port update async event %#x occured: "
-			"updating the ports database (m[1]=%x, m[2]=%x, "
-			"m[3]=%x, m[4]=%x)", code,
+		TRACE(TRACE_MGMT, "qla2x00t(%ld): Port update async event %#x "
+			"occured: updating the ports database (m[1]=%x, m[2]=%x, "
+			"m[3]=%x, m[4]=%x)", ha->instance, code,
 			le16_to_cpu(mailbox[1]), le16_to_cpu(mailbox[2]),
 			le16_to_cpu(mailbox[3]), le16_to_cpu(mailbox[4]));
 		/* .mark_all_devices_lost() is handled by the initiator driver */
 		break;
 
 	default:
-		TRACE(TRACE_MGMT, "Async event %#x occured: ignore (m[1]=%x, "
-			"m[2]=%x, m[3]=%x, m[4]=%x)", code,
+		TRACE(TRACE_MGMT, "qla2x00t(%ld): Async event %#x occured: "
+			"ignore (m[1]=%x, m[2]=%x, m[3]=%x, m[4]=%x)",
+			ha->instance, code,
 			le16_to_cpu(mailbox[1]), le16_to_cpu(mailbox[2]),
 			le16_to_cpu(mailbox[3]), le16_to_cpu(mailbox[4]));
 		break;
@@ -4942,7 +4965,8 @@ static int q2t_get_target_name(uint8_t *wwn, char **ppwwn_name)
 
 	name = kmalloc(wwn_len, GFP_KERNEL);
 	if (name == NULL) {
-		TRACE(TRACE_OUT_OF_MEM, "%s", "Allocation of tgt name failed");
+		TRACE(TRACE_OUT_OF_MEM, "%s", "qla2x00t: Allocation of tgt "
+			"name failed");
 		res = -ENOMEM;
 		goto out;
 	}
@@ -4971,7 +4995,8 @@ static int q24_get_loop_id(scsi_qla_host_t *ha, atio7_entry_t *atio7,
 	gid_list = dma_alloc_coherent(&ha->pdev->dev, GID_LIST_SIZE,
 			&gid_list_dma, GFP_KERNEL);
 	if (gid_list == NULL) {
-		PRINT_ERROR("DMA Alloc failed of %zd", GID_LIST_SIZE);
+		PRINT_ERROR("qla2x00t(%ld): DMA Alloc failed of %zd",
+			ha->instance, GID_LIST_SIZE);
 		res = -ENOMEM;
 		goto out;
 	}
@@ -4979,7 +5004,8 @@ static int q24_get_loop_id(scsi_qla_host_t *ha, atio7_entry_t *atio7,
 	/* Get list of logged in devices */
 	rc = qla2x00_get_id_list(ha, gid_list, gid_list_dma, &entries);
 	if (rc != QLA_SUCCESS) {
-		PRINT_ERROR("get_id_list() failed: %x", rc);
+		PRINT_ERROR("qla2x00t(%ld): get_id_list() failed: %x",
+			ha->instance, rc);
 		res = -1;
 		goto out_free_id_list;
 	}
@@ -4999,9 +5025,20 @@ static int q24_get_loop_id(scsi_qla_host_t *ha, atio7_entry_t *atio7,
 	}
 
 	if (res != 0) {
-		PRINT_ERROR("Unable to find initiator with S_ID %x:%x:%x",
-			atio7->fcp_hdr.s_id[2], atio7->fcp_hdr.s_id[1],
-			atio7->fcp_hdr.s_id[0]);
+		if ((atio7->fcp_hdr.s_id[0] == 0xFF) &&
+		    (atio7->fcp_hdr.s_id[1] == 0xFC)) {
+			/*
+			 * This is Domain Controller. It should be OK to drop
+			 * SCSI commands from it.
+			 */
+			TRACE_MGMT_DBG("Unable to find initiator with S_ID "
+				"%x:%x:%x", atio7->fcp_hdr.s_id[0],
+				atio7->fcp_hdr.s_id[1], atio7->fcp_hdr.s_id[2]);
+		} else
+			PRINT_ERROR("qla2x00t(%ld): Unable to find initiator with "
+				"S_ID %x:%x:%x", ha->instance,
+				atio7->fcp_hdr.s_id[0], atio7->fcp_hdr.s_id[1],
+				atio7->fcp_hdr.s_id[2]);
 	}
 
 out_free_id_list:
@@ -5031,7 +5068,8 @@ static struct q2t_sess *q2t_make_local_sess(scsi_qla_host_t *ha, atio_t *atio)
 
 	fcport = kzalloc(sizeof(*fcport), GFP_KERNEL);
 	if (fcport == NULL) {
-		PRINT_ERROR("%s", "Allocation of tmp FC port failed");
+		PRINT_ERROR("qla2x00t(%ld): Allocation of tmp FC port failed",
+			ha->instance);
 		goto out;
 	}
 
@@ -5041,9 +5079,9 @@ static struct q2t_sess *q2t_make_local_sess(scsi_qla_host_t *ha, atio_t *atio)
 
 	rc = qla2x00_get_port_database(ha, fcport, 0);
 	if (rc != QLA_SUCCESS) {
-		PRINT_ERROR("Failed to retrieve fcport information "
-			"-- get_port_database() returned %x "
-			"(loop_id=0x%04x)", rc, loop_id);
+		PRINT_ERROR("qla2x00t(%ld): Failed to retrieve fcport "
+			"information -- get_port_database() returned %x "
+			"(loop_id=0x%04x)", ha->instance, rc, loop_id);
 		goto out_free_fcport;
 	}
 
@@ -5105,8 +5143,8 @@ send:
 	} else {
 		/*
 		 * Cmd might be already aborted behind us, so be safe and
-		 * abort it. It was not sent to SCST yet, so pass NULL as
-		 * the second argument.
+		 * abort it. It should be OK, initiator will retry it. It has
+		 * not sent to SCST yet, so pass NULL as the second argument.
 		 */
 		TRACE_MGMT_DBG("Terminating work cmd %p", cmd);
 		if (IS_FWI2_CAPABLE(ha))
@@ -5155,7 +5193,8 @@ static void q2t_sess_work_fn(struct work_struct *work)
 		spin_lock_irq(&tgt->sess_work_lock);
 
 		if (rc != 0) {
-			PRINT_CRIT_ERROR("%s", "Unable to complete sess work");
+			TRACE_MGMT_DBG("Unable to complete sess work (tgt %p), "
+				"freeing cmd %p", tgt, prm->cmd);
 			q2t_free_cmd(prm->cmd);
 		}
 
@@ -5206,19 +5245,15 @@ static void q2t_on_hw_pending_cmd_timeout(struct scst_cmd *scst_cmd)
 
 	spin_lock_irqsave(&pha->hardware_lock, flags);
 
+	if (cmd->sg_mapped)
+		q2t_unmap_sg(ha, cmd);
+
 	if (cmd->state == Q2T_STATE_PROCESSED) {
 		TRACE_MGMT_DBG("Force finishing cmd %p", cmd);
-		if (q2t_has_data(cmd)) {
-			pci_unmap_sg(ha->pdev, cmd->sg, cmd->sg_cnt,
-				cmd->dma_data_direction);
-		}
 	} else if (cmd->state == Q2T_STATE_NEED_DATA) {
 		TRACE_MGMT_DBG("Force rx_data cmd %p", cmd);
 
 		q2t_cleanup_hw_pending_cmd(ha, cmd);
-
-		pci_unmap_sg(ha->pdev, cmd->sg, cmd->sg_cnt,
-			cmd->dma_data_direction);
 
 		scst_rx_data(scst_cmd, SCST_RX_STATUS_ERROR_FATAL,
 				SCST_CONTEXT_THREAD);
@@ -5259,7 +5294,7 @@ static int q2t_add_target(scsi_qla_host_t *ha)
 
 	tgt = kzalloc(sizeof(*tgt), GFP_KERNEL);
 	if (tgt == NULL) {
-		TRACE(TRACE_OUT_OF_MEM, "%s", "Allocation of tgt "
+		TRACE(TRACE_OUT_OF_MEM, "qla2x00t: %s", "Allocation of tgt "
 			"failed");
 		res = -ENOMEM;
 		goto out;
@@ -5282,7 +5317,8 @@ static int q2t_add_target(scsi_qla_host_t *ha)
 
 	ha->q2t_tgt = tgt;
 
-	if (q2t_get_target_name(ha->port_name, &wwn) != 0)
+	res = q2t_get_target_name(ha->port_name, &wwn);
+	if (res != 0)
 		goto out_free;
 
 	tgt->scst_tgt = scst_register_target(&tgt2x_template, wwn);
@@ -5298,7 +5334,7 @@ static int q2t_add_target(scsi_qla_host_t *ha)
 	}
 
 	if (IS_FWI2_CAPABLE(ha)) {
-		PRINT_INFO("qla2400tgt(%ld): using 64 Bit PCI "
+		PRINT_INFO("qla2x00t(%ld): using 64 Bit PCI "
 			   "addressing", ha->instance);
 			tgt->tgt_enable_64bit_addr = 1;
 			/* 3 is reserved */
@@ -5330,29 +5366,37 @@ static int q2t_add_target(scsi_qla_host_t *ha)
 	rc = sysfs_create_link(scst_sysfs_get_tgt_kobj(tgt->scst_tgt),
 		&ha->host->shost_dev.kobj, "host");
 	if (rc != 0)
-		PRINT_ERROR("Unable to create \"host\" link for target "
-			"%s", scst_get_tgt_name(tgt->scst_tgt));
+		PRINT_ERROR("qla2x00t(%ld): Unable to create \"host\" link for "
+			"target %s", ha->instance,
+			scst_get_tgt_name(tgt->scst_tgt));
 	if (!ha->parent) {
 		rc = sysfs_create_file(scst_sysfs_get_tgt_kobj(tgt->scst_tgt),
 				&q2t_hw_target_attr.attr);
 		if (rc != 0)
-			PRINT_ERROR("Unable to create \"hw_target\""
-				" file for target %s",
-				scst_get_tgt_name(tgt->scst_tgt));
+			PRINT_ERROR("qla2x00t(%ld): Unable to create "
+				"\"hw_target\" file for target %s",
+				ha->instance, scst_get_tgt_name(tgt->scst_tgt));
+
+		rc = sysfs_create_file(scst_sysfs_get_tgt_kobj(tgt->scst_tgt),
+				&q2t_hw_node_name_attr.attr);
+		if (rc != 0)
+			PRINT_ERROR("qla2x00t(%ld): Unable to create "
+				"\"node_name\" file for HW target %s",
+				ha->instance, scst_get_tgt_name(tgt->scst_tgt));
 	} else {
 		rc = sysfs_create_file(scst_sysfs_get_tgt_kobj(tgt->scst_tgt),
 				&q2t_vp_node_name_attr.attr);
 		if (rc != 0)
-			PRINT_ERROR("Unable to create \"node_name\""
-				" file for NPIV target %s",
-				scst_get_tgt_name(tgt->scst_tgt));
+			PRINT_ERROR("qla2x00t(%ld): Unable to create "
+				"\"node_name\" file for NPIV target %s",
+				ha->instance, scst_get_tgt_name(tgt->scst_tgt));
 
 		rc = sysfs_create_file(scst_sysfs_get_tgt_kobj(tgt->scst_tgt),
 				&q2t_vp_parent_host_attr.attr);
 		if (rc != 0)
-			PRINT_ERROR("Unable to create \"parent_host\""
-				" file for NPIV target %s",
-				scst_get_tgt_name(tgt->scst_tgt));
+			PRINT_ERROR("qla2x00t(%ld): Unable to create "
+				"\"parent_host\" file for NPIV target %s",
+				ha->instance, scst_get_tgt_name(tgt->scst_tgt));
 	}
 
 #endif
@@ -5505,7 +5549,7 @@ static int q2t_parse_wwn(const char *ns, u64 *nm)
 	u8 wwn[8];
 
 	/* validate we have enough characters for WWPN */
-	if (strlen(ns) != 23)
+	if (strnlen(ns, 23) != 23)
 		return -EINVAL;
 
 	memset(wwn, 0, sizeof(wwn));
@@ -5544,7 +5588,8 @@ static ssize_t q2t_add_vtarget(const char *target_name, char *params)
 
 	res = q2t_parse_wwn(target_name, &port_name);
 	if (res) {
-		PRINT_ERROR("Syntax error at target name %s", target_name);
+		PRINT_ERROR("qla2x00t: Syntax error at target name %s",
+			target_name);
 		goto out;
 	}
 
@@ -5555,7 +5600,7 @@ static ssize_t q2t_add_vtarget(const char *target_name, char *params)
 
 		p = scst_get_next_lexem(&param);
 		if (*p == '\0') {
-			PRINT_ERROR("Syntax error at %s (target %s)",
+			PRINT_ERROR("qla2x00t: Syntax error at %s (target %s)",
 				param, target_name);
 			res = -EINVAL;
 			goto out;
@@ -5563,16 +5608,15 @@ static ssize_t q2t_add_vtarget(const char *target_name, char *params)
 
 		pp = scst_get_next_lexem(&param);
 		if (*pp == '\0') {
-			PRINT_ERROR("Parameter %s value missed for target %s",
-				p, target_name);
+			PRINT_ERROR("qla2x00t: Parameter %s value missed for "
+				"target %s", p, target_name);
 			res = -EINVAL;
 			goto out;
 		}
 
 		if (scst_get_next_lexem(&param)[0] != '\0') {
-			PRINT_ERROR("Too many parameter's %s values "
-							"(target %s)",
-							p, target_name);
+			PRINT_ERROR("qla2x00t: Too many parameter's %s values "
+				"(target %s)", p, target_name);
 			res = -EINVAL;
 			goto out;
 		}
@@ -5580,7 +5624,7 @@ static ssize_t q2t_add_vtarget(const char *target_name, char *params)
 		if (!strcasecmp("node_name", p)) {
 			res = q2t_parse_wwn(pp, &node_name);
 			if (res) {
-				PRINT_ERROR("Illegal node_name %s "
+				PRINT_ERROR("qla2x00t: Illegal node_name %s "
 					"(target %s)", pp, target_name);
 				res = -EINVAL;
 				goto out;
@@ -5592,7 +5636,7 @@ static ssize_t q2t_add_vtarget(const char *target_name, char *params)
 		if (!strcasecmp("parent_host", p)) {
 			res = q2t_parse_wwn(pp, &parent_host);
 			if (res != 0) {
-				PRINT_ERROR("Illegal parent_host %s"
+				PRINT_ERROR("qla2x00t: Illegal parent_host %s"
 					" (target %s)", pp, target_name);
 				goto out;
 			}
@@ -5600,22 +5644,22 @@ static ssize_t q2t_add_vtarget(const char *target_name, char *params)
 			continue;
 		}
 
-		PRINT_ERROR("Unknown parameter %s (target %s)", p,
-							target_name);
+		PRINT_ERROR("qla2x00t: Unknown parameter %s (target %s)", p,
+			target_name);
 		res = -EINVAL;
 		goto out;
 	}
 
 	if (!pnode_name) {
-		PRINT_ERROR("Missing parameter node_name (target %s)",
-							target_name);
+		PRINT_ERROR("qla2x00t: Missing parameter node_name (target %s)",
+			target_name);
 		res = -EINVAL;
 		goto out;
 	}
 
 	if (!pparent_host) {
-		PRINT_ERROR("Missing parameter parent_host (target %s)",
-							target_name);
+		PRINT_ERROR("qla2x00t: Missing parameter parent_host "
+			"(target %s)", target_name);
 		res = -EINVAL;
 		goto out;
 	}
@@ -5636,7 +5680,8 @@ static ssize_t q2t_del_vtarget(const char *target_name)
 
 	res = q2t_parse_wwn(target_name, &port_name);
 	if (res) {
-		PRINT_ERROR("Syntax error at target name %s", target_name);
+		PRINT_ERROR("qla2x00t: Syntax error at target name %s",
+			target_name);
 		goto out;
 	}
 
@@ -5667,8 +5712,8 @@ static int q2t_get_initiator_port_transport_id(struct scst_session *scst_sess,
 
 	tr_id = kzalloc(tr_id_size, GFP_KERNEL);
 	if (tr_id == NULL) {
-		PRINT_ERROR("Allocation of TransportID (size %d) failed",
-			tr_id_size);
+		PRINT_ERROR("qla2x00t: Allocation of TransportID (size %d) "
+			"failed", tr_id_size);
 		res = -ENOMEM;
 		goto out;
 	}
@@ -5725,19 +5770,17 @@ static ssize_t q2t_store_expl_conf_enabled(struct kobject *kobj,
 	switch (buffer[0]) {
 	case '0':
 		ha->enable_explicit_conf = 0;
-		PRINT_INFO("qla2xxx(%ld): explicit conformations disabled",
+		PRINT_INFO("qla2x00t(%ld): explicit conformations disabled",
 			ha->instance);
 		break;
 	case '1':
 		ha->enable_explicit_conf = 1;
-		PRINT_INFO("qla2xxx(%ld): explicit conformations enabled",
+		PRINT_INFO("qla2x00t(%ld): explicit conformations enabled",
 			ha->instance);
 		break;
 	default:
-#if defined(QL_DEBUG_LEVEL_9) || defined(QL_DEBUG_LEVEL_11)
-		PRINT_INFO("%s: Requested action not understood: %s",
-		       __func__, buffer);
-#endif
+		PRINT_ERROR("%s: qla2x00t(%ld): Requested action not "
+			"understood: %s", __func__, ha->instance, buffer);
 		break;
 	}
 
@@ -5757,7 +5800,7 @@ static ssize_t q2t_abort_isp_store(struct kobject *kobj,
 	tgt = (struct q2t_tgt *)scst_tgt_get_tgt_priv(scst_tgt);
 	ha = tgt->ha;
 
-	PRINT_INFO("qla2xxx(%ld): Aborting ISP", ha->instance);
+	PRINT_INFO("qla2x00t(%ld): Aborting ISP", ha->instance);
 
 	set_bit(ISP_ABORT_NEEDED, &ha->dpc_flags);
 	qla2x00_wait_for_hba_online(ha);
@@ -5796,27 +5839,93 @@ static ssize_t q2t_hw_target_show(struct kobject *kobj,
 	return sprintf(buf, "%d\n", 1);
 }
 
-static ssize_t q2t_vp_node_name_show(struct kobject *kobj,
+static ssize_t q2t_node_name_show(struct kobject *kobj,
 	struct kobj_attribute *attr, char *buf)
 {
 	struct scst_tgt *scst_tgt;
 	struct q2t_tgt *tgt;
 	scsi_qla_host_t *ha;
-	ssize_t size;
+	ssize_t res;
 	char *wwn;
+	uint8_t *node_name;
 
 	scst_tgt = container_of(kobj, struct scst_tgt, tgt_kobj);
 	tgt = (struct q2t_tgt *)scst_tgt_get_tgt_priv(scst_tgt);
 	ha = tgt->ha;
 
-	if (q2t_get_target_name(ha->node_name, &wwn) != 0)
-		return 0;
+	if (ha->parent == NULL) {
+		if (qla_tgt_mode_enabled(ha) || !ha->node_name_set)
+			node_name = ha->node_name;
+		else
+			node_name = ha->tgt_node_name;
+	} else
+		node_name = ha->node_name;
 
-	size = sprintf(buf, "%s\n%s\n", wwn, SCST_SYSFS_KEY_MARK);
+	res = q2t_get_target_name(node_name, &wwn);
+	if (res != 0)
+		goto out;
+
+	res = sprintf(buf, "%s\n", wwn);
+	if ((ha->parent != NULL) || ha->node_name_set)
+		res += sprintf(&buf[res], "%s\n", SCST_SYSFS_KEY_MARK);
 
 	kfree(wwn);
 
-	return size;
+out:
+	return res;
+}
+
+static ssize_t q2t_node_name_store(struct kobject *kobj,
+	struct kobj_attribute *attr, const char *buffer, size_t size)
+{
+	struct scst_tgt *scst_tgt;
+	struct q2t_tgt *tgt;
+	scsi_qla_host_t *ha;
+	u64 node_name, old_node_name;
+	int res;
+
+	TRACE_ENTRY();
+
+	scst_tgt = container_of(kobj, struct scst_tgt, tgt_kobj);
+	tgt = (struct q2t_tgt *)scst_tgt_get_tgt_priv(scst_tgt);
+	ha = tgt->ha;
+
+	sBUG_ON(ha->parent != NULL);
+
+	if (size == 0)
+		goto out_default;
+
+	res = q2t_parse_wwn(buffer, &node_name);
+	if (res != 0) {
+		if ((buffer[0] == '\0') || (buffer[0] == '\n'))
+			goto out_default;
+		PRINT_ERROR("qla2x00t(%ld): Wrong node name", ha->instance);
+		goto out;
+	}
+
+	old_node_name = wwn_to_u64(ha->node_name);
+	if (old_node_name == node_name)
+		goto out_success;
+
+	u64_to_wwn(node_name, ha->tgt_node_name);
+	ha->node_name_set = 1;
+
+abort:
+	if (qla_tgt_mode_enabled(ha)) {
+		set_bit(ISP_ABORT_NEEDED, &ha->dpc_flags);
+		qla2x00_wait_for_hba_online(ha);
+	}
+
+out_success:
+	res = size;
+
+out:
+	TRACE_EXIT_RES(res);
+	return res;
+
+out_default:
+	ha->node_name_set = 0;
+	goto abort;
 }
 
 static ssize_t q2t_vp_parent_host_show(struct kobject *kobj,
@@ -5825,27 +5934,23 @@ static ssize_t q2t_vp_parent_host_show(struct kobject *kobj,
 	struct scst_tgt *scst_tgt;
 	struct q2t_tgt *tgt;
 	scsi_qla_host_t *ha;
-	ssize_t size;
+	ssize_t res;
 	char *wwn;
 
 	scst_tgt = container_of(kobj, struct scst_tgt, tgt_kobj);
 	tgt = (struct q2t_tgt *)scst_tgt_get_tgt_priv(scst_tgt);
 	ha = to_qla_parent(tgt->ha);
 
-	if (!ha) {
-		PRINT_ERROR("No parent for NPIV target %s"
-				, scst_get_tgt_name(scst_tgt));
-		return 0;
-	}
+	res = q2t_get_target_name(ha->port_name, &wwn);
+	if (res != 0)
+		goto out;
 
-	if (q2t_get_target_name(ha->port_name, &wwn) != 0)
-		return 0;
-
-	size = sprintf(buf, "%s\n%s\n", wwn, SCST_SYSFS_KEY_MARK);
+	res = sprintf(buf, "%s\n%s\n", wwn, SCST_SYSFS_KEY_MARK);
 
 	kfree(wwn);
 
-	return size;
+out:
+	return res;
 }
 
 #else /* CONFIG_SCST_PROC */
@@ -5937,7 +6042,7 @@ static __init int q2t_proc_log_entry_build(struct scst_tgt_template *templ)
 		p = scst_create_proc_entry(root, Q2T_PROC_VERSION_NAME,
 					 &q2t_version_proc_data);
 		if (p == NULL) {
-			PRINT_ERROR("Not enough memory to register "
+			PRINT_ERROR("qla2x00t: Not enough memory to register "
 			     "target driver %s entry %s in /proc",
 			      templ->name, Q2T_PROC_VERSION_NAME);
 			res = -ENOMEM;
@@ -5950,7 +6055,7 @@ static __init int q2t_proc_log_entry_build(struct scst_tgt_template *templ)
 		p = scst_create_proc_entry(root, Q2T_PROC_LOG_ENTRY_NAME,
 					&q2t_log_proc_data);
 		if (p == NULL) {
-			PRINT_ERROR("Not enough memory to register "
+			PRINT_ERROR("qla2x00t: Not enough memory to register "
 			     "target driver %s entry %s in /proc",
 			      templ->name, Q2T_PROC_LOG_ENTRY_NAME);
 			res = -ENOMEM;
@@ -6009,8 +6114,8 @@ static int __init q2t_init(void)
 
 	BUILD_BUG_ON(sizeof(atio7_entry_t) != sizeof(atio_entry_t));
 
-	PRINT_INFO("Initializing QLogic Fibre Channel HBA Driver target mode "
-		"addon version %s", Q2T_VERSION_STRING);
+	PRINT_INFO("qla2x00t: Initializing QLogic Fibre Channel HBA Driver "
+		"target mode addon version %s", Q2T_VERSION_STRING);
 
 	q2t_cmd_cachep = KMEM_CACHE(q2t_cmd, SCST_SLAB_FLAGS);
 	if (q2t_cmd_cachep == NULL) {
@@ -6071,8 +6176,8 @@ static void __exit q2t_exit(void)
 {
 	TRACE_ENTRY();
 
-	PRINT_INFO("%s", "Unloading QLogic Fibre Channel HBA Driver target "
-		"mode addon driver");
+	PRINT_INFO("qla2x00t: %s", "Unloading QLogic Fibre Channel HBA Driver "
+		"target mode addon driver");
 
 	/* To sync with q2t_host_action() */
 	down_write(&q2t_unreg_rwsem);

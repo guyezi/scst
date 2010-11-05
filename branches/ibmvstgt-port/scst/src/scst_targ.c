@@ -420,7 +420,6 @@ static int scst_pre_parse(struct scst_cmd *cmd)
 	cmd->inc_expected_sn_on_done = 1;
 #else
 	cmd->inc_expected_sn_on_done = dev->handler->exec_sync ||
-		scst_is_implicit_ordered(cmd) ||
 		(!dev->has_own_order_mgmt &&
 		 (dev->queue_alg == SCST_CONTR_MODE_QUEUE_ALG_RESTRICTED_REORDER ||
 		  cmd->queue_type == SCST_CMD_QUEUE_ORDERED));
@@ -3558,9 +3557,6 @@ static void scst_cmd_set_sn(struct scst_cmd *cmd)
 		cmd->queue_type = SCST_CMD_QUEUE_HEAD_OF_QUEUE;
 	}
 
-	if (unlikely(scst_is_implicit_ordered(cmd)))
-		cmd->queue_type = SCST_CMD_QUEUE_ORDERED;
-
 	EXTRACHECKS_BUG_ON(cmd->sn_set || cmd->hq_cmd_inced);
 
 	/* Optimized for lockless fast path */
@@ -4537,7 +4533,7 @@ void scst_abort_cmd(struct scst_cmd *cmd, struct scst_mgmt_cmd *mcmd,
 
 	TRACE_ENTRY();
 
-	TRACE(TRACE_MGMT, "Aborting cmd %p (tag %llu, op %x)",
+	TRACE(TRACE_SCSI|TRACE_MGMT_DEBUG, "Aborting cmd %p (tag %llu, op %x)",
 		cmd, (long long unsigned int)cmd->tag, cmd->cdb[0]);
 
 	/* To protect from concurrent aborts */
@@ -5531,7 +5527,11 @@ static void scst_mgmt_cmd_send_done(struct scst_mgmt_cmd *mcmd)
 	if (scst_is_strict_mgmt_fn(mcmd->fn) && (mcmd->completed_cmd_count > 0))
 		mcmd->status = SCST_MGMT_STATUS_TASK_NOT_EXIST;
 
-	TRACE(TRACE_MINOR_AND_MGMT_DBG, "TM command fn %d finished, "
+	if (mcmd->fn < SCST_UNREG_SESS_TM)
+		TRACE(TRACE_MGMT, "TM fn %d finished, "
+		"status %x", mcmd->fn, mcmd->status);
+	else
+		TRACE_MGMT_DBG("TM fn %d finished, "
 		"status %x", mcmd->fn, mcmd->status);
 
 	if (mcmd->fn == SCST_PR_ABORT_ALL) {
@@ -5864,7 +5864,7 @@ int scst_rx_mgmt_fn(struct scst_session *sess,
 	mcmd->cmd_sn_set = params->cmd_sn_set;
 	mcmd->cmd_sn = params->cmd_sn;
 
-	if (params->fn <= SCST_TARGET_RESET)
+	if (params->fn < SCST_UNREG_SESS_TM)
 		TRACE(TRACE_MGMT, "TM fn %d", params->fn);
 	else
 		TRACE_MGMT_DBG("TM fn %d", params->fn);
