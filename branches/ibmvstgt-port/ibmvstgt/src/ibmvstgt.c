@@ -1275,8 +1275,7 @@ static int ibmvstgt_probe(struct vio_dev *dev, const struct vio_device_id *id)
 	if (err)
 		goto unregister_target;
 
-	dma = (unsigned int *) vio_get_attribute(dev, "ibm,my-dma-window",
-						 &dma_size);
+	dma = vio_get_attribute(dev, "ibm,my-dma-window", &dma_size);
 	if (!dma || dma_size != 40) {
 		eprintk("Couldn't get window property %d\n", dma_size);
 		err = -EIO;
