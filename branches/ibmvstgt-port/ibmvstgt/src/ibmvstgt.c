@@ -59,7 +59,6 @@
 
 /* Note: SRP_REQ_LIM must be a power of two because of kfifo. */
 #define	SRP_REQ_LIM		16
-#define	DEFAULT_MAX_SECTORS	256
 #define	MAX_H_COPY_RDMA		(128*1024)
 
 #define	TGT_NAME	"ibmvstgt"
@@ -113,6 +112,7 @@ struct vio_port {
 static atomic_t ibmvstgt_device_count;
 static struct workqueue_struct *vtgtd;
 static unsigned max_vdma_size = MAX_H_COPY_RDMA;
+static struct scst_tgt_template ibmvstgt_template;
 
 #if defined(CONFIG_SCST_DEBUG) || defined(CONFIG_SCST_TRACING)
 #define DEFAULT_IBMVSTGT_TRACE_FLAGS \
@@ -526,7 +526,7 @@ static int send_adapter_info(struct iu_entry *iue,
 	info->partition_number = partition_number;
 	info->mad_version = 1;
 	info->os_type = 2;
-	info->port_max_txu[0] = DEFAULT_MAX_SECTORS << 9;
+	info->port_max_txu[0] = ibmvstgt_template.sg_tablesize * PAGE_SIZE;
 
 	/* Send our info to remote */
 	err = h_copy_rdma(sizeof(*info), vport->liobn, data_token,
