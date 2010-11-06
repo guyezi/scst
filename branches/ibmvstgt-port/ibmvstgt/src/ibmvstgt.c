@@ -591,10 +591,11 @@ static void process_login(struct iu_entry *iue)
 	 */
 	rsp->opcode = SRP_LOGIN_RSP;
 	/*
+	 * Reserve one queue element for management datagrams.
 	 * Avoid BUSY conditions by limiting the number of buffers used
 	 * for the SRP protocol to the SCST SCSI command queue size.
 	 */
-	rsp->req_lim_delta = cpu_to_be32(min(SRP_REQ_LIM,
+	rsp->req_lim_delta = cpu_to_be32(min(SRP_REQ_LIM - 1,
 					   scst_get_max_lun_commands(NULL, 0)));
 	rsp->tag = tag;
 	rsp->max_it_iu_len = __constant_cpu_to_be32(sizeof(union srp_iu));
