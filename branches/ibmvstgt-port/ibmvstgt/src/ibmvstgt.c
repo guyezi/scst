@@ -65,8 +65,11 @@
 
 #define	TGT_NAME	"ibmvstgt"
 
-/* is_power_of_2() from <linux/log2.h> as a macro. */
-#define IS_POWER_OF_2(n) ((n) != 0 && (((n) & ((n) - 1)) == 0))
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 33)
+/* Force a compilation error if a constant expression is not a power of 2 */
+#define BUILD_BUG_ON_NOT_POWER_OF_2(n)			\
+	BUILD_BUG_ON((n) == 0 || (((n) & ((n) - 1)) != 0))
+#endif
 /*
  * Hypervisor calls.
  */
@@ -1275,7 +1278,7 @@ static int ibmvstgt_probe(struct vio_dev *dev, const struct vio_device_id *id)
 	vport->dma_dev = dev;
 	target->ldata = vport;
 	vport->target = target;
-	BUILD_BUG_ON(!IS_POWER_OF_2(VSCSI_REQ_LIM));
+	BUILD_BUG_ON_NOT_POWER_OF_2(VSCSI_REQ_LIM);
 	err = srp_target_alloc(target, &dev->dev, VSCSI_REQ_LIM,
 			       SRP_MAX_IU_LEN);
 	if (err)
