@@ -1502,8 +1502,8 @@ static void vdisk_exec_inquiry(struct scst_cmd *cmd)
 			/* T10 vendor identifier field format (faked) */
 			buf[num + 0] = 0x2;	/* ASCII */
 			buf[num + 1] = 0x1;	/* Vendor ID */
-			if (cmd->tgtt->inq_vendor)
-				memcpy(&buf[num + 4], cmd->tgtt->inq_vendor, 8);
+			if (cmd->tgtt->vendor)
+				memcpy(&buf[num + 4], cmd->tgtt->vendor, 8);
 			else if (virt_dev->blockio)
 				memcpy(&buf[num + 4], SCST_BIO_VENDOR, 8);
 			else
@@ -1635,8 +1635,8 @@ static void vdisk_exec_inquiry(struct scst_cmd *cmd)
 		 * 8 byte ASCII Vendor Identification of the target
 		 * - left aligned.
 		 */
-		if (cmd->tgtt->inq_vendor)
-			memcpy(&buf[8], cmd->tgtt->inq_vendor, 8);
+		if (cmd->tgtt->vendor)
+			memcpy(&buf[8], cmd->tgtt->vendor, 8);
 		else if (virt_dev->blockio)
 			memcpy(&buf[8], SCST_BIO_VENDOR, 8);
 		else
@@ -1647,9 +1647,8 @@ static void vdisk_exec_inquiry(struct scst_cmd *cmd)
 		 * aligned.
 		 */
 		memset(&buf[16], ' ', 16);
-		if (cmd->tgtt->inq_get_product_id)
-			cmd->tgtt->inq_get_product_id(cmd->tgt_dev, &buf[16],
-						      16);
+		if (cmd->tgtt->get_product_id)
+			cmd->tgtt->get_product_id(cmd->tgt_dev, &buf[16], 16);
 		else {
 			len = min_t(size_t, strlen(virt_dev->name), 16);
 			memcpy(&buf[16], virt_dev->name, len);
@@ -1659,8 +1658,8 @@ static void vdisk_exec_inquiry(struct scst_cmd *cmd)
 		 * 4 byte ASCII Product Revision Level of the target - left
 		 * aligned.
 		 */
-		if (cmd->tgtt->inq_revision)
-			memcpy(&buf[32], cmd->tgtt->inq_revision, 4);
+		if (cmd->tgtt->revision)
+			memcpy(&buf[32], cmd->tgtt->revision, 4);
 		else
 			memcpy(&buf[32], SCST_FIO_REV, 4);
 
@@ -1703,11 +1702,11 @@ static void vdisk_exec_inquiry(struct scst_cmd *cmd)
 		}
 
 		/* Vendor specific information. */
-		if (cmd->tgtt->inq_get_vend_specific) {
+		if (cmd->tgtt->get_serial) {
 			/* Skip to byte 96. */
 			num = 96 - 58;
-			num += cmd->tgtt->inq_get_vend_specific(cmd->tgt_dev,
-								&buf[96]);
+			num += cmd->tgtt->get_serial(cmd->tgt_dev, &buf[96],
+                                                     INQ_BUF_SZ - 96);
 		}
 
 		buf[4] += num;

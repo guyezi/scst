@@ -1059,8 +1059,8 @@ static void handle_crq(struct work_struct *work)
 	}
 }
 
-static void ibmvstgt_inq_get_product_id(const struct scst_tgt_dev *tgt_dev,
-					char *buf, const int size)
+static void ibmvstgt_get_product_id(const struct scst_tgt_dev *tgt_dev,
+				    char *buf, const int size)
 {
 	WARN_ON(size != 16);
 
@@ -1088,21 +1088,18 @@ static void ibmvstgt_inq_get_product_id(const struct scst_tgt_dev *tgt_dev,
 #define GETBUS(x)    ((((uint16_t)(x) >> 5) & 0x0007))
 #define GETLUN(x)    ((((uint16_t)(x) >> 0) & 0x001f))
 
-static int ibmvstgt_inq_get_vend_specific(const struct scst_tgt_dev *tgt_dev,
-					  char *buf)
+static int ibmvstgt_get_serial(const struct scst_tgt_dev *tgt_dev, char *buf,
+                               int size)
 {
 	struct scst_session *sess = tgt_dev->sess;
 	struct vio_port *vport = scst_sess_get_tgt_priv(sess);
 	uint64_t lun = tgt_dev->lun;
 
-	return sprintf(buf,
-		       "IBM-VSCSI-%s-P%d-%x-%d-%d-%d\n",
-		       system_id,
-		       partition_number,
-		       vport->dma_dev->unit_address,
-		       GETBUS(lun),
-		       GETTARGET(lun),
-		       GETLUN(lun));
+	return snprintf(buf, size,
+                        "IBM-VSCSI-%s-P%d-%x-%d-%d-%d\n",
+                        system_id, partition_number,
+                        vport->dma_dev->unit_address,
+                        GETBUS(lun), GETTARGET(lun), GETLUN(lun));
 }
 
 /**
@@ -1229,11 +1226,11 @@ static struct scst_tgt_template ibmvstgt_template = {
 #else
 	.sg_tablesize		= SCSI_MAX_SG_SEGMENTS,
 #endif
+	.vendor			= "IBM     ",
+	.revision		= "0001",
 	.fake_aca		= true,
-	.inq_vendor		= "IBM     ",
-	.inq_revision		= "0001",
-	.inq_get_product_id	= ibmvstgt_inq_get_product_id,
-	.inq_get_vend_specific	= ibmvstgt_inq_get_vend_specific,
+	.get_product_id		= ibmvstgt_get_product_id,
+	.get_serial		= ibmvstgt_get_serial,
 
 #if defined(CONFIG_SCST_DEBUG) || defined(CONFIG_SCST_TRACING)
 	.default_trace_flags	= DEFAULT_IBMVSTGT_TRACE_FLAGS,
