@@ -1489,10 +1489,15 @@ static void vdisk_exec_inquiry(struct scst_cmd *cmd)
 			resp_len = buf[3] + 4;
 		} else if (0x80 == cmd->cdb[2]) {
 			/* unit serial number */
-			int usn_len = strlen(virt_dev->usn);
 			buf[1] = 0x80;
-			buf[3] = usn_len;
-			strncpy(&buf[4], virt_dev->usn, usn_len);
+			if (cmd->tgtt->get_serial) {
+				buf[3] = cmd->tgtt->get_serial(cmd->tgt_dev,
+						       &buf[4], INQ_BUF_SZ - 4);
+			} else {
+				int usn_len = strlen(virt_dev->usn);
+				buf[3] = usn_len;
+				strncpy(&buf[4], virt_dev->usn, usn_len);
+			}
 			resp_len = buf[3] + 4;
 		} else if (0x83 == cmd->cdb[2]) {
 			/* device identification */
