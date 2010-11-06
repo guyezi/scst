@@ -57,12 +57,16 @@
 
 #include "ibmvscsi.h"
 
-/* Note: SRP_REQ_LIM must be a power of two because of kfifo. */
-#define	SRP_REQ_LIM		16
+#define	VSCSI_REQ_LIM		16
+#define	MAD_REQ_LIM		1
+#define	SRP_REQ_LIM		(VSCSI_REQ_LIM - MAD_REQ_LIM)
+/* Minimal trfr size that must be supported by a PAPR-compliant hypervisor. */
 #define	MAX_H_COPY_RDMA		(128*1024)
 
 #define	TGT_NAME	"ibmvstgt"
 
+/* is_power_of_2() from <linux/log2.h> as a macro. */
+#define IS_POWER_OF_2(n) ((n) != 0 && (((n) & ((n) - 1)) == 0))
 /*
  * Hypervisor calls.
  */
@@ -591,11 +595,10 @@ static void process_login(struct iu_entry *iue)
 	 */
 	rsp->opcode = SRP_LOGIN_RSP;
 	/*
-	 * Reserve one queue element for management datagrams.
 	 * Avoid BUSY conditions by limiting the number of buffers used
 	 * for the SRP protocol to the SCST SCSI command queue size.
 	 */
-	rsp->req_lim_delta = cpu_to_be32(min(SRP_REQ_LIM - 1,
+	rsp->req_lim_delta = cpu_to_be32(min(SRP_REQ_LIM,
 					   scst_get_max_lun_commands(NULL, 0)));
 	rsp->tag = tag;
 	rsp->max_it_iu_len = __constant_cpu_to_be32(sizeof(union srp_iu));
@@ -1272,7 +1275,9 @@ static int ibmvstgt_probe(struct vio_dev *dev, const struct vio_device_id *id)
 	vport->dma_dev = dev;
 	target->ldata = vport;
 	vport->target = target;
-	err = srp_target_alloc(target, &dev->dev, SRP_REQ_LIM, SRP_MAX_IU_LEN);
+	BUILD_BUG_ON(!IS_POWER_OF_2(VSCSI_REQ_LIM));
+	err = srp_target_alloc(target, &dev->dev, VSCSI_REQ_LIM,
+			       SRP_MAX_IU_LEN);
 	if (err)
 		goto unregister_target;
 
