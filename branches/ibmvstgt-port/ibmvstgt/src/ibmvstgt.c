@@ -1026,6 +1026,13 @@ static inline struct viosrp_crq *next_crq(struct crq_queue *queue)
 	return crq;
 }
 
+/**
+ * handle_crq() - Process the command/response queue.
+ *
+ * Note: Although this function is not thread-safe because of how it is
+ * scheduled it is guaranteed that this function is running on at most one CPU
+ * at any given time.
+ */
 #if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 20) && !defined(BACKPORT_LINUX_WORKQUEUE_TO_2_6_19)
 static void handle_crq(void *ctx)
 #else
@@ -1089,17 +1096,17 @@ static void ibmvstgt_get_product_id(const struct scst_tgt_dev *tgt_dev,
 #define GETLUN(x)    ((((uint16_t)(x) >> 0) & 0x001f))
 
 static int ibmvstgt_get_serial(const struct scst_tgt_dev *tgt_dev, char *buf,
-                               int size)
+			       int size)
 {
 	struct scst_session *sess = tgt_dev->sess;
 	struct vio_port *vport = scst_sess_get_tgt_priv(sess);
 	uint64_t lun = tgt_dev->lun;
 
 	return snprintf(buf, size,
-                        "IBM-VSCSI-%s-P%d-%x-%d-%d-%d\n",
-                        system_id, partition_number,
-                        vport->dma_dev->unit_address,
-                        GETBUS(lun), GETTARGET(lun), GETLUN(lun));
+			"IBM-VSCSI-%s-P%d-%x-%d-%d-%d\n",
+			system_id, partition_number,
+			vport->dma_dev->unit_address,
+			GETBUS(lun), GETTARGET(lun), GETLUN(lun));
 }
 
 /**
