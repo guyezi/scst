@@ -444,7 +444,7 @@ static int ibmvstgt_xmit_response(struct scst_cmd *sc)
 
 	/* For read commands, transfer the data to the initiator. */
 	if (dir == DMA_FROM_DEVICE && scst_cmd_get_adjusted_resp_data_len(sc)) {
-		ret = srp_transfer_data(sc, srp_cmd, ibmvstgt_rdma, true);
+		ret = srp_transfer_data(sc, srp_cmd, ibmvstgt_rdma, true, true);
 		if (ret == -ENOMEM)
 			return SCST_TGT_RES_QUEUE_FULL;
 		else if (ret) {
@@ -478,7 +478,7 @@ static int ibmvstgt_rdy_to_xfer(struct scst_cmd *sc)
 	WARN_ON(srp_cmd_direction(srp_cmd) != DMA_TO_DEVICE);
 
 	/* Transfer the data from the initiator to the target. */
-	ret = srp_transfer_data(sc, srp_cmd, ibmvstgt_rdma, true);
+	ret = srp_transfer_data(sc, srp_cmd, ibmvstgt_rdma, true, true);
 	if (ret == 0)
 		scst_rx_data(sc, SCST_RX_STATUS_SUCCESS, SCST_CONTEXT_SAME);
 	else if (ret == -ENOMEM)
