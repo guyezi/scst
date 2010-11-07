@@ -1707,11 +1707,11 @@ static void vdisk_exec_inquiry(struct scst_cmd *cmd)
 		}
 
 		/* Vendor specific information. */
-		if (cmd->tgtt->get_serial) {
+		if (cmd->tgtt->get_vend_specific) {
 			/* Skip to byte 96. */
 			num = 96 - 58;
-			num += cmd->tgtt->get_serial(cmd->tgt_dev, &buf[96],
-						     INQ_BUF_SZ - 96);
+			num += cmd->tgtt->get_vend_specific(cmd->tgt_dev,
+						    &buf[96], INQ_BUF_SZ - 96);
 		}
 
 		buf[4] += num;

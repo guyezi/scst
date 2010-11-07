@@ -1066,9 +1066,9 @@ struct scst_tgt_template {
 				   char *buf, int size);
 
 	/*
-	 * Optional revision to be reported via the SCSI inquiry data. If NULL,
-	 * an SCST device handler specific default value will be used, e.g.
-	 * " 210" for scst_vdisk file I/O.
+	 * Optional revision to be reported in the SCSI inquiry response. If
+	 * NULL, an SCST device handler specific default value will be used,
+	 * e.g. " 210" for scst_vdisk file I/O.
 	 */
 	const char *revision;
 
@@ -1077,7 +1077,14 @@ struct scst_tgt_template {
 	 * [buf, buf+size) and returns the number of bytes written.
 	 */
 	int (*get_serial)(const struct scst_tgt_dev *tgt_dev, char *buf,
-			      int size);
+			  int size);
+
+	/*
+	 * Optional method that writes the SCSI inquiry vendor-specific data in
+	 * [buf, buf+size) and returns the number of bytes written.
+	 */
+	int (*get_vend_specific)(const struct scst_tgt_dev *tgt_dev, char *buf,
+				 int size);
 };
 
 /*

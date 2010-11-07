@@ -1238,6 +1238,7 @@ static struct scst_tgt_template ibmvstgt_template = {
 	.fake_aca		= true,
 	.get_product_id		= ibmvstgt_get_product_id,
 	.get_serial		= ibmvstgt_get_serial,
+	.get_vend_specific	= ibmvstgt_get_serial,
 
 #if defined(CONFIG_SCST_DEBUG) || defined(CONFIG_SCST_TRACING)
 	.default_trace_flags	= DEFAULT_IBMVSTGT_TRACE_FLAGS,
