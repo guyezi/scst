@@ -1075,6 +1075,11 @@ struct scst_tgt_template {
 	/*
 	 * Optional method that writes the serial number of a target device in
 	 * [buf, buf+size) and returns the number of bytes written.
+	 *
+	 * Note: SCST can be configured such that a device can be accessed
+	 * from several different transports at the same time. It is important
+	 * that all clients see the same USN for proper operation. Overriding
+	 * the serial number can lead to subtle misbehavior.
 	 */
 	int (*get_serial)(const struct scst_tgt_dev *tgt_dev, char *buf,
 			  int size);
