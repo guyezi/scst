@@ -395,9 +395,9 @@ done \
 
   add_file "fcst/Makefile_in-tree" \
            "drivers/scst/fcst/Makefile"
-  
+
   add_file "fcst/Kconfig" "drivers/scst/fcst/Kconfig"
-  
+
   for f in $(ls fcst/*.[ch] 2>/dev/null)
   do
     add_file "${f}" "drivers/scst/fcst/${f#fcst/}"
