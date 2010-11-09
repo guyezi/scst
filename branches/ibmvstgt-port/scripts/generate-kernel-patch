@@ -626,7 +626,7 @@ Functional changes in libsrp compared to the patch posted on October 2, 2010:
 
 Note: ibmvstgt is the only user of libsrp.
 
-Tests performed on this driver:
+Tests performed on a backport to kernel version 2.6.18 of this driver:
 - Verified that the kernel module ibmvstgt loads and initializes successfully
   and also that the client connected after loading.
 - Verified that virtual disks configured in scst_vdisk were discovered by
