@@ -632,7 +632,10 @@ Tests performed on a backport to kernel version 2.6.18 of this driver:
 - Verified that virtual disks configured in scst_vdisk were discovered by
   the client.
 - Performed IO stress testing on the device.
-- Performed basic I/O performance testing.
+- Performed basic I/O performance testing. With a RAM disk as target linear
+  direct I/O throughput was above 2 GB/s and a 4 KB random I/O test resulted
+  in more than 10000 IOPS (without any caching of DMA mappings in the target).
+  Both initiator and target were a dual core POWER6 LPAR.
 - Verified that after unloading and reloading ibmvstgt and after client
   recovery that the initiator devices were functioning normally.
 - Verified that after a client reboot ibmvscsic reconnected with the target
