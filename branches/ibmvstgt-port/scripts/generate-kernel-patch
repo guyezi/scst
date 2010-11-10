@@ -571,12 +571,12 @@ instance.  Since the user space STGT driver ibmvio was the only user of
 these attributes, that shouldn't be an issue.
 
 Functional changes in ibmvstgt compared to the patch posted on October 2, 2010:
+- The format of a SCSI INQUIRY response is now in the format expected by AIX.
 - Added support for persistent reservations.
 - Increased maximum data size for a single SRP command from 128 KB to 64 MB.
 - The maximum RDMA transfer size supported by a single H_COPY_RDMA call is
   queried at driver initiatlization time from the open firmware tree / larger
   transfers than 128 KB are now supported too.
-- The format of a SCSI INQUIRY response is now in the format expected by AIX.
 - If DMA mapping fails while handling a READ or WRITE command, the offending
   command is retried until the associated data has been transferred instead of
   reporting to the ibmvscsi client that the SCSI command failed.
