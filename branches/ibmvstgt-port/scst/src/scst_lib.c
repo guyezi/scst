@@ -2816,15 +2816,17 @@ struct scst_acg *scst_alloc_add_acg(struct scst_tgt *tgt,
 		goto out_free;
 	}
 
-	acg->addr_method = tgt && tgt->tgtt ? tgt->tgtt->preferred_addr_method
-		: scst_default_lun_addr_method;
-
 #ifdef CONFIG_SCST_PROC
+	acg->addr_method = tgt && tgt->tgtt ? tgt->tgtt->preferred_addr_method
+		: SCST_LUN_ADDR_METHOD_PERIPHERAL;
+
 	TRACE_DBG("Adding acg %s to scst_acg_list", acg_name);
 	list_add_tail(&acg->acg_list_entry, &scst_acg_list);
 
 	scst_check_reassign_sessions();
 #else
+	acg->addr_method = tgt->tgtt->preferred_addr_method;
+
 	if (tgt_acg) {
 		int rc;
 
