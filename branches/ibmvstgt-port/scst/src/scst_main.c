@@ -162,7 +162,6 @@ cpumask_t default_cpu_mask;
 
 static unsigned int scst_max_cmd_mem;
 unsigned int scst_max_dev_cmd_mem;
-int scst_default_lun_addr_method;
 
 module_param_named(scst_threads, scst_threads, int, 0);
 MODULE_PARM_DESC(scst_threads, "SCSI target threads count");
@@ -174,10 +173,6 @@ MODULE_PARM_DESC(scst_max_cmd_mem, "Maximum memory allowed to be consumed by "
 module_param_named(scst_max_dev_cmd_mem, scst_max_dev_cmd_mem, int, S_IRUGO);
 MODULE_PARM_DESC(scst_max_dev_cmd_mem, "Maximum memory allowed to be consumed "
 	"by all SCSI commands of a device at any given time in MB");
-
-module_param_named(default_lun_addr_method, scst_default_lun_addr_method, int,
-		   SCST_LUN_ADDR_METHOD_PERIPHERAL);
-MODULE_PARM_DESC(default_addr_method, "Default LUN addressing method");
 
 struct scst_dev_type scst_null_devtype = {
 	.name = "none",

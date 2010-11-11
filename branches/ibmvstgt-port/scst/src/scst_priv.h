@@ -125,7 +125,6 @@ extern struct mutex scst_mutex2;
 extern int scst_threads;
 
 extern unsigned int scst_max_dev_cmd_mem;
-extern int scst_default_lun_addr_method;
 
 extern mempool_t *scst_mgmt_mempool;
 extern mempool_t *scst_mgmt_stub_mempool;
