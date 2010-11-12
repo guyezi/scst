@@ -2981,18 +2981,18 @@ static int scst_pre_dev_done(struct scst_cmd *cmd)
 
 			/* ToDo: all pages ?? */
 			buflen = scst_get_buf_first(cmd, &buffer);
-			if (buflen > SCST_INQ_BYTE3 && !cmd->tgtt->fake_aca) {
+			if (buflen > SCST_INQ_BYTE3) {
 #ifdef CONFIG_SCST_EXTRACHECKS
 				if (buffer[SCST_INQ_BYTE3] & SCST_INQ_NORMACA_BIT) {
 					PRINT_INFO("NormACA set for device: "
-						"lun=%lld, type 0x%02x. Clear it, "
-						"since it's unsupported.",
-						(long long unsigned int)cmd->lun,
-						buffer[0]);
+					    "lun=%lld, type 0x%02x. Clear it, "
+					    "since it's unsupported.",
+					    (long long unsigned int)cmd->lun,
+					    buffer[0]);
 				}
 #endif
 				buffer[SCST_INQ_BYTE3] &= ~SCST_INQ_NORMACA_BIT;
-			} else if (buflen <= SCST_INQ_BYTE3 && buflen != 0) {
+			} else if (buflen != 0) {
 				PRINT_ERROR("%s", "Unable to get INQUIRY "
 				    "buffer");
 				scst_set_cmd_error(cmd,
