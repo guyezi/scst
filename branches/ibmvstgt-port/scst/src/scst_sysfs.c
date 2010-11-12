@@ -34,9 +34,10 @@
 #include "scst_mem.h"
 #include "scst_pres.h"
 
-static DECLARE_COMPLETION(scst_sysfs_root_release_completion);
+static DECLARE_COMPLETION(scst_sysfs_release_completion);
+static struct kref scst_sysfs_kref;
 
-static struct kobject scst_sysfs_root_kobj;
+static struct kobject *scst_sysfs_root_kobj;
 static struct kobject *scst_targets_kobj;
 static struct kobject *scst_devices_kobj;
 static struct kobject *scst_sgv_kobj;
@@ -4254,15 +4255,29 @@ static struct attribute *sgv_default_attrs[] = {
 	NULL,
 };
 
+static void scst_sysfs_put(struct kref *kref)
+{
+	complete(&scst_sysfs_release_completion);
+}
+
 static void scst_sysfs_release(struct kobject *kobj)
 {
 	kfree(kobj);
+	kref_put(&scst_sysfs_kref, scst_sysfs_put);
 }
 
 static struct kobj_type sgv_ktype = {
 	.sysfs_ops = &scst_sysfs_ops,
 	.release = scst_sysfs_release,
 	.default_attrs = sgv_default_attrs,
+};
+
+/**
+ ** SCST sysfs attribute-less directory ktype
+ **/
+
+static struct kobj_type scst_dynamic_ktype = {
+	.release = scst_sysfs_release,
 };
 
 /**
@@ -4741,14 +4756,9 @@ static struct attribute *scst_sysfs_root_default_attrs[] = {
 	NULL,
 };
 
-static void scst_sysfs_root_release(struct kobject *kobj)
-{
-	complete_all(&scst_sysfs_root_release_completion);
-}
-
 static struct kobj_type scst_sysfs_root_ktype = {
 	.sysfs_ops = &scst_sysfs_ops,
-	.release = scst_sysfs_root_release,
+	.release = scst_sysfs_release,
 	.default_attrs = scst_sysfs_root_default_attrs,
 };
 
@@ -5454,6 +5464,30 @@ out:
 }
 EXPORT_SYMBOL_GPL(scst_wait_info_completion);
 
+/**
+ * kobject_create_and_add_kt() - Create a kobject, initialize it and add it.
+ *
+ * Also increment the scst_sysfs_kref reference count.
+ */
+static struct kobject *kobject_create_and_add_kt(struct kobj_type *ktype,
+				struct kobject *parent, const char *name)
+{
+	struct kobject *kobj;
+
+	kobj = kzalloc(sizeof(*kobj), GFP_KERNEL);
+	if (!kobj)
+		goto out;
+	if (kobject_init_and_add(kobj, ktype, parent, name))
+		goto kfree;
+	kref_get(&scst_sysfs_kref);
+out:
+	return kobj;
+kfree:
+	kfree(kobj);
+	kobj = NULL;
+	goto out;
+}
+
 int __init scst_sysfs_init(void)
 {
 	int res = 0;
@@ -5470,32 +5504,30 @@ int __init scst_sysfs_init(void)
 		goto out;
 	}
 
-	res = kobject_init_and_add(&scst_sysfs_root_kobj,
-			&scst_sysfs_root_ktype, kernel_kobj, "%s", "scst_tgt");
-	if (res != 0)
-		goto sysfs_root_add_error;
+	kref_init(&scst_sysfs_kref);
 
-	scst_targets_kobj = kobject_create_and_add("targets",
-				&scst_sysfs_root_kobj);
+	scst_sysfs_root_kobj = kobject_create_and_add_kt(&scst_sysfs_root_ktype,
+					kernel_kobj, "scst_tgt");
+	if (scst_sysfs_root_kobj == NULL)
+		goto sysfs_root_kobj_error;
+
+	scst_targets_kobj = kobject_create_and_add_kt(&scst_dynamic_ktype,
+					scst_sysfs_root_kobj, "targets");
 	if (scst_targets_kobj == NULL)
 		goto targets_kobj_error;
 
-	scst_devices_kobj = kobject_create_and_add("devices",
-				&scst_sysfs_root_kobj);
+	scst_devices_kobj = kobject_create_and_add_kt(&scst_dynamic_ktype,
+					scst_sysfs_root_kobj, "devices");
 	if (scst_devices_kobj == NULL)
 		goto devices_kobj_error;
 
-	scst_sgv_kobj = kzalloc(sizeof(*scst_sgv_kobj), GFP_KERNEL);
-	if (scst_sgv_kobj == NULL)
+	scst_sgv_kobj = kobject_create_and_add_kt(&sgv_ktype,
+					scst_sysfs_root_kobj, "sgv");
+	if (!scst_sgv_kobj)
 		goto sgv_kobj_error;
 
-	res = kobject_init_and_add(scst_sgv_kobj, &sgv_ktype,
-			&scst_sysfs_root_kobj, "%s", "sgv");
-	if (res != 0)
-		goto sgv_kobj_add_error;
-
-	scst_handlers_kobj = kobject_create_and_add("handlers",
-					&scst_sysfs_root_kobj);
+	scst_handlers_kobj = kobject_create_and_add_kt(&scst_dynamic_ktype,
+					scst_sysfs_root_kobj, "handlers");
 	if (scst_handlers_kobj == NULL)
 		goto handlers_kobj_error;
 
@@ -5505,8 +5537,6 @@ out:
 
 handlers_kobj_error:
 	kobject_del(scst_sgv_kobj);
-
-sgv_kobj_add_error:
 	kobject_put(scst_sgv_kobj);
 
 sgv_kobj_error:
@@ -5518,11 +5548,10 @@ devices_kobj_error:
 	kobject_put(scst_targets_kobj);
 
 targets_kobj_error:
-	kobject_del(&scst_sysfs_root_kobj);
+	kobject_del(scst_sysfs_root_kobj);
+	kobject_put(scst_sysfs_root_kobj);
 
-sysfs_root_add_error:
-	kobject_put(&scst_sysfs_root_kobj);
-
+sysfs_root_kobj_error:
 	kthread_stop(sysfs_work_thread);
 
 	if (res == 0)
@@ -5549,18 +5578,16 @@ void scst_sysfs_cleanup(void)
 	kobject_del(scst_handlers_kobj);
 	kobject_put(scst_handlers_kobj);
 
-	kobject_del(&scst_sysfs_root_kobj);
-	kobject_put(&scst_sysfs_root_kobj);
+	kobject_del(scst_sysfs_root_kobj);
+	kobject_put(scst_sysfs_root_kobj);
 
-	wait_for_completion(&scst_sysfs_root_release_completion);
+	kref_put(&scst_sysfs_kref, scst_sysfs_put);
+
 	/*
-	 * There is a race, when in the release() schedule happens just after
-	 * calling complete(), so if we exit and unload scst module immediately,
-	 * there will be oops there. So let's give it a chance to quit
-	 * gracefully. Unfortunately, current kobjects implementation
-	 * doesn't allow better ways to handle it.
+	 * Wait until the .release method of all SCST sysfs objects has
+	 * been invoked.
 	 */
-	msleep(3000);
+	wait_for_completion(&scst_sysfs_release_completion);
 
 	if (sysfs_work_thread)
 		kthread_stop(sysfs_work_thread);
