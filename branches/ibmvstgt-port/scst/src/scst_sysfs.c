@@ -5588,6 +5588,15 @@ void scst_sysfs_cleanup(void)
 	 * been invoked.
 	 */
 	wait_for_completion(&scst_sysfs_release_completion);
+	/*
+	 * There is a race, when in the release() schedule happens just after
+	 * calling complete(), so if we exit and unload scst module immediately,
+	 * there will be oops there. So let's give it a chance to quit
+	 * gracefully. Unfortunately, current kobjects implementation
+	 * doesn't allow better ways to handle it. See also
+	 * http://marc.info/?l=linux-scsi&m=128956383124321&w=2.
+	 */
+	msleep(20);
 
 	if (sysfs_work_thread)
 		kthread_stop(sysfs_work_thread);
