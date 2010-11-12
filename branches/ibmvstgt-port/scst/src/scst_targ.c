@@ -2985,10 +2985,10 @@ static int scst_pre_dev_done(struct scst_cmd *cmd)
 #ifdef CONFIG_SCST_EXTRACHECKS
 				if (buffer[SCST_INQ_BYTE3] & SCST_INQ_NORMACA_BIT) {
 					PRINT_INFO("NormACA set for device: "
-					    "lun=%lld, type 0x%02x. Clear it, "
-					    "since it's unsupported.",
-					    (long long unsigned int)cmd->lun,
-					    buffer[0]);
+						"lun=%lld, type 0x%02x. Clear it, "
+						"since it's unsupported.",
+						(long long unsigned int)cmd->lun,
+						buffer[0]);
 				}
 #endif
 				buffer[SCST_INQ_BYTE3] &= ~SCST_INQ_NORMACA_BIT;
