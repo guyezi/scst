@@ -463,6 +463,12 @@ static inline void scst_sgv_sysfs_del(struct sgv_pool *pool) { }
 
 #else /* CONFIG_SCST_PROC */
 
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 34))
+extern const struct sysfs_ops scst_sysfs_ops;
+#else
+extern struct sysfs_ops scst_sysfs_ops;
+#endif
+
 int scst_sysfs_init(void);
 void scst_sysfs_cleanup(void);
 int scst_tgtt_sysfs_create(struct scst_tgt_template *tgtt);

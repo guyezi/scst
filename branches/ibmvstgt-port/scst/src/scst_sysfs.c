@@ -583,9 +583,9 @@ static ssize_t scst_store(struct kobject *kobj, struct attribute *attr,
 }
 
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 34))
-static const struct sysfs_ops scst_sysfs_ops = {
+const struct sysfs_ops scst_sysfs_ops = {
 #else
-static struct sysfs_ops scst_sysfs_ops = {
+struct sysfs_ops scst_sysfs_ops = {
 #endif
 	.show = scst_show,
 	.store = scst_store,
@@ -917,25 +917,6 @@ void scst_tgtt_sysfs_del(struct scst_tgt_template *tgtt)
  ** Target directory implementation
  **/
 
-static void scst_tgt_release(struct kobject *kobj)
-{
-	struct scst_tgt *tgt;
-
-	TRACE_ENTRY();
-
-	tgt = container_of(kobj, struct scst_tgt, tgt_kobj);
-	if (tgt->tgt_kobj_release_cmpl)
-		complete_all(tgt->tgt_kobj_release_cmpl);
-
-	TRACE_EXIT();
-	return;
-}
-
-static struct kobj_type tgt_ktype = {
-	.sysfs_ops = &scst_sysfs_ops,
-	.release = scst_tgt_release,
-};
-
 static void scst_acg_release(struct kobject *kobj)
 {
 	struct scst_acg *acg;
@@ -1130,8 +1111,7 @@ int scst_tgt_sysfs_create(struct scst_tgt *tgt)
 
 	TRACE_ENTRY();
 
-	res = kobject_init_and_add(&tgt->tgt_kobj, &tgt_ktype,
-			&tgt->tgtt->tgtt_kobj, tgt->tgt_name);
+	res = kobject_add(&tgt->tgt_kobj, &tgt->tgtt->tgtt_kobj, tgt->tgt_name);
 	if (res != 0) {
 		PRINT_ERROR("Can't add tgt %s to sysfs", tgt->tgt_name);
 		goto out;
@@ -1250,12 +1230,7 @@ out_err:
  */
 void scst_tgt_sysfs_del(struct scst_tgt *tgt)
 {
-	int rc;
-	DECLARE_COMPLETION_ONSTACK(c);
-
 	TRACE_ENTRY();
-
-	tgt->tgt_kobj_release_cmpl = &c;
 
 	kobject_del(tgt->tgt_sess_kobj);
 	kobject_put(tgt->tgt_sess_kobj);
@@ -1268,16 +1243,6 @@ void scst_tgt_sysfs_del(struct scst_tgt *tgt)
 
 	kobject_del(&tgt->tgt_kobj);
 	kobject_put(&tgt->tgt_kobj);
-
-	rc = wait_for_completion_timeout(tgt->tgt_kobj_release_cmpl, HZ);
-	if (rc == 0) {
-		PRINT_INFO("Waiting for releasing sysfs entry "
-			"for target %s (%d refs)...", tgt->tgt_name,
-			atomic_read(&tgt->tgt_kobj.kref.refcount));
-		wait_for_completion(tgt->tgt_kobj_release_cmpl);
-		PRINT_INFO("Done waiting for releasing sysfs "
-			"entry for target %s", tgt->tgt_name);
-	}
 
 	TRACE_EXIT();
 	return;

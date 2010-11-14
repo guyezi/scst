@@ -451,6 +451,28 @@ out_err_up:
 }
 EXPORT_SYMBOL(scst_unregister_target_template);
 
+static void scst_release_target(struct scst_tgt *tgt);
+
+static void scst_tgt_release(struct kobject *kobj)
+{
+	struct scst_tgt *tgt;
+
+	TRACE_ENTRY();
+
+	tgt = container_of(kobj, struct scst_tgt, tgt_kobj);
+	TRACE_DBG("kobj = %p; tgt = %p", kobj, tgt);
+	scst_release_target(tgt);
+
+	TRACE_EXIT();
+}
+
+static struct kobj_type tgt_ktype = {
+#ifndef CONFIG_SCST_PROC
+	.sysfs_ops = &scst_sysfs_ops,
+#endif
+	.release = scst_tgt_release,
+};
+
 /**
  * scst_register_target() - register target
  *
@@ -516,6 +538,9 @@ struct scst_tgt *scst_register_target(struct scst_tgt_template *vtt,
 		goto out_free_tgt;
 	}
 
+	kobject_init(&tgt->tgt_kobj, &tgt_ktype);
+	kobject_get(&tgt->tgt_kobj);
+
 #ifdef CONFIG_SCST_PROC
 	rc = scst_build_proc_target_entries(tgt);
 	if (rc < 0)
@@ -577,13 +602,7 @@ static inline int test_sess_list(struct scst_tgt *tgt)
 	return res;
 }
 
-/**
- * scst_unregister_target() - unregister target.
- *
- * It is supposed that no attepts to create new sessions for this
- * target will be done in a race with this function.
- */
-void scst_unregister_target(struct scst_tgt *tgt)
+static void scst_release_target(struct scst_tgt *tgt)
 {
 	struct scst_session *sess;
 	struct scst_tgt_template *vtt = tgt->tgtt;
@@ -653,6 +672,22 @@ again:
 
 	TRACE_EXIT();
 	return;
+}
+
+/**
+ * scst_unregister_target() - unregister target.
+ *
+ * It is supposed that no attepts to create new sessions for this
+ * target will be done in a race with this function.
+ */
+void scst_unregister_target(struct scst_tgt *tgt)
+{
+	TRACE_ENTRY();
+
+	TRACE_DBG("tgt = %p; kobj = %p", tgt, &tgt->tgt_kobj);
+	kobject_put(&tgt->tgt_kobj);
+
+	TRACE_EXIT();
 }
 EXPORT_SYMBOL(scst_unregister_target);
 

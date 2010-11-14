@@ -1485,9 +1485,6 @@ struct scst_tgt {
 	char *default_group_name;
 #endif
 
-	/* sysfs release completion */
-	struct completion *tgt_kobj_release_cmpl;
-
 	struct kobject tgt_kobj; /* main targets/target kobject */
 	struct kobject *tgt_sess_kobj; /* target/sessions/ */
 	struct kobject *tgt_luns_kobj; /* target/luns/ */
