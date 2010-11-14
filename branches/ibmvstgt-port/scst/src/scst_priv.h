@@ -468,6 +468,7 @@ extern const struct sysfs_ops scst_sysfs_ops;
 #else
 extern struct sysfs_ops scst_sysfs_ops;
 #endif
+extern struct attribute *lun_attrs[];
 
 int scst_sysfs_init(void);
 void scst_sysfs_cleanup(void);
