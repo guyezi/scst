@@ -1407,7 +1407,8 @@ static int srpt_build_cmd_rsp(struct srpt_rdma_ch *ch,
 	memset(srp_rsp, 0, sizeof *srp_rsp);
 
 	srp_rsp->opcode = SRP_RSP;
-	srp_rsp->req_lim_delta = __constant_cpu_to_be32(1);
+	srp_rsp->req_lim_delta = __constant_cpu_to_be32(1
+				    + atomic_xchg(&ch->req_lim_delta, 0));
 	srp_rsp->tag = tag;
 	srp_rsp->status = status;
 
@@ -1459,7 +1460,8 @@ static int srpt_build_tskmgmt_rsp(struct srpt_rdma_ch *ch,
 	memset(srp_rsp, 0, sizeof *srp_rsp);
 
 	srp_rsp->opcode = SRP_RSP;
-	srp_rsp->req_lim_delta = __constant_cpu_to_be32(1);
+	srp_rsp->req_lim_delta = __constant_cpu_to_be32(1
+				    + atomic_xchg(&ch->req_lim_delta, 0));
 	srp_rsp->tag = tag;
 
 	if (rsp_code != SRP_TSK_MGMT_SUCCESS) {
@@ -2417,6 +2419,7 @@ static int srpt_cm_req_recv(struct ib_cm_id *cm_id,
 					      | SRP_BUF_FORMAT_INDIRECT);
 	rsp->req_lim_delta = cpu_to_be32(ch->rq_size);
 	atomic_set(&ch->req_lim, ch->rq_size);
+	atomic_set(&ch->req_lim_delta, 0);
 
 	/* create cm reply */
 	rep_param->qp_num = ch->qp->qp_num;
@@ -3072,6 +3075,7 @@ static int srpt_xmit_response(struct scst_cmd *scmnd)
 	}
 
 	if (unlikely(scst_cmd_aborted(scmnd))) {
+		atomic_inc(&ch->req_lim_delta);
 		srpt_abort_scst_cmd(ioctx, SCST_CONTEXT_SAME);
 		goto out;
 	}
@@ -3310,6 +3314,45 @@ static uint16_t srpt_get_scsi_transport_version(struct scst_tgt *scst_tgt)
 	return 0x0940; /* SRP */
 }
 
+#if !defined(CONFIG_SCST_PROC)
+static ssize_t show_req_lim(struct kobject *kobj,
+			    struct kobj_attribute *attr, char *buf)
+{
+	struct scst_session *scst_sess;
+	struct srpt_rdma_ch *ch;
+
+	scst_sess = container_of(kobj, struct scst_session, sess_kobj);
+	ch = scst_sess_get_tgt_priv(scst_sess);
+	if (!ch)
+		return -ENOENT;
+	return sprintf(buf, "%d\n", atomic_read(&ch->req_lim));
+}
+
+static ssize_t show_req_lim_delta(struct kobject *kobj,
+				  struct kobj_attribute *attr, char *buf)
+{
+	struct scst_session *scst_sess;
+	struct srpt_rdma_ch *ch;
+
+	scst_sess = container_of(kobj, struct scst_session, sess_kobj);
+	ch = scst_sess_get_tgt_priv(scst_sess);
+	if (!ch)
+		return -ENOENT;
+	return sprintf(buf, "%d\n", atomic_read(&ch->req_lim_delta));
+}
+
+static const struct kobj_attribute srpt_req_lim_attr =
+	__ATTR(req_lim,       S_IRUGO, show_req_lim,       NULL);
+static const struct kobj_attribute srpt_req_lim_delta_attr =
+	__ATTR(req_lim_delta, S_IRUGO, show_req_lim_delta, NULL);
+
+static const struct attribute *srpt_sess_attrs[] = {
+	&srpt_req_lim_attr.attr,
+	&srpt_req_lim_delta_attr.attr,
+	NULL
+};
+#endif
+
 /* SCST target template for the SRP target implementation. */
 static struct scst_tgt_template srpt_template = {
 	.name				 = DRV_NAME,
@@ -3318,6 +3361,7 @@ static struct scst_tgt_template srpt_template = {
 #if !defined(CONFIG_SCST_PROC)
 	.enable_target			 = srpt_enable_target,
 	.is_target_enabled		 = srpt_is_target_enabled,
+	.sess_attrs			 = srpt_sess_attrs,
 #endif
 #if defined(CONFIG_SCST_DEBUG) || defined(CONFIG_SCST_TRACING)
 	.default_trace_flags		 = DEFAULT_SRPT_TRACE_FLAGS,
@@ -3420,7 +3464,7 @@ static struct class_device_attribute srpt_dev_attrs[] = {
 #else
 static struct device_attribute srpt_dev_attrs[] = {
 #endif
-	__ATTR(login_info, S_IRUGO, show_login_info, NULL),
+	__ATTR(login_info,    S_IRUGO, show_login_info,    NULL),
 	__ATTR_NULL,
 };
 
