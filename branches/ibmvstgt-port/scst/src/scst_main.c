@@ -675,7 +675,10 @@ again:
 #endif
 
 	TRACE_DBG("%s", "Waiting for sessions shutdown and sysfs release");
-	wait_event(tgt->unreg_waitQ, scst_tgt_no_longer_in_use(tgt));
+	while (wait_event_timeout(tgt->unreg_waitQ,
+				  scst_tgt_no_longer_in_use(tgt),
+				  HZ / 10) == 0)
+		;
 	TRACE_DBG("%s", "wait_event() returned");
 
 	PRINT_INFO("Target %s for template %s unregistered successfully",
