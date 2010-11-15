@@ -593,16 +593,31 @@ out_free_tgt:
 }
 EXPORT_SYMBOL(scst_register_target);
 
-static inline int test_sess_list(struct scst_tgt *tgt)
+static inline bool scst_tgt_no_longer_in_use(struct scst_tgt *tgt)
 {
-	int res;
+	bool res;
 	mutex_lock(&scst_mutex);
 	res = list_empty(&tgt->sess_list);
 	mutex_unlock(&scst_mutex);
-	return res;
+	return res && atomic_read(&tgt->tgt_kobj.kref.refcount) != 0;
 }
 
 static void scst_release_target(struct scst_tgt *tgt)
+{
+	TRACE_ENTRY();
+
+	scst_free_tgt(tgt);
+
+	TRACE_EXIT();
+}
+
+/**
+ * scst_unregister_target() - unregister target.
+ *
+ * It is supposed that no attempts to create new sessions for this
+ * target will be done in a race with this function.
+ */
+void scst_unregister_target(struct scst_tgt *tgt)
 {
 	struct scst_session *sess;
 	struct scst_tgt_template *vtt = tgt->tgtt;
@@ -632,10 +647,6 @@ again:
 	}
 	mutex_unlock(&scst_mutex);
 
-	TRACE_DBG("%s", "Waiting for sessions shutdown");
-	wait_event(tgt->unreg_waitQ, test_sess_list(tgt));
-	TRACE_DBG("%s", "wait_event() returned");
-
 	scst_suspend_activity(false);
 	mutex_lock(&scst_mutex);
 
@@ -663,31 +674,20 @@ again:
 	scst_tgt_sysfs_del(tgt);
 #endif
 
+	TRACE_DBG("%s", "Waiting for sessions shutdown and sysfs release");
+	wait_event(tgt->unreg_waitQ, scst_tgt_no_longer_in_use(tgt));
+	TRACE_DBG("%s", "wait_event() returned");
+
 	PRINT_INFO("Target %s for template %s unregistered successfully",
 		tgt->tgt_name, vtt->name);
 
-	scst_free_tgt(tgt);
+	TRACE_DBG("tgt = %p; kobj = %p", tgt, &tgt->tgt_kobj);
+	kobject_put(&tgt->tgt_kobj);
 
 	TRACE_DBG("Unregistering tgt %p finished", tgt);
 
 	TRACE_EXIT();
 	return;
-}
-
-/**
- * scst_unregister_target() - unregister target.
- *
- * It is supposed that no attempts to create new sessions for this
- * target will be done in a race with this function.
- */
-void scst_unregister_target(struct scst_tgt *tgt)
-{
-	TRACE_ENTRY();
-
-	TRACE_DBG("tgt = %p; kobj = %p", tgt, &tgt->tgt_kobj);
-	kobject_put(&tgt->tgt_kobj);
-
-	TRACE_EXIT();
 }
 EXPORT_SYMBOL(scst_unregister_target);
 
