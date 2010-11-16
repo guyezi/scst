@@ -599,7 +599,7 @@ static inline bool scst_tgt_no_longer_in_use(struct scst_tgt *tgt)
 	mutex_lock(&scst_mutex);
 	res = list_empty(&tgt->sess_list);
 	mutex_unlock(&scst_mutex);
-	return res && atomic_read(&tgt->tgt_kobj.kref.refcount) != 0;
+	return res && atomic_read(&tgt->tgt_kobj.kref.refcount) == 1;
 }
 
 static void scst_release_target(struct scst_tgt *tgt)
@@ -616,6 +616,11 @@ static void scst_release_target(struct scst_tgt *tgt)
  *
  * It is supposed that no attempts to create new sessions for this
  * target will be done in a race with this function.
+ *
+ * Note: Must not be called by a sysfs callback function for a sysfs attribute
+ * owned by the target since this function deletes these sysfs attributes. As
+ * the documentation of sysfs_schedule_callback() specifies, sysfs attribute
+ * methods must not unregister themselves or their parent kobject.
  */
 void scst_unregister_target(struct scst_tgt *tgt)
 {
