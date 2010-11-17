@@ -1417,7 +1417,6 @@ struct scst_dev_type {
 	/* Number of currently active sysfs mgmt works (scst_sysfs_work_item) */
 	int devt_active_sysfs_works_count;
 #endif
-#endif
 };
 
 /*
@@ -2470,7 +2469,6 @@ struct scst_acg {
 
 	unsigned int tgt_acg:1;
 
-#ifndef CONFIG_SCST_PROC
 #ifndef CONFIG_SCST_PROC
 	/* kobject for this structure */
 	struct kobject acg_kobj;
