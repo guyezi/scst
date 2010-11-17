@@ -34,8 +34,6 @@
 #include "scst_mem.h"
 #include "scst_pres.h"
 
-static DECLARE_COMPLETION(scst_sysfs_root_release_completion);
-
 static struct kobject scst_sysfs_root_kobj;
 static struct kobject *scst_targets_kobj;
 static struct kobject *scst_devices_kobj;
@@ -4671,7 +4669,8 @@ static struct attribute *scst_sysfs_root_default_attrs[] = {
 
 static void scst_sysfs_root_release(struct kobject *kobj)
 {
-	complete_all(&scst_sysfs_root_release_completion);
+	TRACE_ENTRY();
+	TRACE_EXIT();
 }
 
 static struct kobj_type scst_sysfs_root_ktype = {
@@ -5480,16 +5479,13 @@ void scst_sysfs_cleanup(void)
 
 	kobject_del(&scst_sysfs_root_kobj);
 	kobject_put(&scst_sysfs_root_kobj);
-
-	wait_for_completion(&scst_sysfs_root_release_completion);
 	/*
-	 * There is a race, when in the release() schedule happens just after
-	 * calling complete(), so if we exit and unload scst module immediately,
-	 * there will be oops there. So let's give it a chance to quit
-	 * gracefully. Unfortunately, current kobjects implementation
-	 * doesn't allow better ways to handle it.
+	 * Since kobject_del() invokes sysfs_remove_dir(), since that last
+	 * function waits until all .show() and .store() callbacks have
+	 * finished and since we never invoke sysfs_schedule_callback(), we
+	 * know that the last reference to the scst_sysfs_root_kobj has gone.
 	 */
-	msleep(3000);
+	WARN_ON(atomic_read(&scst_sysfs_root_kobj.kref.refcount) != 0);
 
 	if (sysfs_work_thread)
 		kthread_stop(sysfs_work_thread);
