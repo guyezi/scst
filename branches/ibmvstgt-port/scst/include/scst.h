@@ -1034,16 +1034,14 @@ struct scst_tgt_template {
 #ifdef CONFIG_SCST_PROC
 	/* The pointer to the /proc directory entry */
 	struct proc_dir_entry *proc_tgt_root;
+
+	/* Device number in /proc */
+	int proc_dev_num;
 #else
 	struct kobject tgtt_kobj; /* kobject for this struct */
 
 	/* Number of currently active sysfs mgmt works (scst_sysfs_work_item) */
 	int tgtt_active_sysfs_works_count;
-#endif
-
-#ifdef CONFIG_SCST_PROC
-	/* Device number in /proc */
-	int proc_dev_num;
 #endif
 
 	/*
@@ -2479,9 +2477,9 @@ struct scst_acg {
 
 	struct kobject *luns_kobj;
 	struct kobject *initiators_kobj;
+#endif
 
 	enum scst_lun_addr_method addr_method;
-#endif
 };
 
 /*
