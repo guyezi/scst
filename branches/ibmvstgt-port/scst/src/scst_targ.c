@@ -6155,8 +6155,20 @@ static int scst_init_session(struct scst_session *sess)
 	}
 
 	res = scst_sess_sysfs_create(sess);
-	if (res != 0)
+	if (res != 0) {
+		/*
+		 * Preserve the invariant that the session is present on
+		 * sess->tgt->sess_list if and only if scst_sess_sysfs_create()
+		 * succeeded.
+		 */
+		list_del(&sess->sess_list_entry);
+		/*
+		 * Make sure that the list_del(&sess->sess_list_entry) in
+		 * scst_free_session() does no harm.
+		 */
+		INIT_LIST_HEAD(&sess->sess_list_entry);
 		goto failed;
+	}
 
 	res = scst_sess_alloc_tgt_devs(sess);
 

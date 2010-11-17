@@ -1606,8 +1606,6 @@ struct scst_session {
 	struct completion *shutdown_compl;
 
 #ifndef CONFIG_SCST_PROC
-	unsigned int sess_kobj_ready:1;
-
 	struct kobject sess_kobj; /* kobject for this struct */
 #endif
 

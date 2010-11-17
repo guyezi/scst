@@ -2313,13 +2313,10 @@ int scst_sess_sysfs_create(struct scst_session *sess)
 
 restart:
 	list_for_each_entry(s, &sess->tgt->sess_list, sess_list_entry) {
-		if (!s->sess_kobj_ready)
+		if (s == sess)
 			continue;
 
 		if (strcmp(name, kobject_name(&s->sess_kobj)) == 0) {
-			if (s == sess)
-				continue;
-
 			TRACE_DBG("Duplicated session from the same initiator "
 				"%s found", name);
 
@@ -2348,8 +2345,6 @@ restart:
 		PRINT_ERROR("Can't add session %s to sysfs", name);
 		goto out_free;
 	}
-
-	sess->sess_kobj_ready = 1;
 
 	pattr = sess->tgt->tgtt->sess_attrs;
 	if (pattr != NULL) {
@@ -2383,9 +2378,6 @@ out_free:
 void scst_sess_sysfs_del(struct scst_session *sess)
 {
 	TRACE_ENTRY();
-
-	if (!sess->sess_kobj_ready)
-		goto out;
 
 	TRACE_DBG("Deleting session %s from sysfs",
 		kobject_name(&sess->sess_kobj));
