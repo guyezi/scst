@@ -2639,16 +2639,6 @@ void scst_init_mem_lim(struct scst_mem_lim *mem_lim)
 }
 EXPORT_SYMBOL_GPL(scst_init_mem_lim);
 
-static void scst_acg_dev_release(struct kobject *kobj);
-
-static struct kobj_type acg_dev_ktype = {
-#ifndef CONFIG_SCST_PROC
-	.sysfs_ops = &scst_sysfs_ops,
-	.default_attrs = lun_attrs,
-#endif
-	.release = scst_acg_dev_release,
-};
-
 static struct scst_acg_dev *scst_alloc_acg_dev(struct scst_acg *acg,
 					struct scst_device *dev, uint64_t lun)
 {
@@ -2667,24 +2657,9 @@ static struct scst_acg_dev *scst_alloc_acg_dev(struct scst_acg *acg,
 	res->acg = acg;
 	res->lun = lun;
 
-	kobject_init(&res->acg_dev_kobj, &acg_dev_ktype);
-	kobject_get(&res->acg_dev_kobj);
-
 out:
 	TRACE_EXIT_HRES(res);
 	return res;
-}
-
-static void scst_acg_dev_release(struct kobject *kobj)
-{
-	struct scst_acg_dev *acg_dev;
-
-	TRACE_ENTRY();
-
-	acg_dev = container_of(kobj, struct scst_acg_dev, acg_dev_kobj);
-	kmem_cache_free(scst_acgd_cachep, acg_dev);
-
-	TRACE_EXIT();
 }
 
 /*
@@ -2703,9 +2678,7 @@ static void scst_del_free_acg_dev(struct scst_acg_dev *acg_dev, bool del_sysfs)
 	if (del_sysfs)
 		scst_acg_dev_sysfs_del(acg_dev);
 
-	acg_dev->dev = NULL;
-	acg_dev->acg = NULL;
-	kobject_put(&acg_dev->acg_dev_kobj);
+	kmem_cache_free(scst_acgd_cachep, acg_dev);
 
 	TRACE_EXIT();
 	return;

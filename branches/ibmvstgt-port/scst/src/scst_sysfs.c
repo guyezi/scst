@@ -583,9 +583,9 @@ static ssize_t scst_store(struct kobject *kobj, struct attribute *attr,
 }
 
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 34))
-const struct sysfs_ops scst_sysfs_ops = {
+static const struct sysfs_ops scst_sysfs_ops = {
 #else
-struct sysfs_ops scst_sysfs_ops = {
+static struct sysfs_ops scst_sysfs_ops = {
 #endif
 	.show = scst_show,
 	.store = scst_store,
@@ -607,16 +607,8 @@ EXPORT_SYMBOL_GPL(scst_sysfs_get_sysfs_ops);
 
 static void scst_tgtt_release(struct kobject *kobj)
 {
-	struct scst_tgt_template *tgtt;
-
 	TRACE_ENTRY();
-
-	tgtt = container_of(kobj, struct scst_tgt_template, tgtt_kobj);
-	if (tgtt->tgtt_kobj_release_cmpl)
-		complete_all(tgtt->tgtt_kobj_release_cmpl);
-
 	TRACE_EXIT();
-	return;
 }
 
 static struct kobj_type tgtt_ktype = {
@@ -889,25 +881,11 @@ out_del:
  */
 void scst_tgtt_sysfs_del(struct scst_tgt_template *tgtt)
 {
-	int rc;
-	DECLARE_COMPLETION_ONSTACK(c);
-
 	TRACE_ENTRY();
-
-	tgtt->tgtt_kobj_release_cmpl = &c;
 
 	kobject_del(&tgtt->tgtt_kobj);
 	kobject_put(&tgtt->tgtt_kobj);
-
-	rc = wait_for_completion_timeout(tgtt->tgtt_kobj_release_cmpl, HZ);
-	if (rc == 0) {
-		PRINT_INFO("Waiting for releasing sysfs entry "
-			"for target template %s (%d refs)...", tgtt->name,
-			atomic_read(&tgtt->tgtt_kobj.kref.refcount));
-		wait_for_completion(tgtt->tgtt_kobj_release_cmpl);
-		PRINT_INFO("Done waiting for releasing sysfs "
-			"entry for target template %s", tgtt->name);
-	}
+	WARN_ON(atomic_read(&tgtt->tgtt_kobj.kref.refcount) != 0);
 
 	TRACE_EXIT();
 	return;
@@ -916,6 +894,17 @@ void scst_tgtt_sysfs_del(struct scst_tgt_template *tgtt)
 /**
  ** Target directory implementation
  **/
+
+static void scst_tgt_release(struct kobject *kobj)
+{
+	TRACE_ENTRY();
+	TRACE_EXIT();
+}
+
+static struct kobj_type tgt_ktype = {
+	.sysfs_ops = &scst_sysfs_ops,
+	.release = scst_tgt_release,
+};
 
 static void scst_acg_release(struct kobject *kobj)
 {
@@ -1111,7 +1100,8 @@ int scst_tgt_sysfs_create(struct scst_tgt *tgt)
 
 	TRACE_ENTRY();
 
-	res = kobject_add(&tgt->tgt_kobj, &tgt->tgtt->tgtt_kobj, tgt->tgt_name);
+	res = kobject_init_and_add(&tgt->tgt_kobj, &tgt_ktype,
+			&tgt->tgtt->tgtt_kobj, tgt->tgt_name);
 	if (res != 0) {
 		PRINT_ERROR("Can't add tgt %s to sysfs", tgt->tgt_name);
 		goto out;
@@ -1543,16 +1533,8 @@ static struct attribute *scst_dev_attrs[] = {
 
 static void scst_sysfs_dev_release(struct kobject *kobj)
 {
-	struct scst_device *dev;
-
 	TRACE_ENTRY();
-
-	dev = container_of(kobj, struct scst_device, dev_kobj);
-	if (dev->dev_kobj_release_cmpl)
-		complete_all(dev->dev_kobj_release_cmpl);
-
 	TRACE_EXIT();
-	return;
 }
 
 int scst_devt_dev_sysfs_create(struct scst_device *dev)
@@ -1724,12 +1706,7 @@ out_del:
  */
 void scst_dev_sysfs_del(struct scst_device *dev)
 {
-	int rc;
-	DECLARE_COMPLETION_ONSTACK(c);
-
 	TRACE_ENTRY();
-
-	dev->dev_kobj_release_cmpl = &c;
 
 	kobject_del(dev->dev_exp_kobj);
 	kobject_put(dev->dev_exp_kobj);
@@ -1737,15 +1714,7 @@ void scst_dev_sysfs_del(struct scst_device *dev)
 	kobject_del(&dev->dev_kobj);
 	kobject_put(&dev->dev_kobj);
 
-	rc = wait_for_completion_timeout(dev->dev_kobj_release_cmpl, HZ);
-	if (rc == 0) {
-		PRINT_INFO("Waiting for releasing sysfs entry "
-			"for device %s (%d refs)...", dev->virt_name,
-			atomic_read(&dev->dev_kobj.kref.refcount));
-		wait_for_completion(dev->dev_kobj_release_cmpl);
-		PRINT_INFO("Done waiting for releasing sysfs "
-			"entry for device %s", dev->virt_name);
-	}
+	WARN_ON(atomic_read(&dev->dev_kobj.kref.refcount) != 0);
 
 	TRACE_EXIT();
 	return;
@@ -2320,16 +2289,8 @@ static struct attribute *scst_session_attrs[] = {
 
 static void scst_sysfs_session_release(struct kobject *kobj)
 {
-	struct scst_session *sess;
-
 	TRACE_ENTRY();
-
-	sess = container_of(kobj, struct scst_session, sess_kobj);
-	if (sess->sess_kobj_release_cmpl)
-		complete_all(sess->sess_kobj_release_cmpl);
-
 	TRACE_EXIT();
-	return;
 }
 
 static struct kobj_type scst_session_ktype = {
@@ -2449,9 +2410,6 @@ out_free:
  */
 void scst_sess_sysfs_del(struct scst_session *sess)
 {
-	int rc;
-	DECLARE_COMPLETION_ONSTACK(c);
-
 	TRACE_ENTRY();
 
 	if (!sess->sess_kobj_ready)
@@ -2460,20 +2418,10 @@ void scst_sess_sysfs_del(struct scst_session *sess)
 	TRACE_DBG("Deleting session %s from sysfs",
 		kobject_name(&sess->sess_kobj));
 
-	sess->sess_kobj_release_cmpl = &c;
-
 	kobject_del(&sess->sess_kobj);
 	kobject_put(&sess->sess_kobj);
 
-	rc = wait_for_completion_timeout(sess->sess_kobj_release_cmpl, HZ);
-	if (rc == 0) {
-		PRINT_INFO("Waiting for releasing sysfs entry "
-			"for session from %s (%d refs)...", sess->initiator_name,
-			atomic_read(&sess->sess_kobj.kref.refcount));
-		wait_for_completion(sess->sess_kobj_release_cmpl);
-		PRINT_INFO("Done waiting for releasing sysfs "
-			"entry for session %s", sess->initiator_name);
-	}
+	WARN_ON(atomic_read(&sess->sess_kobj.kref.refcount) != 0);
 
 out:
 	TRACE_EXIT();
@@ -2483,6 +2431,12 @@ out:
 /**
  ** Target luns directory implementation
  **/
+
+static void scst_acg_dev_release(struct kobject *kobj)
+{
+	TRACE_ENTRY();
+	TRACE_EXIT();
+}
 
 static ssize_t scst_lun_rd_only_show(struct kobject *kobj,
 				   struct kobj_attribute *attr,
@@ -2501,9 +2455,15 @@ static ssize_t scst_lun_rd_only_show(struct kobject *kobj,
 static struct kobj_attribute lun_options_attr =
 	__ATTR(read_only, S_IRUGO, scst_lun_rd_only_show, NULL);
 
-struct attribute *lun_attrs[] = {
+static struct attribute *lun_attrs[] = {
 	&lun_options_attr.attr,
 	NULL,
+};
+
+static struct kobj_type acg_dev_ktype = {
+	.sysfs_ops = &scst_sysfs_ops,
+	.release = scst_acg_dev_release,
+	.default_attrs = lun_attrs,
 };
 
 /*
@@ -2537,7 +2497,8 @@ int scst_acg_dev_sysfs_create(struct scst_acg_dev *acg_dev,
 
 	TRACE_ENTRY();
 
-	res = kobject_add(&acg_dev->acg_dev_kobj, parent, "%u", acg_dev->lun);
+	res = kobject_init_and_add(&acg_dev->acg_dev_kobj, &acg_dev_ktype,
+				      parent, "%u", acg_dev->lun);
 	if (res != 0) {
 		PRINT_ERROR("Can't add acg_dev %p to sysfs", acg_dev);
 		goto out;
@@ -4689,16 +4650,8 @@ static struct kobj_type scst_sysfs_root_ktype = {
 
 static void scst_devt_release(struct kobject *kobj)
 {
-	struct scst_dev_type *devt;
-
 	TRACE_ENTRY();
-
-	devt = container_of(kobj, struct scst_dev_type, devt_kobj);
-	if (devt->devt_kobj_release_compl)
-		complete_all(devt->devt_kobj_release_compl);
-
 	TRACE_EXIT();
-	return;
 }
 
 #if defined(CONFIG_SCST_DEBUG) || defined(CONFIG_SCST_TRACING)
@@ -5150,28 +5103,14 @@ out_err:
 
 void scst_devt_sysfs_del(struct scst_dev_type *devt)
 {
-	int rc;
-	DECLARE_COMPLETION_ONSTACK(c);
-
 	TRACE_ENTRY();
-
-	devt->devt_kobj_release_compl = &c;
 
 	kobject_del(&devt->devt_kobj);
 	kobject_put(&devt->devt_kobj);
 
-	rc = wait_for_completion_timeout(devt->devt_kobj_release_compl, HZ);
-	if (rc == 0) {
-		PRINT_INFO("Waiting for releasing of sysfs entry "
-			"for dev handler template %s (%d refs)...", devt->name,
-			atomic_read(&devt->devt_kobj.kref.refcount));
-		wait_for_completion(devt->devt_kobj_release_compl);
-		PRINT_INFO("Done waiting for releasing sysfs entry "
-			"for dev handler template %s", devt->name);
-	}
+	WARN_ON(atomic_read(&devt->devt_kobj.kref.refcount) != 0);
 
 	TRACE_EXIT();
-	return;
 }
 
 /**

@@ -451,28 +451,6 @@ out_err_up:
 }
 EXPORT_SYMBOL(scst_unregister_target_template);
 
-static void scst_release_target(struct scst_tgt *tgt);
-
-static void scst_tgt_release(struct kobject *kobj)
-{
-	struct scst_tgt *tgt;
-
-	TRACE_ENTRY();
-
-	tgt = container_of(kobj, struct scst_tgt, tgt_kobj);
-	TRACE_DBG("kobj = %p; tgt = %p", kobj, tgt);
-	scst_release_target(tgt);
-
-	TRACE_EXIT();
-}
-
-static struct kobj_type tgt_ktype = {
-#ifndef CONFIG_SCST_PROC
-	.sysfs_ops = &scst_sysfs_ops,
-#endif
-	.release = scst_tgt_release,
-};
-
 /**
  * scst_register_target() - register target
  *
@@ -538,9 +516,6 @@ struct scst_tgt *scst_register_target(struct scst_tgt_template *vtt,
 		goto out_free_tgt;
 	}
 
-	kobject_init(&tgt->tgt_kobj, &tgt_ktype);
-	kobject_get(&tgt->tgt_kobj);
-
 #ifdef CONFIG_SCST_PROC
 	rc = scst_build_proc_target_entries(tgt);
 	if (rc < 0)
@@ -593,22 +568,13 @@ out_free_tgt:
 }
 EXPORT_SYMBOL(scst_register_target);
 
-static inline bool scst_tgt_no_longer_in_use(struct scst_tgt *tgt)
+static inline int test_sess_list(struct scst_tgt *tgt)
 {
-	bool res;
+	int res;
 	mutex_lock(&scst_mutex);
 	res = list_empty(&tgt->sess_list);
 	mutex_unlock(&scst_mutex);
-	return res && atomic_read(&tgt->tgt_kobj.kref.refcount) == 1;
-}
-
-static void scst_release_target(struct scst_tgt *tgt)
-{
-	TRACE_ENTRY();
-
-	scst_free_tgt(tgt);
-
-	TRACE_EXIT();
+	return res;
 }
 
 /**
@@ -652,6 +618,10 @@ again:
 	}
 	mutex_unlock(&scst_mutex);
 
+	TRACE_DBG("%s", "Waiting for sessions shutdown");
+	wait_event(tgt->unreg_waitQ, test_sess_list(tgt));
+	TRACE_DBG("%s", "wait_event() returned");
+
 	scst_suspend_activity(false);
 	mutex_lock(&scst_mutex);
 
@@ -677,20 +647,13 @@ again:
 
 #ifndef CONFIG_SCST_PROC
 	scst_tgt_sysfs_del(tgt);
+	WARN_ON(atomic_read(&tgt->tgt_kobj.kref.refcount) != 0);
 #endif
-
-	TRACE_DBG("%s", "Waiting for sessions shutdown and sysfs release");
-	while (wait_event_timeout(tgt->unreg_waitQ,
-				  scst_tgt_no_longer_in_use(tgt),
-				  HZ / 10) == 0)
-		;
-	TRACE_DBG("%s", "wait_event() returned");
 
 	PRINT_INFO("Target %s for template %s unregistered successfully",
 		tgt->tgt_name, vtt->name);
 
-	TRACE_DBG("tgt = %p; kobj = %p", tgt, &tgt->tgt_kobj);
-	kobject_put(&tgt->tgt_kobj);
+	scst_free_tgt(tgt);
 
 	TRACE_DBG("Unregistering tgt %p finished", tgt);
 
