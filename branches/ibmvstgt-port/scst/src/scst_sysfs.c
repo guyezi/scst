@@ -2387,7 +2387,6 @@ void scst_sess_sysfs_del(struct scst_session *sess)
 
 	WARN_ON(atomic_read(&sess->sess_kobj.kref.refcount) != 0);
 
-out:
 	TRACE_EXIT();
 	return;
 }
