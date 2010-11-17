@@ -2393,9 +2393,6 @@ struct scst_tgt_dev {
 	uint8_t tgt_dev_sense[SCST_SENSE_BUFFERSIZE];
 
 #ifndef CONFIG_SCST_PROC
-	/* sysfs release completion */
-	struct completion *tgt_dev_kobj_release_cmpl;
-
 	struct kobject tgt_dev_kobj; /* kobject for this struct */
 #endif
 
@@ -2477,9 +2474,6 @@ struct scst_acg {
 	unsigned int tgt_acg:1;
 
 #ifndef CONFIG_SCST_PROC
-	/* sysfs release completion */
-	struct completion *acg_kobj_release_cmpl;
-
 	/* kobject for this structure */
 	struct kobject acg_kobj;
 
