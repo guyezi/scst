@@ -1417,6 +1417,7 @@ struct scst_dev_type {
 	/* Number of currently active sysfs mgmt works (scst_sysfs_work_item) */
 	int devt_active_sysfs_works_count;
 #endif
+#endif
 };
 
 /*
@@ -1604,6 +1605,7 @@ struct scst_session {
 	/* Used if scst_unregister_session() called in wait mode */
 	struct completion *shutdown_compl;
 
+#ifndef CONFIG_SCST_PROC
 #ifndef CONFIG_SCST_PROC
 	unsigned int sess_kobj_ready:1;
 
@@ -2471,6 +2473,7 @@ struct scst_acg {
 
 	unsigned int tgt_acg:1;
 
+#ifndef CONFIG_SCST_PROC
 #ifndef CONFIG_SCST_PROC
 	/* kobject for this structure */
 	struct kobject acg_kobj;
