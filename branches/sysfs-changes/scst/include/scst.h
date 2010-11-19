@@ -1038,13 +1038,12 @@ struct scst_tgt_template {
 	/* Device number in /proc */
 	int proc_dev_num;
 #else
-	struct kobject tgtt_kobj; /* kobject for this struct */
-
-	/* Number of currently active sysfs mgmt works (scst_sysfs_work_item) */
-	int tgtt_active_sysfs_works_count;
-
-	/* sysfs release completion */
-	struct completion *tgtt_kobj_release_cmpl;
+	/*
+	 * Target template kernel object. This object is guaranteed to exist
+	 * as soon as scst_register_target() returned and exists at least as
+	 * long as the target template is present in the target template list.
+	 */
+	struct kobject *tgtt_kobj;
 #endif
 
 	/*
@@ -3770,7 +3769,7 @@ struct sysfs_ops *scst_sysfs_get_sysfs_ops(void);
 static inline struct kobject *scst_sysfs_get_tgtt_kobj(
 	struct scst_tgt_template *tgtt)
 {
-	return &tgtt->tgtt_kobj;
+	return tgtt->tgtt_kobj;
 }
 
 /*
@@ -3981,7 +3980,6 @@ struct scst_sysfs_work_item {
 
 	union {
 		struct scst_dev_type *devt;
-		struct scst_tgt_template *tgtt;
 		struct {
 			struct scst_tgt *tgt;
 			struct scst_acg *acg;

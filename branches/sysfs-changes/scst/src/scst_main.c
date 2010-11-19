@@ -416,23 +416,6 @@ void scst_unregister_target_template(struct scst_tgt_template *vtt)
 	list_del(&vtt->scst_template_list_entry);
 	mutex_unlock(&scst_mutex2);
 
-#ifndef CONFIG_SCST_PROC
-	/* Wait for outstanding sysfs mgmt calls completed */
-	while (vtt->tgtt_active_sysfs_works_count > 0) {
-		mutex_unlock(&scst_mutex);
-		msleep(100);
-		mutex_lock(&scst_mutex);
-	}
-#endif
-
-restart:
-	list_for_each_entry(tgt, &vtt->tgt_list, tgt_list_entry) {
-		mutex_unlock(&scst_mutex);
-		scst_unregister_target(tgt);
-		mutex_lock(&scst_mutex);
-		goto restart;
-	}
-
 	mutex_unlock(&scst_mutex);
 
 #ifdef CONFIG_SCST_PROC
@@ -440,6 +423,16 @@ restart:
 #else
 	scst_tgtt_sysfs_del(vtt);
 #endif
+
+	mutex_lock(&scst_mutex);
+restart:
+	list_for_each_entry(tgt, &vtt->tgt_list, tgt_list_entry) {
+		mutex_unlock(&scst_mutex);
+		scst_unregister_target(tgt);
+		mutex_lock(&scst_mutex);
+		goto restart;
+	}
+	mutex_unlock(&scst_mutex);
 
 	PRINT_INFO("Target template %s unregistered successfully", vtt->name);
 
