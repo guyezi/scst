@@ -2906,11 +2906,21 @@ void scst_del_free_acg(struct scst_acg *acg)
 	sBUG_ON(!list_empty(&acg->acg_dev_list));
 	sBUG_ON(!list_empty(&acg->acn_list));
 
-	kfree(acg->acg_name);
-	kfree(acg);
+#ifdef CONFIG_SCST_PROC
+	scst_acg_free(acg);
+#endif
 
 	TRACE_EXIT();
 	return;
+}
+
+/**
+ * scst_acg_release() - Free the memory that was allocated for an acg object.
+ */
+void scst_acg_free(struct scst_acg *acg)
+{
+	kfree(acg->acg_name);
+	kfree(acg);
 }
 
 #ifndef CONFIG_SCST_PROC

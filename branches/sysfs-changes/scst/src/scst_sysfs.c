@@ -948,6 +948,8 @@ static void scst_acg_release(struct kobject *kobj)
 	if (acg->acg_kobj_release_cmpl)
 		complete_all(acg->acg_kobj_release_cmpl);
 
+	scst_acg_free(acg);
+
 	TRACE_EXIT();
 	return;
 }
