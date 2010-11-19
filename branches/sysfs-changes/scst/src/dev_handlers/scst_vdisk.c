@@ -4022,10 +4022,10 @@ out_unlock:
 
 #ifndef CONFIG_SCST_PROC
 
-static int vcdrom_sysfs_process_filename_store(struct scst_sysfs_work_item *work)
+static int vcdrom_sysfs_process_filename_store(struct scst_device *dev,
+					       char *buf)
 {
 	int res;
-	struct scst_device *dev = work->dev;
 	struct scst_vdisk_dev *virt_dev;
 
 	TRACE_ENTRY();
@@ -4033,9 +4033,7 @@ static int vcdrom_sysfs_process_filename_store(struct scst_sysfs_work_item *work
 	/* It's safe, since we taken dev_kobj and dh_priv NULLed in attach() */
 	virt_dev = (struct scst_vdisk_dev *)dev->dh_priv;
 
-	res = vcdrom_change(virt_dev, work->buf);
-
-	kobject_put(&dev->dev_kobj);
+	res = vcdrom_change(virt_dev, buf);
 
 	TRACE_EXIT_RES(res);
 	return res;
@@ -4046,7 +4044,6 @@ static ssize_t vcdrom_sysfs_filename_store(struct kobject *kobj,
 {
 	int res;
 	char *i_buf;
-	struct scst_sysfs_work_item *work;
 	struct scst_device *dev;
 
 	TRACE_ENTRY();
@@ -4063,27 +4060,14 @@ static ssize_t vcdrom_sysfs_filename_store(struct kobject *kobj,
 	memcpy(i_buf, buf, count);
 	i_buf[count] = '\0';
 
-	res = scst_alloc_sysfs_work(vcdrom_sysfs_process_filename_store,
-					false, &work);
-	if (res != 0)
-		goto out_free;
-
-	work->buf = i_buf;
-	work->dev = dev;
-
-	kobject_get(&dev->dev_kobj);
-
-	res = scst_sysfs_queue_wait_work(work);
+	res = vcdrom_sysfs_process_filename_store(dev, i_buf);
 	if (res == 0)
 		res = count;
 
+	kfree(i_buf);
 out:
 	TRACE_EXIT_RES(res);
 	return res;
-
-out_free:
-	kfree(i_buf);
-	goto out;
 }
 
 static ssize_t vdev_sysfs_size_show(struct kobject *kobj,
@@ -4246,19 +4230,19 @@ static ssize_t vdisk_sysfs_removable_show(struct kobject *kobj,
 	return pos;
 }
 
-static int vdev_sysfs_process_get_filename(struct scst_sysfs_work_item *work)
+static int vdev_sysfs_process_get_filename(struct scst_device *dev,
+					   char **filename)
 {
 	int res = 0;
-	struct scst_device *dev;
 	struct scst_vdisk_dev *virt_dev;
 
 	TRACE_ENTRY();
 
-	dev = work->dev;
+	BUG_ON(!filename);
 
 	if (mutex_lock_interruptible(&scst_vdisk_mutex) != 0) {
 		res = -EINTR;
-		goto out_put;
+		goto out;
 	}
 
 	virt_dev = (struct scst_vdisk_dev *)dev->dh_priv;
@@ -4267,18 +4251,15 @@ static int vdev_sysfs_process_get_filename(struct scst_sysfs_work_item *work)
 		goto out_unlock;
 
 	if (virt_dev->filename != NULL)
-		work->res_buf = kasprintf(GFP_KERNEL, "%s\n%s\n",
+		*filename = kasprintf(GFP_KERNEL, "%s\n%s\n",
 			vdev_get_filename(virt_dev), SCST_SYSFS_KEY_MARK);
 	else
-		work->res_buf = kasprintf(GFP_KERNEL, "%s\n",
+		*filename = kasprintf(GFP_KERNEL, "%s\n",
 					vdev_get_filename(virt_dev));
 
 out_unlock:
 	mutex_unlock(&scst_vdisk_mutex);
-
-out_put:
-	kobject_put(&dev->dev_kobj);
-
+out:
 	TRACE_EXIT_RES(res);
 	return res;
 }
@@ -4288,42 +4269,27 @@ static ssize_t vdev_sysfs_filename_show(struct kobject *kobj,
 {
 	int res = 0;
 	struct scst_device *dev;
-	struct scst_sysfs_work_item *work;
+	char *filename;
 
 	TRACE_ENTRY();
 
 	dev = container_of(kobj, struct scst_device, dev_kobj);
 
-	res = scst_alloc_sysfs_work(vdev_sysfs_process_get_filename,
-					true, &work);
-	if (res != 0)
+	res = vdev_sysfs_process_get_filename(dev, &filename);
+	if (res)
 		goto out;
 
-	work->dev = dev;
-
-	kobject_get(&dev->dev_kobj);
-
-	scst_sysfs_work_get(work);
-
-	res = scst_sysfs_queue_wait_work(work);
-	if (res != 0)
-		goto out_put;
-
-	res = snprintf(buf, SCST_SYSFS_BLOCK_SIZE, "%s\n", work->res_buf);
-
-out_put:
-	scst_sysfs_work_put(work);
+	res = snprintf(buf, SCST_SYSFS_BLOCK_SIZE, "%s\n", filename);
+	kfree(filename);
 
 out:
 	TRACE_EXIT_RES(res);
 	return res;
 }
 
-static int vdisk_sysfs_process_resync_size_store(
-	struct scst_sysfs_work_item *work)
+static int vdisk_sysfs_process_resync_size_store(struct scst_device *dev)
 {
 	int res;
-	struct scst_device *dev = work->dev;
 	struct scst_vdisk_dev *virt_dev;
 
 	TRACE_ENTRY();
@@ -4332,8 +4298,6 @@ static int vdisk_sysfs_process_resync_size_store(
 	virt_dev = (struct scst_vdisk_dev *)dev->dh_priv;
 
 	res = vdisk_resync_size(virt_dev);
-
-	kobject_put(&dev->dev_kobj);
 
 	TRACE_EXIT_RES(res);
 	return res;
@@ -4344,26 +4308,15 @@ static ssize_t vdisk_sysfs_resync_size_store(struct kobject *kobj,
 {
 	int res;
 	struct scst_device *dev;
-	struct scst_sysfs_work_item *work;
 
 	TRACE_ENTRY();
 
 	dev = container_of(kobj, struct scst_device, dev_kobj);
 
-	res = scst_alloc_sysfs_work(vdisk_sysfs_process_resync_size_store,
-					false, &work);
-	if (res != 0)
-		goto out;
-
-	work->dev = dev;
-
-	kobject_get(&dev->dev_kobj);
-
-	res = scst_sysfs_queue_wait_work(work);
+	res = vdisk_sysfs_process_resync_size_store(dev);
 	if (res == 0)
 		res = count;
 
-out:
 	TRACE_EXIT_RES(res);
 	return res;
 }

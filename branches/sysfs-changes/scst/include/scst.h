@@ -3948,66 +3948,6 @@ int scst_wait_info_completion(struct scst_sysfs_user_info *info,
 
 unsigned int scst_get_setup_id(void);
 
-/*
- * Needed to avoid potential circular locking dependency between scst_mutex
- * and internal sysfs locking (s_active). It could be since most sysfs entries
- * are created and deleted under scst_mutex AND scst_mutex is taken inside
- * sysfs functions. So, we push from the sysfs functions all the processing
- * taking scst_mutex. To avoid deadlock, we return from them with EAGAIN
- * if processing is taking too long. User space then should poll
- * last_sysfs_mgmt_res until it returns the result of the processing
- * (something other than EAGAIN).
- */
-struct scst_sysfs_work_item {
-	/*
-	 * If true, then last_sysfs_mgmt_res will not be updated. This is
-	 * needed to allow read only sysfs monitoring during management actions.
-	 * All management actions are supposed to be externally serialized,
-	 * so then last_sysfs_mgmt_res automatically serialized too.
-	 * Otherwise a monitoring action can overwrite value of simultaneous
-	 * management action's last_sysfs_mgmt_res.
-	 */
-	bool read_only_action;
-
-	struct list_head sysfs_work_list_entry;
-	struct kref sysfs_work_kref;
-	int (*sysfs_work_fn)(struct scst_sysfs_work_item *work);
-	struct completion sysfs_work_done;
-	char *buf;
-
-	union {
-		struct scst_dev_type *devt;
-		struct {
-			struct scst_tgt *tgt;
-			struct scst_acg *acg;
-			union {
-				bool is_tgt_kobj;
-				int io_grouping_type;
-				bool enable;
-				cpumask_t cpu_mask;
-			};
-		};
-		struct {
-			struct scst_device *dev;
-			int new_threads_num;
-			enum scst_dev_type_threads_pool_type new_threads_pool_type;
-		};
-		struct scst_session *sess;
-		struct {
-			struct scst_tgt *tgt;
-			unsigned long l;
-		};
-	};
-	int work_res;
-	char *res_buf;
-};
-
-int scst_alloc_sysfs_work(int (*sysfs_work_fn)(struct scst_sysfs_work_item *),
-	bool read_only_action, struct scst_sysfs_work_item **res_work);
-int scst_sysfs_queue_wait_work(struct scst_sysfs_work_item *work);
-void scst_sysfs_work_get(struct scst_sysfs_work_item *work);
-void scst_sysfs_work_put(struct scst_sysfs_work_item *work);
-
 #endif /* CONFIG_SCST_PROC */
 
 char *scst_get_next_lexem(char **token_str);
