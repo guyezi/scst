@@ -320,6 +320,7 @@ int scst_sess_alloc_tgt_devs(struct scst_session *sess);
 void scst_sess_free_tgt_devs(struct scst_session *sess);
 void scst_nexus_loss(struct scst_tgt_dev *tgt_dev, bool queue_UA);
 
+void scst_release_acg_dev(struct scst_acg_dev *acg_dev);
 int scst_acg_add_lun(struct scst_acg *acg, struct kobject *parent,
 	struct scst_device *dev, uint64_t lun, int read_only,
 	bool gen_scst_report_luns_changed, struct scst_acg_dev **out_acg_dev);

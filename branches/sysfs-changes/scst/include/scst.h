@@ -2447,9 +2447,6 @@ struct scst_acg_dev {
 	/* kobject for this structure */
 	struct kobject acg_dev_kobj;
 
-	/* sysfs release completion */
-	struct completion *acg_dev_kobj_release_cmpl;
-
 	/* Name of the link to the corresponding LUN */
 	char acg_dev_link_name[20];
 #endif

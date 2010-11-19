@@ -2200,13 +2200,9 @@ static void scst_acg_dev_release(struct kobject *kobj)
 	struct scst_acg_dev *acg_dev;
 
 	TRACE_ENTRY();
-
 	acg_dev = container_of(kobj, struct scst_acg_dev, acg_dev_kobj);
-	if (acg_dev->acg_dev_kobj_release_cmpl)
-		complete_all(acg_dev->acg_dev_kobj_release_cmpl);
-
+	scst_release_acg_dev(acg_dev);
 	TRACE_EXIT();
-	return;
 }
 
 static ssize_t scst_lun_rd_only_show(struct kobject *kobj,
@@ -2246,12 +2242,7 @@ static struct kobj_type acg_dev_ktype = {
  */
 void scst_acg_dev_sysfs_del(struct scst_acg_dev *acg_dev)
 {
-	int rc;
-	DECLARE_COMPLETION_ONSTACK(c);
-
 	TRACE_ENTRY();
-
-	acg_dev->acg_dev_kobj_release_cmpl = &c;
 
 	if (acg_dev->dev != NULL) {
 		sysfs_remove_link(acg_dev->dev->dev_exp_kobj,
@@ -2261,16 +2252,6 @@ void scst_acg_dev_sysfs_del(struct scst_acg_dev *acg_dev)
 
 	kobject_del(&acg_dev->acg_dev_kobj);
 	kobject_put(&acg_dev->acg_dev_kobj);
-
-	rc = wait_for_completion_timeout(acg_dev->acg_dev_kobj_release_cmpl, HZ);
-	if (rc == 0) {
-		PRINT_INFO("Waiting for releasing sysfs entry "
-			"for acg_dev %p (%d refs)...", acg_dev,
-			atomic_read(&acg_dev->acg_dev_kobj.kref.refcount));
-		wait_for_completion(acg_dev->acg_dev_kobj_release_cmpl);
-		PRINT_INFO("Done waiting for releasing sysfs "
-			"entry for acg_dev %p", acg_dev);
-	}
 
 	TRACE_EXIT();
 	return;
