@@ -510,45 +510,35 @@ out:
 	return res;
 }
 
-/* No locks */
-static int scst_check_grab_devt_ptr(struct scst_dev_type *devt,
-	struct list_head *list)
+/**
+ * scst_lookup_devt() - Look up device handler pointer.
+ *
+ * Must be called from inside a devt sysfs .show() or .store() callback
+ * function only. Since scst_unregister_dev_driver() indirectly invokes
+ * kobject_del() on the devt kernel object and since kobject_del() waits until
+ * all active .show() and .store() callback functions have finished, no
+ * further locking is necessary by the caller.
+ */
+static struct scst_dev_type *scst_lookup_devt(const char *name)
 {
-	int res = 0;
 	struct scst_dev_type *dt;
 
 	TRACE_ENTRY();
 
 	mutex_lock(&scst_mutex);
 
-	list_for_each_entry(dt, list, dev_type_list_entry) {
-		if (dt == devt) {
-			devt->devt_active_sysfs_works_count++;
+	list_for_each_entry(dt, &scst_virtual_dev_type_list, dev_type_list_entry)
+		if (strcmp(dt->name, name) == 0)
 			goto out_unlock;
-		}
-	}
 
-	TRACE_DBG("Devt %p not found", devt);
-	res = -ENOENT;
+	TRACE_DBG("Devt %s not found", name);
+	dt = NULL;
 
 out_unlock:
 	mutex_unlock(&scst_mutex);
 
-	TRACE_EXIT_RES(res);
-	return res;
-}
-
-/* No locks */
-static void scst_ungrab_devt_ptr(struct scst_dev_type *devt)
-{
-	TRACE_ENTRY();
-
-	mutex_lock(&scst_mutex);
-	devt->devt_active_sysfs_works_count--;
-	mutex_unlock(&scst_mutex);
-
-	TRACE_EXIT();
-	return;
+	TRACE_EXIT_RES(dt);
+	return dt;
 }
 
 /**
@@ -1582,14 +1572,14 @@ int scst_devt_dev_sysfs_create(struct scst_device *dev)
 		goto out;
 
 	res = sysfs_create_link(&dev->dev_kobj,
-			&dev->handler->devt_kobj, "handler");
+				dev->handler->devt_kobj, "handler");
 	if (res != 0) {
 		PRINT_ERROR("Can't create handler link for dev %s",
 			dev->virt_name);
 		goto out;
 	}
 
-	res = sysfs_create_link(&dev->handler->devt_kobj,
+	res = sysfs_create_link(dev->handler->devt_kobj,
 			&dev->dev_kobj, dev->virt_name);
 	if (res != 0) {
 		PRINT_ERROR("Can't create handler link for dev %s",
@@ -1656,7 +1646,7 @@ void scst_devt_dev_sysfs_del(struct scst_device *dev)
 	}
 
 	sysfs_remove_link(&dev->dev_kobj, "handler");
-	sysfs_remove_link(&dev->handler->devt_kobj, dev->virt_name);
+	sysfs_remove_link(dev->handler->devt_kobj, dev->virt_name);
 
 	if (dev->handler->threads_num >= 0) {
 		sysfs_remove_file(&dev->dev_kobj,
@@ -4727,14 +4717,8 @@ static struct kobj_type scst_sysfs_root_ktype = {
 
 static void scst_devt_release(struct kobject *kobj)
 {
-	struct scst_dev_type *devt;
-
 	TRACE_ENTRY();
-
-	devt = container_of(kobj, struct scst_dev_type, devt_kobj);
-	if (devt->devt_kobj_release_compl)
-		complete_all(devt->devt_kobj_release_compl);
-
+	kfree(kobj);
 	TRACE_EXIT();
 	return;
 }
@@ -4746,7 +4730,9 @@ static ssize_t scst_devt_trace_level_show(struct kobject *kobj,
 {
 	struct scst_dev_type *devt;
 
-	devt = container_of(kobj, struct scst_dev_type, devt_kobj);
+	devt = scst_lookup_devt(kobj->name);
+	if (!devt)
+		return -ENOENT;
 
 	return scst_trace_level_show(devt->trace_tbl,
 		devt->trace_flags ? *devt->trace_flags : 0, buf,
@@ -4761,7 +4747,9 @@ static ssize_t scst_devt_trace_level_store(struct kobject *kobj,
 
 	TRACE_ENTRY();
 
-	devt = container_of(kobj, struct scst_dev_type, devt_kobj);
+	devt = scst_lookup_devt(kobj->name);
+	if (!devt)
+		return -ENOENT;
 
 	if (mutex_lock_interruptible(&scst_log_mutex) != 0) {
 		res = -EINTR;
@@ -4790,7 +4778,9 @@ static ssize_t scst_devt_type_show(struct kobject *kobj,
 	int pos;
 	struct scst_dev_type *devt;
 
-	devt = container_of(kobj, struct scst_dev_type, devt_kobj);
+	devt = scst_lookup_devt(kobj->name);
+	if (!devt)
+		return -ENOENT;
 
 	pos = sprintf(buf, "%d - %s\n", devt->type,
 		(unsigned)devt->type > ARRAY_SIZE(scst_dev_handler_types) ?
@@ -4827,7 +4817,9 @@ static ssize_t scst_devt_mgmt_show(struct kobject *kobj,
 		"%s%s%s%s%s%s%s%s\n";
 	struct scst_dev_type *devt;
 
-	devt = container_of(kobj, struct scst_dev_type, devt_kobj);
+	devt = scst_lookup_devt(kobj->name);
+	if (!devt)
+		return -ENOENT;
 
 	return scnprintf(buf, SCST_SYSFS_BLOCK_SIZE, help,
 		(devt->devt_optional_attributes != NULL) ?
@@ -4861,10 +4853,6 @@ static int scst_process_devt_mgmt_store(char *buffer,
 
 	TRACE_ENTRY();
 
-	/* Check if our pointer is still alive and, if yes, grab it */
-	if (scst_check_grab_devt_ptr(devt, &scst_virtual_dev_type_list) != 0)
-		goto out;
-
 	TRACE_DBG("devt %p, buffer %s", devt, buffer);
 
 	pp = buffer;
@@ -4878,7 +4866,7 @@ static int scst_process_devt_mgmt_store(char *buffer,
 		if (*dev_name == '\0') {
 			PRINT_ERROR("%s", "Device name required");
 			res = -EINVAL;
-			goto out_ungrab;
+			goto out;
 		}
 		res = devt->add_device(dev_name, pp);
 	} else if (strcasecmp("del_device", p) == 0) {
@@ -4886,7 +4874,7 @@ static int scst_process_devt_mgmt_store(char *buffer,
 		if (*dev_name == '\0') {
 			PRINT_ERROR("%s", "Device name required");
 			res = -EINVAL;
-			goto out_ungrab;
+			goto out;
 		}
 
 		p = scst_get_next_lexem(&pp);
@@ -4900,11 +4888,8 @@ static int scst_process_devt_mgmt_store(char *buffer,
 	} else {
 		PRINT_ERROR("Unknown action \"%s\"", p);
 		res = -EINVAL;
-		goto out_ungrab;
+		goto out;
 	}
-
-out_ungrab:
-	scst_ungrab_devt_ptr(devt);
 
 out:
 	TRACE_EXIT_RES(res);
@@ -4913,28 +4898,24 @@ out:
 out_syntax_err:
 	PRINT_ERROR("Syntax error on \"%s\"", p);
 	res = -EINVAL;
-	goto out_ungrab;
-}
-
-static int scst_devt_mgmt_store_work_fn(struct scst_sysfs_work_item *work)
-{
-	return scst_process_devt_mgmt_store(work->buf, work->devt);
+	goto out;
 }
 
 static ssize_t __scst_devt_mgmt_store(struct kobject *kobj,
 	struct kobj_attribute *attr, const char *buf, size_t count,
-	int (*sysfs_work_fn)(struct scst_sysfs_work_item *work))
+	int (*store_fn)(char *buffer, struct scst_dev_type *devt))
 {
 	int res;
 	char *buffer;
 	struct scst_dev_type *devt;
-	struct scst_sysfs_work_item *work;
 
 	TRACE_ENTRY();
 
-	devt = container_of(kobj, struct scst_dev_type, devt_kobj);
+	devt = scst_lookup_devt(kobj->name);
+	if (!devt)
+		return -ENOENT;
 
-	buffer = kzalloc(count+1, GFP_KERNEL);
+	buffer = kmalloc(count + 1, GFP_KERNEL);
 	if (buffer == NULL) {
 		res = -ENOMEM;
 		goto out;
@@ -4942,31 +4923,20 @@ static ssize_t __scst_devt_mgmt_store(struct kobject *kobj,
 	memcpy(buffer, buf, count);
 	buffer[count] = '\0';
 
-	res = scst_alloc_sysfs_work(sysfs_work_fn, false, &work);
-	if (res != 0)
-		goto out_free;
-
-	work->buf = buffer;
-	work->devt = devt;
-
-	res = scst_sysfs_queue_wait_work(work);
+	res = store_fn(buffer, devt);
 	if (res == 0)
 		res = count;
-
+	kfree(buffer);
 out:
 	TRACE_EXIT_RES(res);
 	return res;
-
-out_free:
-	kfree(buffer);
-	goto out;
 }
 
 static ssize_t scst_devt_mgmt_store(struct kobject *kobj,
 	struct kobj_attribute *attr, const char *buf, size_t count)
 {
 	return __scst_devt_mgmt_store(kobj, attr, buf, count,
-		scst_devt_mgmt_store_work_fn);
+				      scst_process_devt_mgmt_store);
 }
 
 static struct kobj_attribute scst_devt_mgmt =
@@ -5101,17 +5071,11 @@ out_syntax_err:
 	goto out;
 }
 
-static int scst_devt_pass_through_mgmt_store_work_fn(
-	struct scst_sysfs_work_item *work)
-{
-	return scst_process_devt_pass_through_mgmt_store(work->buf, work->devt);
-}
-
 static ssize_t scst_devt_pass_through_mgmt_store(struct kobject *kobj,
 	struct kobj_attribute *attr, const char *buf, size_t count)
 {
 	return __scst_devt_mgmt_store(kobj, attr, buf, count,
-		scst_devt_pass_through_mgmt_store_work_fn);
+				scst_process_devt_pass_through_mgmt_store);
 }
 
 static struct kobj_attribute scst_devt_pass_through_mgmt =
@@ -5127,22 +5091,23 @@ int scst_devt_sysfs_create(struct scst_dev_type *devt)
 	TRACE_ENTRY();
 
 	if (devt->parent != NULL)
-		parent = &devt->parent->devt_kobj;
+		parent = devt->parent->devt_kobj;
 	else
 		parent = scst_handlers_kobj;
 
-	res = kobject_init_and_add(&devt->devt_kobj, &scst_devt_ktype,
-			parent, devt->name);
-	if (res != 0) {
+	res = -EEXIST;
+	devt->devt_kobj = kobject_create_and_add_kt(&scst_devt_ktype,
+						    parent, devt->name);
+	if (!devt->devt_kobj) {
 		PRINT_ERROR("Can't add devt %s to sysfs", devt->name);
 		goto out;
 	}
 
 	if (devt->add_device != NULL) {
-		res = sysfs_create_file(&devt->devt_kobj,
+		res = sysfs_create_file(devt->devt_kobj,
 				&scst_devt_mgmt.attr);
 	} else {
-		res = sysfs_create_file(&devt->devt_kobj,
+		res = sysfs_create_file(devt->devt_kobj,
 				&scst_devt_pass_through_mgmt.attr);
 	}
 	if (res != 0) {
@@ -5154,7 +5119,7 @@ int scst_devt_sysfs_create(struct scst_dev_type *devt)
 	pattr = devt->devt_attrs;
 	if (pattr != NULL) {
 		while (*pattr != NULL) {
-			res = sysfs_create_file(&devt->devt_kobj, *pattr);
+			res = sysfs_create_file(devt->devt_kobj, *pattr);
 			if (res != 0) {
 				PRINT_ERROR("Can't add devt attr %s for dev "
 					"handler %s", (*pattr)->name,
@@ -5167,7 +5132,7 @@ int scst_devt_sysfs_create(struct scst_dev_type *devt)
 
 #if defined(CONFIG_SCST_DEBUG) || defined(CONFIG_SCST_TRACING)
 	if (devt->trace_flags != NULL) {
-		res = sysfs_create_file(&devt->devt_kobj,
+		res = sysfs_create_file(devt->devt_kobj,
 				&devt_trace_attr.attr);
 		if (res != 0) {
 			PRINT_ERROR("Can't add devt trace_flag for dev "
@@ -5188,28 +5153,11 @@ out_err:
 
 void scst_devt_sysfs_del(struct scst_dev_type *devt)
 {
-	int rc;
-	DECLARE_COMPLETION_ONSTACK(c);
-
 	TRACE_ENTRY();
-
-	devt->devt_kobj_release_compl = &c;
-
-	kobject_del(&devt->devt_kobj);
-	kobject_put(&devt->devt_kobj);
-
-	rc = wait_for_completion_timeout(devt->devt_kobj_release_compl, HZ);
-	if (rc == 0) {
-		PRINT_INFO("Waiting for releasing of sysfs entry "
-			"for dev handler template %s (%d refs)...", devt->name,
-			atomic_read(&devt->devt_kobj.kref.refcount));
-		wait_for_completion(devt->devt_kobj_release_compl);
-		PRINT_INFO("Done waiting for releasing sysfs entry "
-			"for dev handler template %s", devt->name);
-	}
-
+	kobject_del(devt->devt_kobj);
+	kobject_put(devt->devt_kobj);
+	devt->devt_kobj = NULL;
 	TRACE_EXIT();
-	return;
 }
 
 /**

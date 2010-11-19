@@ -1377,6 +1377,12 @@ void scst_unregister_dev_driver(struct scst_dev_type *dev_type)
 
 	TRACE_ENTRY();
 
+#ifdef CONFIG_SCST_PROC
+	scst_cleanup_proc_dev_handler_dir_entries(dev_type);
+#else
+	scst_devt_sysfs_del(dev_type);
+#endif
+
 	scst_suspend_activity(false);
 	mutex_lock(&scst_mutex);
 
@@ -1403,12 +1409,6 @@ void scst_unregister_dev_driver(struct scst_dev_type *dev_type)
 
 	mutex_unlock(&scst_mutex);
 	scst_resume_activity();
-
-#ifdef CONFIG_SCST_PROC
-	scst_cleanup_proc_dev_handler_dir_entries(dev_type);
-#else
-	scst_devt_sysfs_del(dev_type);
-#endif
 
 	PRINT_INFO("Device handler \"%s\" for type %d unloaded",
 		   dev_type->name, dev_type->type);
@@ -1491,28 +1491,16 @@ void scst_unregister_virtual_dev_driver(struct scst_dev_type *dev_type)
 {
 	TRACE_ENTRY();
 
-	mutex_lock(&scst_mutex);
-
-	/* Disable sysfs mgmt calls (e.g. addition of new devices) */
-	list_del(&dev_type->dev_type_list_entry);
-
-#ifndef CONFIG_SCST_PROC
-	/* Wait for outstanding sysfs mgmt calls completed */
-	while (dev_type->devt_active_sysfs_works_count > 0) {
-		mutex_unlock(&scst_mutex);
-		msleep(100);
-		mutex_lock(&scst_mutex);
-	}
-#endif
-
-	mutex_unlock(&scst_mutex);
-
 #ifdef CONFIG_SCST_PROC
 	if (!dev_type->no_proc)
 		scst_cleanup_proc_dev_handler_dir_entries(dev_type);
 #else
 	scst_devt_sysfs_del(dev_type);
 #endif
+
+	mutex_lock(&scst_mutex);
+	list_del(&dev_type->dev_type_list_entry);
+	mutex_unlock(&scst_mutex);
 
 	PRINT_INFO("Device handler \"%s\" unloaded", dev_type->name);
 

@@ -1414,13 +1414,13 @@ struct scst_dev_type {
 	/* The pointer to the /proc directory entry */
 	struct proc_dir_entry *proc_dev_type_root;
 #else
-	struct kobject devt_kobj; /* main handlers/driver */
-
-	/* Number of currently active sysfs mgmt works (scst_sysfs_work_item) */
-	int devt_active_sysfs_works_count;
-
-	/* To wait until devt_kobj released */
-	struct completion *devt_kobj_release_compl;
+	/*
+	 * Pointer to the kernel object that corresponds to this object. This
+	 * pointer is guaranteed to be valid after scst_register_dev_driver()
+	 * returned and as long as this device handler object is present in
+	 * the global device handler list.
+	 */
+	struct kobject *devt_kobj;
 #endif
 };
 
@@ -3786,7 +3786,7 @@ static inline struct kobject *scst_sysfs_get_tgt_kobj(
 static inline struct kobject *scst_sysfs_get_devt_kobj(
 	struct scst_dev_type *devt)
 {
-	return &devt->devt_kobj;
+	return devt->devt_kobj;
 }
 
 /*
