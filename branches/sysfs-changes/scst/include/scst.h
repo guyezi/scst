@@ -2491,9 +2491,6 @@ struct scst_acg {
 
 	unsigned int tgt_acg:1;
 
-	/* sysfs release completion */
-	struct completion *acg_kobj_release_cmpl;
-
 #ifndef CONFIG_SCST_PROC
 	/* kobject for this structure */
 	struct kobject acg_kobj;
