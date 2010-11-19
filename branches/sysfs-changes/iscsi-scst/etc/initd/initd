@@ -46,33 +46,39 @@ start_server()
 {
 #	configure_memsize
 
-	modprobe iscsi-scst || { exit $? ; }
+	modprobe iscsi-scst || return $?
 	for module in ${ADD_MODULES}; do
-		modprobe ${module} || { exit 1 ; }
+		modprobe ${module} || return $?
 	done
 
 	/usr/local/sbin/iscsi-scstd
 
-	$SCST_CMD -config $SCST_CFG || { exit $? ; }
+	$SCST_CMD -config $SCST_CFG || return $?
 }
 
 stop_server()
 {
 	killall iscsi-scstd
-	rmmod -w iscsi-scst || { exit $? ; }
-	rmmod ${ADD_MODULES} || { exit $? ; }
+	if [ -e /sys/module/iscsi_scst ]; then
+		rmmod -w iscsi-scst || return $?
+	fi
+	for m in ${ADD_MODULES}; do
+		if [ -e /sys/module/$m ]; then
+			rmmod $m || return $?
+		fi
+	done
 }
 
 case "$1" in
 	start)
-		start_server
+		start_server || exit $?
 		;;
 	stop)
-		stop_server
+		stop_server || exit $?
 		;;
 	restart)
-		stop_server
-		start_server
+		stop_server || exit $?
+		start_server || exit $?
 		;;
 	*)
 		echo "Usage: {start|stop}" >&2
@@ -80,4 +86,3 @@ case "$1" in
 		;;
 esac
 
-exit $?
