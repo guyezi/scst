@@ -5582,8 +5582,9 @@ void scst_sysfs_cleanup(void)
 	 * gracefully. Unfortunately, current kobjects implementation
 	 * doesn't allow better ways to handle it.
 	 */
+#if 0
 	msleep(3000);
-
+#endif
 	if (sysfs_work_thread)
 		kthread_stop(sysfs_work_thread);
 
