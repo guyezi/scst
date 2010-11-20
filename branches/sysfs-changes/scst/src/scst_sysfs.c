@@ -2970,7 +2970,11 @@ static ssize_t __scst_acg_cpu_mask_store(struct scst_acg *acg,
 	const char *buf, size_t count)
 {
 	int res;
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 28)
+	cpumask_var_t cpu_mask;
+#else
 	cpumask_t *cpu_mask;
+#endif
 
 	/* cpumask might be too big for stack */
 	res = -ENOMEM;
