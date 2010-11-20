@@ -199,7 +199,7 @@ struct scst_tgt_template *scst_kobj_to_tgtt(struct kobject *kobj)
 	struct scst_tgt_template *tt;
 
 	mutex_lock(&scst_mutex);
-	tt = __scst_lookup_tgtt(kobj->name);
+	tt = __scst_lookup_tgtt(kobject_name(kobj));
 	mutex_unlock(&scst_mutex);
 
 	return tt;
@@ -1100,16 +1100,13 @@ struct scst_device *scst_kobj_to_dev(struct kobject *kobj)
 
 	TRACE_ENTRY();
 
-	BUG_ON(!kobj);
-	BUG_ON(!kobj->name);
-
 	mutex_lock(&scst_mutex);
 
 	list_for_each_entry(dev, &scst_dev_list, dev_list_entry)
-		if (strcmp(dev->virt_name, kobj->name) == 0)
+		if (strcmp(dev->virt_name, kobject_name(kobj)) == 0)
 			goto out_unlock;
 
-	TRACE_DBG("Dev %s not found", kobj->name);
+	TRACE_DBG("Dev %s not found", kobject_name(kobj));
 	dev = NULL;
 
 out_unlock:
@@ -1859,10 +1856,10 @@ struct scst_session *scst_kobj_to_sess(struct kobject *kobj)
 		goto out_unlock;
 
 	list_for_each_entry(s, &tgt->sess_list, sess_list_entry)
-		if (strcmp(s->initiator_name, kobj->name) == 0)
+		if (strcmp(s->initiator_name, kobject_name(kobj)) == 0)
 			goto out_unlock;
 
-	TRACE_DBG("Session %s not found", kobj->name);
+	TRACE_DBG("Session %s not found", kobject_name(kobj));
 
 	s = NULL;
 
@@ -4458,7 +4455,7 @@ static ssize_t scst_devt_trace_level_show(struct kobject *kobj,
 {
 	struct scst_dev_type *devt;
 
-	devt = scst_lookup_devt(kobj->name);
+	devt = scst_lookup_devt(kobject_name(kobj));
 	if (!devt)
 		return -ENOENT;
 
@@ -4475,7 +4472,7 @@ static ssize_t scst_devt_trace_level_store(struct kobject *kobj,
 
 	TRACE_ENTRY();
 
-	devt = scst_lookup_devt(kobj->name);
+	devt = scst_lookup_devt(kobject_name(kobj));
 	if (!devt)
 		return -ENOENT;
 
@@ -4506,7 +4503,7 @@ static ssize_t scst_devt_type_show(struct kobject *kobj,
 	int pos;
 	struct scst_dev_type *devt;
 
-	devt = scst_lookup_devt(kobj->name);
+	devt = scst_lookup_devt(kobject_name(kobj));
 	if (!devt)
 		return -ENOENT;
 
@@ -4545,7 +4542,7 @@ static ssize_t scst_devt_mgmt_show(struct kobject *kobj,
 		"%s%s%s%s%s%s%s%s\n";
 	struct scst_dev_type *devt;
 
-	devt = scst_lookup_devt(kobj->name);
+	devt = scst_lookup_devt(kobject_name(kobj));
 	if (!devt)
 		return -ENOENT;
 
@@ -4640,7 +4637,7 @@ static ssize_t __scst_devt_mgmt_store(struct kobject *kobj,
 	TRACE_ENTRY();
 
 	res = -ENOENT;
-	devt = scst_lookup_devt(kobj->name);
+	devt = scst_lookup_devt(kobject_name(kobj));
 	if (!devt)
 		goto out;
 
