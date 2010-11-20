@@ -396,10 +396,13 @@ static ssize_t scst_local_scsi_transport_version_show(struct kobject *kobj,
 	struct scst_local_tgt *tgt;
 	ssize_t res = -ENOENT;
 
+	scst_tgt = scst_kobj_to_tgt(kobj);
+	if (!scst_tgt)
+		goto out;
+
 	if (down_read_trylock(&scst_local_exit_rwsem) == 0)
 		goto out;
 
-	scst_tgt = scst_kobj_to_tgt(kobj);
 	tgt = scst_tgt_get_tgt_priv(scst_tgt);
 	if (!tgt)
 		goto out_up;
@@ -424,10 +427,13 @@ static ssize_t scst_local_scsi_transport_version_store(struct kobject *kobj,
 	struct scst_local_tgt *tgt;
 	unsigned long val;
 
+	scst_tgt = scst_kobj_to_tgt(kobj);
+	if (!scst_tgt)
+		goto out;
+
 	if (down_read_trylock(&scst_local_exit_rwsem) == 0)
 		goto out;
 
-	scst_tgt = scst_kobj_to_tgt(kobj);
 	tgt = scst_tgt_get_tgt_priv(scst_tgt);
 	if (!tgt)
 		goto out_up;
@@ -460,10 +466,13 @@ static ssize_t scst_local_phys_transport_version_show(struct kobject *kobj,
 	struct scst_local_tgt *tgt;
 	ssize_t res = -ENOENT;
 
+	scst_tgt = scst_kobj_to_tgt(kobj);
+	if (!scst_tgt)
+		goto out;
+
 	if (down_read_trylock(&scst_local_exit_rwsem) == 0)
 		goto out;
 
-	scst_tgt = scst_kobj_to_tgt(kobj);
 	tgt = scst_tgt_get_tgt_priv(scst_tgt);
 	if (!tgt)
 		goto out_up;
@@ -486,10 +495,13 @@ static ssize_t scst_local_phys_transport_version_store(struct kobject *kobj,
 	struct scst_local_tgt *tgt;
 	unsigned long val;
 
+	scst_tgt = scst_kobj_to_tgt(kobj);
+	if (!scst_tgt)
+		goto out;
+
 	if (down_read_trylock(&scst_local_exit_rwsem) == 0)
 		goto out;
 
-	scst_tgt = scst_kobj_to_tgt(kobj);
 	tgt = scst_tgt_get_tgt_priv(scst_tgt);
 	if (!tgt)
 		goto out_up;
@@ -528,17 +540,20 @@ static const struct attribute *scst_local_tgt_attrs[] = {
 static ssize_t scst_local_transport_id_show(struct kobject *kobj,
 	struct kobj_attribute *attr, char *buf)
 {
-	ssize_t res;
+	ssize_t res = -ENOENT;
 	struct scst_session *scst_sess;
 	struct scst_local_sess *sess;
 	uint8_t *tr_id;
 	int tr_id_len, i;
 
-	if (down_read_trylock(&scst_local_exit_rwsem) == 0)
-		return -ENOENT;
-
 	scst_sess = scst_kobj_to_sess(kobj);
-	sess = (struct scst_local_sess *)scst_sess_get_tgt_priv(scst_sess);
+	if (!scst_sess)
+		goto out;
+
+	if (down_read_trylock(&scst_local_exit_rwsem) == 0)
+		goto out;
+
+	sess = scst_sess_get_tgt_priv(scst_sess);
 
 	mutex_lock(&sess->tr_id_mutex);
 
@@ -561,21 +576,25 @@ static ssize_t scst_local_transport_id_show(struct kobject *kobj,
 out_unlock:
 	mutex_unlock(&sess->tr_id_mutex);
 	up_read(&scst_local_exit_rwsem);
+out:
 	return res;
 }
 
 static ssize_t scst_local_transport_id_store(struct kobject *kobj,
 	struct kobj_attribute *attr, const char *buffer, size_t size)
 {
-	ssize_t res;
+	ssize_t res = -ENOENT;
 	struct scst_session *scst_sess;
 	struct scst_local_sess *sess;
 
-	if (down_read_trylock(&scst_local_exit_rwsem) == 0)
-		return -ENOENT;
-
 	scst_sess = scst_kobj_to_sess(kobj);
-	sess = (struct scst_local_sess *)scst_sess_get_tgt_priv(scst_sess);
+	if (!scst_sess)
+		goto out_err;
+
+	if (down_read_trylock(&scst_local_exit_rwsem) == 0)
+		goto out_err;
+
+	sess = scst_sess_get_tgt_priv(scst_sess);
 
 	mutex_lock(&sess->tr_id_mutex);
 
@@ -606,6 +625,7 @@ out_res:
 out_unlock:
 	mutex_unlock(&sess->tr_id_mutex);
 	up_read(&scst_local_exit_rwsem);
+out_err:
 	return res;
 }
 
