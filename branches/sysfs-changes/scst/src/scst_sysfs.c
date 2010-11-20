@@ -173,7 +173,7 @@ static ssize_t scst_acn_file_show(struct kobject *kobj,
 	struct kobj_attribute *attr, char *buf);
 
 /* Locking: caller must hold lock on scst_mutex. */
-static struct scst_tgt_template *__scst_lookup_tgtt(const char *name)
+static struct scst_tgt_template *__scst_kobj_to_tgtt(const char *name)
 {
 	struct scst_tgt_template *tt;
 
@@ -186,7 +186,7 @@ static struct scst_tgt_template *__scst_lookup_tgtt(const char *name)
 }
 
 /**
- * scst_lookup_tgtt() - Look up target template pointer.
+ * scst_kobj_to_tgtt() - Look up target template pointer.
  *
  * Must be called from inside a tgtt sysfs .show() or .store() callback
  * function only. Since scst_unregister_template() indirectly invokes
@@ -194,16 +194,17 @@ static struct scst_tgt_template *__scst_lookup_tgtt(const char *name)
  * all active .show() and .store() callback functions have finished, no
  * further locking is necessary by the caller.
  */
-static struct scst_tgt_template *scst_lookup_tgtt(const char *name)
+struct scst_tgt_template *scst_kobj_to_tgtt(struct kobject *kobj)
 {
 	struct scst_tgt_template *tt;
 
 	mutex_lock(&scst_mutex);
-	tt = __scst_lookup_tgtt(name);
+	tt = __scst_kobj_to_tgtt(kobj->name);
 	mutex_unlock(&scst_mutex);
 
 	return tt;
 }
+EXPORT_SYMBOL(scst_kobj_to_tgtt);
 
 /* scst_mutex supposed to be locked */
 static int scst_check_tgt_acg_ptrs(struct scst_tgt *tgt, struct scst_acg *acg)
@@ -377,7 +378,7 @@ static ssize_t scst_tgtt_trace_level_show(struct kobject *kobj,
 {
 	struct scst_tgt_template *tgtt;
 
-	tgtt = scst_lookup_tgtt(kobj->name);
+	tgtt = scst_kobj_to_tgtt(kobj);
 	if (!tgtt)
 		return -ENOENT;
 
@@ -395,7 +396,7 @@ static ssize_t scst_tgtt_trace_level_store(struct kobject *kobj,
 	TRACE_ENTRY();
 
 	res = -ENOENT;
-	tgtt = scst_lookup_tgtt(kobj->name);
+	tgtt = scst_kobj_to_tgtt(kobj);
 	if (!tgtt)
 		goto out;
 
@@ -433,7 +434,7 @@ static ssize_t scst_tgtt_mgmt_show(struct kobject *kobj,
 		"%s%s%s%s%s%s%s%s\n";
 	struct scst_tgt_template *tgtt;
 
-	tgtt = scst_lookup_tgtt(kobj->name);
+	tgtt = scst_kobj_to_tgtt(kobj);
 	if (!tgtt)
 		return -ENOENT;
 
@@ -543,7 +544,7 @@ static ssize_t scst_tgtt_mgmt_store(struct kobject *kobj,
 	TRACE_ENTRY();
 
 	res = -ENOENT;
-	tgtt = scst_lookup_tgtt(kobj->name);
+	tgtt = scst_kobj_to_tgtt(kobj);
 	if (!tgtt)
 		goto out;
 
@@ -783,7 +784,7 @@ static struct kobj_attribute scst_acg_cpu_mask =
 	       scst_acg_cpu_mask_store);
 
 /**
- * scst_lookup_tgt() - Look up target pointer.
+ * scst_kobj_to_tgt() - Look up target pointer.
  *
  * Must be called from inside a tgt sysfs .show() or .store() callback
  * function only. Since scst_unregister_target() indirectly invokes
@@ -792,12 +793,15 @@ static struct kobj_attribute scst_acg_cpu_mask =
  * target template objects are only deallocated after all target objects have
  * been deallocated, no further locking is necessary by the caller.
  */
-static struct scst_tgt *scst_lookup_tgt(struct scst_tgt_kobj *tgt_kobj)
+struct scst_tgt *scst_kobj_to_tgt(struct kobject *kobj)
 {
 	struct scst_tgt_template *tgtt;
 	struct scst_tgt *tgt = NULL;
+	struct scst_tgt_kobj *tgt_kobj;
 
 	TRACE_ENTRY();
+
+	tgt_kobj = container_of(kobj, struct scst_tgt_kobj, kobj);
 
 	BUG_ON(!tgt_kobj);
 	BUG_ON(!tgt_kobj->template_name);
@@ -805,7 +809,7 @@ static struct scst_tgt *scst_lookup_tgt(struct scst_tgt_kobj *tgt_kobj)
 
 	mutex_lock(&scst_mutex);
 
-	tgtt = __scst_lookup_tgtt(tgt_kobj->template_name);
+	tgtt = __scst_kobj_to_tgtt(tgt_kobj->template_name);
 	if (!tgtt)
 		goto out_unlock;
 
@@ -821,11 +825,6 @@ out_unlock:
 
 	TRACE_EXIT_RES(tgt);
 	return tgt;
-}
-
-struct scst_tgt *scst_kobj_to_tgt(struct kobject *kobj)
-{
-	return scst_lookup_tgt(container_of(kobj, struct scst_tgt_kobj, kobj));
 }
 EXPORT_SYMBOL(scst_kobj_to_tgt);
 
@@ -1089,7 +1088,7 @@ static ssize_t scst_dev_sysfs_type_show(struct kobject *kobj,
 
 	struct scst_device *dev;
 
-	dev = container_of(kobj, struct scst_device, dev_kobj);
+	dev = scst_kobj_to_dev(kobj);
 
 	pos = sprintf(buf, "%d - %s\n", dev->type,
 		(unsigned)dev->type > ARRAY_SIZE(scst_dev_handler_types) ?
@@ -1110,7 +1109,7 @@ static ssize_t scst_dev_sysfs_dump_prs(struct kobject *kobj,
 
 	TRACE_ENTRY();
 
-	dev = container_of(kobj, struct scst_device, dev_kobj);
+	dev = scst_kobj_to_dev(kobj);
 
 	scst_pr_dump_prs(dev, true);
 
@@ -1208,7 +1207,7 @@ static ssize_t scst_dev_sysfs_threads_num_show(struct kobject *kobj,
 
 	TRACE_ENTRY();
 
-	dev = container_of(kobj, struct scst_device, dev_kobj);
+	dev = scst_kobj_to_dev(kobj);
 
 	pos = sprintf(buf, "%d\n%s", dev->threads_num,
 		(dev->threads_num != dev->handler->threads_num) ?
@@ -1228,7 +1227,7 @@ static ssize_t scst_dev_sysfs_threads_num_store(struct kobject *kobj,
 
 	TRACE_ENTRY();
 
-	dev = container_of(kobj, struct scst_device, dev_kobj);
+	dev = scst_kobj_to_dev(kobj);
 
 	res = strict_strtol(buf, 0, &newtn);
 	if (res != 0) {
@@ -1269,7 +1268,7 @@ static ssize_t scst_dev_sysfs_threads_pool_type_show(struct kobject *kobj,
 
 	TRACE_ENTRY();
 
-	dev = container_of(kobj, struct scst_device, dev_kobj);
+	dev = scst_kobj_to_dev(kobj);
 
 	if (dev->threads_num == 0) {
 		pos = sprintf(buf, "Async\n");
@@ -1310,7 +1309,7 @@ static ssize_t scst_dev_sysfs_threads_pool_type_store(struct kobject *kobj,
 
 	TRACE_ENTRY();
 
-	dev = container_of(kobj, struct scst_device, dev_kobj);
+	dev = scst_kobj_to_dev(kobj);
 
 	newtpt = scst_parse_threads_pool_type(buf, count);
 	if (newtpt == SCST_THREADS_POOL_TYPE_INVALID) {
@@ -1352,7 +1351,7 @@ static void scst_sysfs_dev_release(struct kobject *kobj)
 
 	TRACE_ENTRY();
 
-	dev = container_of(kobj, struct scst_device, dev_kobj);
+	dev = scst_kobj_to_dev(kobj);
 	if (dev->dev_kobj_release_cmpl)
 		complete_all(dev->dev_kobj_release_cmpl);
 
@@ -1793,7 +1792,7 @@ static ssize_t scst_sess_latency_show(struct kobject *kobj,
 
 	TRACE_ENTRY();
 
-	sess = container_of(kobj, struct scst_session, sess_kobj);
+	sess = scst_kobj_to_sess(kobj);
 
 	res += scnprintf(&buffer[res], SCST_SYSFS_BLOCK_SIZE - res,
 		"%-15s %-15s %-46s %-46s %-46s\n",
@@ -1991,7 +1990,7 @@ static ssize_t scst_sess_latency_store(struct kobject *kobj,
 
 	TRACE_ENTRY();
 
-	sess = container_of(kobj, struct scst_session, sess_kobj);
+	sess = scst_kobj_to_sess(kobj);
 
 	res = scst_sess_zero_latency(sess);
 	if (res == 0)
@@ -2012,7 +2011,7 @@ static ssize_t scst_sess_sysfs_commands_show(struct kobject *kobj,
 {
 	struct scst_session *sess;
 
-	sess = container_of(kobj, struct scst_session, sess_kobj);
+	sess = scst_kobj_to_sess(kobj);
 
 	return sprintf(buf, "%i\n", atomic_read(&sess->sess_cmd_count));
 }
@@ -2054,7 +2053,7 @@ static ssize_t scst_sess_sysfs_active_commands_show(struct kobject *kobj,
 	int res;
 	struct scst_session *sess;
 
-	sess = container_of(kobj, struct scst_session, sess_kobj);
+	sess = scst_kobj_to_sess(kobj);
 
 	res = scst_sysfs_sess_get_active_commands(sess);
 	if (res != -EAGAIN)
@@ -2072,7 +2071,7 @@ static ssize_t scst_sess_sysfs_initiator_name_show(struct kobject *kobj,
 {
 	struct scst_session *sess;
 
-	sess = container_of(kobj, struct scst_session, sess_kobj);
+	sess = scst_kobj_to_sess(kobj);
 
 	return scnprintf(buf, SCST_SYSFS_BLOCK_SIZE, "%s\n",
 		sess->initiator_name);
@@ -2097,7 +2096,7 @@ static void scst_sysfs_session_release(struct kobject *kobj)
 
 	TRACE_ENTRY();
 
-	sess = container_of(kobj, struct scst_session, sess_kobj);
+	sess = scst_kobj_to_sess(kobj);
 	if (sess->sess_kobj_release_cmpl)
 		complete_all(sess->sess_kobj_release_cmpl);
 

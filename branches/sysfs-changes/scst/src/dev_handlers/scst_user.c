@@ -3536,7 +3536,7 @@ static ssize_t dev_user_sysfs_commands_show(struct kobject *kobj,
 
 	TRACE_ENTRY();
 
-	dev = container_of(kobj, struct scst_device, dev_kobj);
+	dev = scst_kobj_to_dev(kobj);
 	udev = (struct scst_user_dev *)dev->dh_priv;
 
 	spin_lock_irqsave(&udev->udev_cmd_threads.cmd_list_lock, flags);

@@ -4048,7 +4048,7 @@ static ssize_t vcdrom_sysfs_filename_store(struct kobject *kobj,
 
 	TRACE_ENTRY();
 
-	dev = container_of(kobj, struct scst_device, dev_kobj);
+	dev = scst_kobj_to_dev(kobj);
 
 	i_buf = kmalloc(count+1, GFP_KERNEL);
 	if (i_buf == NULL) {
@@ -4079,7 +4079,7 @@ static ssize_t vdev_sysfs_size_show(struct kobject *kobj,
 
 	TRACE_ENTRY();
 
-	dev = container_of(kobj, struct scst_device, dev_kobj);
+	dev = scst_kobj_to_dev(kobj);
 	virt_dev = (struct scst_vdisk_dev *)dev->dh_priv;
 
 	pos = sprintf(buf, "%lld\n", virt_dev->file_size / 1024 / 1024);
@@ -4097,7 +4097,7 @@ static ssize_t vdisk_sysfs_blocksize_show(struct kobject *kobj,
 
 	TRACE_ENTRY();
 
-	dev = container_of(kobj, struct scst_device, dev_kobj);
+	dev = scst_kobj_to_dev(kobj);
 	virt_dev = (struct scst_vdisk_dev *)dev->dh_priv;
 
 	pos = sprintf(buf, "%d\n%s", (int)virt_dev->block_size,
@@ -4117,7 +4117,7 @@ static ssize_t vdisk_sysfs_rd_only_show(struct kobject *kobj,
 
 	TRACE_ENTRY();
 
-	dev = container_of(kobj, struct scst_device, dev_kobj);
+	dev = scst_kobj_to_dev(kobj);
 	virt_dev = (struct scst_vdisk_dev *)dev->dh_priv;
 
 	pos = sprintf(buf, "%d\n%s", virt_dev->rd_only ? 1 : 0,
@@ -4137,7 +4137,7 @@ static ssize_t vdisk_sysfs_wt_show(struct kobject *kobj,
 
 	TRACE_ENTRY();
 
-	dev = container_of(kobj, struct scst_device, dev_kobj);
+	dev = scst_kobj_to_dev(kobj);
 	virt_dev = (struct scst_vdisk_dev *)dev->dh_priv;
 
 	pos = sprintf(buf, "%d\n%s", virt_dev->wt_flag ? 1 : 0,
@@ -4157,7 +4157,7 @@ static ssize_t vdisk_sysfs_tp_show(struct kobject *kobj,
 
 	TRACE_ENTRY();
 
-	dev = container_of(kobj, struct scst_device, dev_kobj);
+	dev = scst_kobj_to_dev(kobj);
 	virt_dev = (struct scst_vdisk_dev *)dev->dh_priv;
 
 	pos = sprintf(buf, "%d\n%s", virt_dev->thin_provisioned ? 1 : 0,
@@ -4177,7 +4177,7 @@ static ssize_t vdisk_sysfs_nv_cache_show(struct kobject *kobj,
 
 	TRACE_ENTRY();
 
-	dev = container_of(kobj, struct scst_device, dev_kobj);
+	dev = scst_kobj_to_dev(kobj);
 	virt_dev = (struct scst_vdisk_dev *)dev->dh_priv;
 
 	pos = sprintf(buf, "%d\n%s", virt_dev->nv_cache ? 1 : 0,
@@ -4197,7 +4197,7 @@ static ssize_t vdisk_sysfs_o_direct_show(struct kobject *kobj,
 
 	TRACE_ENTRY();
 
-	dev = container_of(kobj, struct scst_device, dev_kobj);
+	dev = scst_kobj_to_dev(kobj);
 	virt_dev = (struct scst_vdisk_dev *)dev->dh_priv;
 
 	pos = sprintf(buf, "%d\n%s", virt_dev->o_direct_flag ? 1 : 0,
@@ -4217,7 +4217,7 @@ static ssize_t vdisk_sysfs_removable_show(struct kobject *kobj,
 
 	TRACE_ENTRY();
 
-	dev = container_of(kobj, struct scst_device, dev_kobj);
+	dev = scst_kobj_to_dev(kobj);
 	virt_dev = (struct scst_vdisk_dev *)dev->dh_priv;
 
 	pos = sprintf(buf, "%d\n", virt_dev->removable ? 1 : 0);
@@ -4273,7 +4273,7 @@ static ssize_t vdev_sysfs_filename_show(struct kobject *kobj,
 
 	TRACE_ENTRY();
 
-	dev = container_of(kobj, struct scst_device, dev_kobj);
+	dev = scst_kobj_to_dev(kobj);
 
 	filename = NULL;
 	res = vdev_sysfs_process_get_filename(dev, &filename);
@@ -4312,7 +4312,7 @@ static ssize_t vdisk_sysfs_resync_size_store(struct kobject *kobj,
 
 	TRACE_ENTRY();
 
-	dev = container_of(kobj, struct scst_device, dev_kobj);
+	dev = scst_kobj_to_dev(kobj);
 
 	res = vdisk_sysfs_process_resync_size_store(dev);
 	if (res == 0)
@@ -4331,7 +4331,7 @@ static ssize_t vdev_sysfs_t10_dev_id_store(struct kobject *kobj,
 
 	TRACE_ENTRY();
 
-	dev = container_of(kobj, struct scst_device, dev_kobj);
+	dev = scst_kobj_to_dev(kobj);
 	virt_dev = (struct scst_vdisk_dev *)dev->dh_priv;
 
 	write_lock_bh(&vdisk_t10_dev_id_rwlock);
@@ -4380,7 +4380,7 @@ static ssize_t vdev_sysfs_t10_dev_id_show(struct kobject *kobj,
 
 	TRACE_ENTRY();
 
-	dev = container_of(kobj, struct scst_device, dev_kobj);
+	dev = scst_kobj_to_dev(kobj);
 	virt_dev = (struct scst_vdisk_dev *)dev->dh_priv;
 
 	read_lock_bh(&vdisk_t10_dev_id_rwlock);
@@ -4401,7 +4401,7 @@ static ssize_t vdev_sysfs_usn_show(struct kobject *kobj,
 
 	TRACE_ENTRY();
 
-	dev = container_of(kobj, struct scst_device, dev_kobj);
+	dev = scst_kobj_to_dev(kobj);
 	virt_dev = (struct scst_vdisk_dev *)dev->dh_priv;
 
 	pos = sprintf(buf, "%s\n", virt_dev->usn);

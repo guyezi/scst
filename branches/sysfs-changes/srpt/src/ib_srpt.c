@@ -3327,7 +3327,7 @@ static ssize_t show_req_lim(struct kobject *kobj,
 	struct scst_session *scst_sess;
 	struct srpt_rdma_ch *ch;
 
-	scst_sess = container_of(kobj, struct scst_session, sess_kobj);
+	scst_sess = scst_kobj_to_sess(kobj);
 	ch = scst_sess_get_tgt_priv(scst_sess);
 	if (!ch)
 		return -ENOENT;
@@ -3340,7 +3340,7 @@ static ssize_t show_req_lim_delta(struct kobject *kobj,
 	struct scst_session *scst_sess;
 	struct srpt_rdma_ch *ch;
 
-	scst_sess = container_of(kobj, struct scst_session, sess_kobj);
+	scst_sess = scst_kobj_to_sess(kobj);
 	ch = scst_sess_get_tgt_priv(scst_sess);
 	if (!ch)
 		return -ENOENT;

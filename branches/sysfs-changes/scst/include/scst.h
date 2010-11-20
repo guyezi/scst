@@ -3764,6 +3764,8 @@ static inline struct kobject *scst_sysfs_get_tgtt_kobj(
 	return tgtt->tgtt_kobj;
 }
 
+struct scst_tgt_template *scst_kobj_to_tgtt(struct kobject *kobj);
+
 /*
  * Returns target's root sysfs kobject.
  * The driver can create own files/directories/links here.
@@ -3774,14 +3776,6 @@ static inline struct kobject *scst_sysfs_get_tgt_kobj(
 	return tgt->tgt_kobj;
 }
 
-/**
- * scst_kobj_to_tgt() - Converse of scst_sysfs_get_tgt_kobj().
- *
- * Given the tgt->tgt_kobj pointer, look up the tgt pointer.
- *
- * Note: this function is only safe when called from inside a sysfs
- * .show() or .store() callback function.
- */
 struct scst_tgt *scst_kobj_to_tgt(struct kobject *kobj);
 
 /*
@@ -3794,6 +3788,8 @@ static inline struct kobject *scst_sysfs_get_devt_kobj(
 	return devt->devt_kobj;
 }
 
+struct scst_dev_type *scst_kobj_to_devt(struct kobject *kobj);
+
 /*
  * Returns device's root sysfs kobject.
  * The driver can create own files/directories/links here.
@@ -3804,6 +3800,11 @@ static inline struct kobject *scst_sysfs_get_dev_kobj(
 	return &dev->dev_kobj;
 }
 
+static inline struct scst_device *scst_kobj_to_dev(struct kobject *kobj)
+{
+	return container_of(kobj, struct scst_device, dev_kobj);
+}
+
 /*
  * Returns session's root sysfs kobject.
  * The driver can create own files/directories/links here.
@@ -3812,6 +3813,11 @@ static inline struct kobject *scst_sysfs_get_sess_kobj(
 	struct scst_session *sess)
 {
 	return &sess->sess_kobj;
+}
+
+static inline struct scst_session *scst_kobj_to_sess(struct kobject *kobj)
+{
+	return container_of(kobj, struct scst_session, sess_kobj);
 }
 
 #endif /* CONFIG_SCST_PROC */

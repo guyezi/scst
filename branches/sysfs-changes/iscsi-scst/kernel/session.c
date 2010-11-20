@@ -431,7 +431,7 @@ static ssize_t iscsi_sess_show_##name(struct kobject *kobj,			\
 	struct scst_session *scst_sess;						\
 	struct iscsi_session *sess;						\
 										\
-	scst_sess = container_of(kobj, struct scst_session, sess_kobj);		\
+	scst_sess = scst_kobj_to_sess(kobj);		\
 	sess = (struct iscsi_session *)scst_sess_get_tgt_priv(scst_sess);	\
 										\
 	pos = sprintf(buf, "%s\n",						\
@@ -451,7 +451,7 @@ static ssize_t iscsi_sess_show_##name(struct kobject *kobj,			\
 	struct scst_session *scst_sess;						\
 	struct iscsi_session *sess;						\
 										\
-	scst_sess = container_of(kobj, struct scst_session, sess_kobj);		\
+	scst_sess = scst_kobj_to_sess(kobj);		\
 	sess = (struct iscsi_session *)scst_sess_get_tgt_priv(scst_sess);	\
 										\
 	pos = sprintf(buf, "%d\n", sess->sess_params.name);			\
@@ -471,7 +471,7 @@ static ssize_t iscsi_sess_show_##name(struct kobject *kobj,			\
 	struct iscsi_session *sess;						\
 	char digest_name[64];							\
 										\
-	scst_sess = container_of(kobj, struct scst_session, sess_kobj);		\
+	scst_sess = scst_kobj_to_sess(kobj);		\
 	sess = (struct iscsi_session *)scst_sess_get_tgt_priv(scst_sess);	\
 										\
 	pos = sprintf(buf, "%s\n", iscsi_get_digest_name(			\
@@ -502,7 +502,7 @@ static ssize_t iscsi_sess_sid_show(struct kobject *kobj,
 
 	TRACE_ENTRY();
 
-	scst_sess = container_of(kobj, struct scst_session, sess_kobj);
+	scst_sess = scst_kobj_to_sess(kobj);
 	sess = (struct iscsi_session *)scst_sess_get_tgt_priv(scst_sess);
 
 	pos = sprintf(buf, "%llx\n", sess->sid);
@@ -523,7 +523,7 @@ static ssize_t iscsi_sess_reinstating_show(struct kobject *kobj,
 
 	TRACE_ENTRY();
 
-	scst_sess = container_of(kobj, struct scst_session, sess_kobj);
+	scst_sess = scst_kobj_to_sess(kobj);
 	sess = (struct iscsi_session *)scst_sess_get_tgt_priv(scst_sess);
 
 	pos = sprintf(buf, "%d\n", sess->sess_reinstating ? 1 : 0);
@@ -544,7 +544,7 @@ static ssize_t iscsi_sess_force_close_store(struct kobject *kobj,
 
 	TRACE_ENTRY();
 
-	scst_sess = container_of(kobj, struct scst_session, sess_kobj);
+	scst_sess = scst_kobj_to_sess(kobj);
 	sess = (struct iscsi_session *)scst_sess_get_tgt_priv(scst_sess);
 
 	if (mutex_lock_interruptible(&sess->target->target_mutex) != 0) {

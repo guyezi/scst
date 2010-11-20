@@ -537,7 +537,7 @@ static ssize_t scst_local_transport_id_show(struct kobject *kobj,
 	if (down_read_trylock(&scst_local_exit_rwsem) == 0)
 		return -ENOENT;
 
-	scst_sess = container_of(kobj, struct scst_session, sess_kobj);
+	scst_sess = scst_kobj_to_sess(kobj);
 	sess = (struct scst_local_sess *)scst_sess_get_tgt_priv(scst_sess);
 
 	mutex_lock(&sess->tr_id_mutex);
@@ -574,7 +574,7 @@ static ssize_t scst_local_transport_id_store(struct kobject *kobj,
 	if (down_read_trylock(&scst_local_exit_rwsem) == 0)
 		return -ENOENT;
 
-	scst_sess = container_of(kobj, struct scst_session, sess_kobj);
+	scst_sess = scst_kobj_to_sess(kobj);
 	sess = (struct scst_local_sess *)scst_sess_get_tgt_priv(scst_sess);
 
 	mutex_lock(&sess->tr_id_mutex);
