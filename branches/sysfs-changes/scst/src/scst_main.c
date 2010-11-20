@@ -506,24 +506,24 @@ struct scst_tgt *scst_register_target(struct scst_tgt_template *vtt,
 			SCST_DEFAULT_TGT_NAME_SUFFIX, tgt_num++);
 	}
 
-	if (mutex_lock_interruptible(&scst_mutex) != 0) {
-		rc = -EINTR;
-		goto out_free_tgt;
-	}
-
 #ifdef CONFIG_SCST_PROC
 	rc = scst_build_proc_target_entries(tgt);
 	if (rc < 0)
-		goto out_unlock;
+		goto out_free_tgt;
 #else
 	rc = scst_tgt_sysfs_create(tgt);
 	if (rc < 0)
-		goto out_unlock;
+		goto out_free_tgt;
 
 	tgt->default_acg = scst_alloc_add_acg(tgt, tgt->tgt_name, false);
 	if (tgt->default_acg == NULL)
 		goto out_sysfs_del;
 #endif
+
+	if (mutex_lock_interruptible(&scst_mutex) != 0) {
+		rc = -EINTR;
+		goto out_sysfs_del;
+	}
 
 	mutex_lock(&scst_mutex2);
 	list_add_tail(&tgt->tgt_list_entry, &vtt->tgt_list);
@@ -547,13 +547,9 @@ out:
 
 #ifndef CONFIG_SCST_PROC
 out_sysfs_del:
-	mutex_unlock(&scst_mutex);
 	scst_tgt_sysfs_del(tgt);
 	goto out_free_tgt;
 #endif
-
-out_unlock:
-	mutex_unlock(&scst_mutex);
 
 out_free_tgt:
 	/* In case of error tgt_name will be freed in scst_free_tgt() */

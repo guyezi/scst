@@ -459,7 +459,7 @@ static ssize_t iscsi_tgt_tid_show(struct kobject *kobj,
 
 	TRACE_ENTRY();
 
-	scst_tgt = container_of(kobj, struct scst_tgt, tgt_kobj);
+	scst_tgt = scst_kobj_to_tgt(kobj);
 	tgt = (struct iscsi_target *)scst_tgt_get_tgt_priv(scst_tgt);
 
 	pos = sprintf(buf, "%u\n", tgt->tid);

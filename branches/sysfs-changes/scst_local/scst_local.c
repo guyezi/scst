@@ -399,7 +399,7 @@ static ssize_t scst_local_scsi_transport_version_show(struct kobject *kobj,
 	if (down_read_trylock(&scst_local_exit_rwsem) == 0)
 		goto out;
 
-	scst_tgt = container_of(kobj, struct scst_tgt, tgt_kobj);
+	scst_tgt = scst_kobj_to_tgt(kobj);
 	tgt = scst_tgt_get_tgt_priv(scst_tgt);
 	if (!tgt)
 		goto out_up;
@@ -427,7 +427,7 @@ static ssize_t scst_local_scsi_transport_version_store(struct kobject *kobj,
 	if (down_read_trylock(&scst_local_exit_rwsem) == 0)
 		goto out;
 
-	scst_tgt = container_of(kobj, struct scst_tgt, tgt_kobj);
+	scst_tgt = scst_kobj_to_tgt(kobj);
 	tgt = scst_tgt_get_tgt_priv(scst_tgt);
 	if (!tgt)
 		goto out_up;
@@ -463,7 +463,7 @@ static ssize_t scst_local_phys_transport_version_show(struct kobject *kobj,
 	if (down_read_trylock(&scst_local_exit_rwsem) == 0)
 		goto out;
 
-	scst_tgt = container_of(kobj, struct scst_tgt, tgt_kobj);
+	scst_tgt = scst_kobj_to_tgt(kobj);
 	tgt = scst_tgt_get_tgt_priv(scst_tgt);
 	if (!tgt)
 		goto out_up;
@@ -489,7 +489,7 @@ static ssize_t scst_local_phys_transport_version_store(struct kobject *kobj,
 	if (down_read_trylock(&scst_local_exit_rwsem) == 0)
 		goto out;
 
-	scst_tgt = container_of(kobj, struct scst_tgt, tgt_kobj);
+	scst_tgt = scst_kobj_to_tgt(kobj);
 	tgt = scst_tgt_get_tgt_priv(scst_tgt);
 	if (!tgt)
 		goto out_up;

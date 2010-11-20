@@ -4,6 +4,7 @@
  *  Copyright (C) 2009 Daniel Henrique Debonzi <debonzi@linux.vnet.ibm.com>
  *  Copyright (C) 2009 - 2010 Vladislav Bolkhovitin <vst@vlnb.net>
  *  Copyright (C) 2009 - 2010 ID7 Ltd.
+ *  Copyright (C) 2010 Bart Van Assche <bvanassche@acm.org>
  *
  *  This program is free software; you can redistribute it and/or
  *  modify it under the terms of the GNU General Public License
@@ -171,6 +172,19 @@ static ssize_t scst_acg_cpu_mask_store(struct kobject *kobj,
 static ssize_t scst_acn_file_show(struct kobject *kobj,
 	struct kobj_attribute *attr, char *buf);
 
+/* Locking: caller must hold lock on scst_mutex. */
+static struct scst_tgt_template *__scst_lookup_tgtt(const char *name)
+{
+	struct scst_tgt_template *tt;
+
+	BUG_ON(!name);
+	list_for_each_entry(tt, &scst_template_list, scst_template_list_entry)
+		if (strcmp(tt->name, name) == 0)
+			return tt;
+
+	return NULL;
+}
+
 /**
  * scst_lookup_tgtt() - Look up target template pointer.
  *
@@ -184,21 +198,10 @@ static struct scst_tgt_template *scst_lookup_tgtt(const char *name)
 {
 	struct scst_tgt_template *tt;
 
-	TRACE_ENTRY();
-
 	mutex_lock(&scst_mutex);
-
-	list_for_each_entry(tt, &scst_template_list, scst_template_list_entry)
-		if (strcmp(tt->name, name) == 0)
-			goto out_unlock;
-
-	TRACE_DBG("Tgtt %s not found", name);
-	tt = NULL;
-
-out_unlock:
+	tt = __scst_lookup_tgtt(name);
 	mutex_unlock(&scst_mutex);
 
-	TRACE_EXIT_RES(tt);
 	return tt;
 }
 
@@ -669,23 +672,48 @@ void scst_tgtt_sysfs_del(struct scst_tgt_template *tgtt)
  ** Target directory implementation
  **/
 
-static void scst_tgt_release(struct kobject *kobj)
+/**
+ * struct scst_tgt_kobj - Reference to a struct scst_tgt object.
+ * @kobj: Kernel object where kobj.name == scst_tgt.tgt_name.
+ * @template_name: Target template name: template_name == scst_tgt.tgtt->name.
+ */
+struct scst_tgt_kobj {
+	struct kobject	kobj;
+	char*		template_name;
+};
+
+static struct scst_tgt_kobj *scst_create_tgt_kobj(const char* template_name)
 {
-	struct scst_tgt *tgt;
+	struct scst_tgt_kobj *tgt_kobj;
+
+	tgt_kobj = kzalloc(sizeof(*tgt_kobj), GFP_KERNEL);
+	if (!tgt_kobj)
+		goto out;
+	tgt_kobj->template_name = kstrdup(template_name, GFP_KERNEL);
+	if (!tgt_kobj->template_name)
+		goto out_free;
+out:
+	return tgt_kobj;
+out_free:
+	kfree(tgt_kobj);
+	tgt_kobj = NULL;
+	goto out;
+}
+
+static void scst_release_tgt_kobj(struct kobject *kobj)
+{
+	struct scst_tgt_kobj *tgt_kobj;
 
 	TRACE_ENTRY();
-
-	tgt = container_of(kobj, struct scst_tgt, tgt_kobj);
-	if (tgt->tgt_kobj_release_cmpl)
-		complete_all(tgt->tgt_kobj_release_cmpl);
-
+	tgt_kobj = container_of(kobj, struct scst_tgt_kobj, kobj);
+	kfree(tgt_kobj->template_name);
+	kfree(tgt_kobj);
 	TRACE_EXIT();
-	return;
 }
 
 static struct kobj_type tgt_ktype = {
 	.sysfs_ops = &scst_sysfs_ops,
-	.release = scst_tgt_release,
+	.release = scst_release_tgt_kobj,
 };
 
 static void scst_acg_release(struct kobject *kobj)
@@ -754,6 +782,53 @@ static struct kobj_attribute scst_acg_cpu_mask =
 	       scst_acg_cpu_mask_show,
 	       scst_acg_cpu_mask_store);
 
+/**
+ * scst_lookup_tgt() - Look up target pointer.
+ *
+ * Must be called from inside a tgt sysfs .show() or .store() callback
+ * function only. Since scst_unregister_target() indirectly invokes
+ * kobject_del() on the tgt kernel object, since kobject_del() waits until
+ * all active .show() and .store() callback functions have finished and since
+ * target template objects are only deallocated after all target objects have
+ * been deallocated, no further locking is necessary by the caller.
+ */
+static struct scst_tgt *scst_lookup_tgt(struct scst_tgt_kobj *tgt_kobj)
+{
+	struct scst_tgt_template *tgtt;
+	struct scst_tgt *tgt = NULL;
+
+	TRACE_ENTRY();
+
+	BUG_ON(!tgt_kobj);
+	BUG_ON(!tgt_kobj->template_name);
+	BUG_ON(!tgt_kobj->kobj.name);
+
+	mutex_lock(&scst_mutex);
+
+	tgtt = __scst_lookup_tgtt(tgt_kobj->template_name);
+	if (!tgtt)
+		goto out_unlock;
+
+	list_for_each_entry(tgt, &tgtt->tgt_list, tgt_list_entry)
+		if (strcmp(tgt->tgt_name, tgt_kobj->kobj.name) == 0)
+			goto out_unlock;
+
+	TRACE_DBG("Tgt %s not found", tgt_kobj->kobj.name);
+	tgt = NULL;
+
+out_unlock:
+	mutex_unlock(&scst_mutex);
+
+	TRACE_EXIT_RES(tgt);
+	return tgt;
+}
+
+struct scst_tgt *scst_kobj_to_tgt(struct kobject *kobj)
+{
+	return scst_lookup_tgt(container_of(kobj, struct scst_tgt_kobj, kobj));
+}
+EXPORT_SYMBOL(scst_kobj_to_tgt);
+
 static ssize_t scst_tgt_enable_show(struct kobject *kobj,
 	struct kobj_attribute *attr, char *buf)
 {
@@ -763,12 +838,16 @@ static ssize_t scst_tgt_enable_show(struct kobject *kobj,
 
 	TRACE_ENTRY();
 
-	tgt = container_of(kobj, struct scst_tgt, tgt_kobj);
+	res = -ENOENT;
+	tgt = scst_kobj_to_tgt(kobj);
+	if (!tgt)
+		goto out;
 
 	enabled = tgt->tgtt->is_target_enabled(tgt);
 
 	res = sprintf(buf, "%d\n", enabled ? 1 : 0);
 
+out:
 	TRACE_EXIT_RES(res);
 	return res;
 }
@@ -816,13 +895,12 @@ static ssize_t scst_tgt_enable_store(struct kobject *kobj,
 
 	TRACE_ENTRY();
 
-	if (buf == NULL) {
-		PRINT_ERROR("%s: NULL buffer?", __func__);
-		res = -EINVAL;
-		goto out;
-	}
+	BUG_ON(!buf);
 
-	tgt = container_of(kobj, struct scst_tgt, tgt_kobj);
+	res = -ENOENT;
+	tgt = scst_kobj_to_tgt(kobj);
+	if (!tgt)
+		goto out;
 
 	switch (buf[0]) {
 	case '0':
@@ -851,27 +929,29 @@ static struct kobj_attribute tgt_enable_attr =
 	__ATTR(enabled, S_IRUGO | S_IWUSR,
 	       scst_tgt_enable_show, scst_tgt_enable_store);
 
-/*
- * Supposed to be called under scst_mutex. In case of error will drop,
- * then reacquire it.
- */
 int scst_tgt_sysfs_create(struct scst_tgt *tgt)
 {
 	int res;
+	struct scst_tgt_kobj *tgt_kobj;
 	const struct attribute **pattr;
 
 	TRACE_ENTRY();
 
-	res = kobject_init_and_add(&tgt->tgt_kobj, &tgt_ktype,
+	tgt_kobj = scst_create_tgt_kobj(tgt->tgtt->name);
+	if (!tgt_kobj)
+		goto out_nomem;
+	tgt->tgt_kobj = &tgt_kobj->kobj;
+	res = kobject_init_and_add(tgt->tgt_kobj, &tgt_ktype,
 				   tgt->tgtt->tgtt_kobj, tgt->tgt_name);
 	if (res != 0) {
 		PRINT_ERROR("Can't add tgt %s to sysfs", tgt->tgt_name);
-		goto out;
+		scst_release_tgt_kobj(&tgt_kobj->kobj);
+		goto out_err;
 	}
 
 	if ((tgt->tgtt->enable_target != NULL) &&
 	    (tgt->tgtt->is_target_enabled != NULL)) {
-		res = sysfs_create_file(&tgt->tgt_kobj,
+		res = sysfs_create_file(tgt->tgt_kobj,
 				&tgt_enable_attr.attr);
 		if (res != 0) {
 			PRINT_ERROR("Can't add attr %s to sysfs",
@@ -880,13 +960,13 @@ int scst_tgt_sysfs_create(struct scst_tgt *tgt)
 		}
 	}
 
-	tgt->tgt_sess_kobj = kobject_create_and_add("sessions", &tgt->tgt_kobj);
+	tgt->tgt_sess_kobj = kobject_create_and_add("sessions", tgt->tgt_kobj);
 	if (tgt->tgt_sess_kobj == NULL) {
 		PRINT_ERROR("Can't create sess kobj for tgt %s", tgt->tgt_name);
 		goto out_nomem;
 	}
 
-	tgt->tgt_luns_kobj = kobject_create_and_add("luns", &tgt->tgt_kobj);
+	tgt->tgt_luns_kobj = kobject_create_and_add("luns", tgt->tgt_kobj);
 	if (tgt->tgt_luns_kobj == NULL) {
 		PRINT_ERROR("Can't create luns kobj for tgt %s", tgt->tgt_name);
 		goto out_nomem;
@@ -900,7 +980,7 @@ int scst_tgt_sysfs_create(struct scst_tgt *tgt)
 	}
 
 	tgt->tgt_ini_grp_kobj = kobject_create_and_add("ini_groups",
-					&tgt->tgt_kobj);
+					tgt->tgt_kobj);
 	if (tgt->tgt_ini_grp_kobj == NULL) {
 		PRINT_ERROR("Can't create ini_grp kobj for tgt %s",
 			tgt->tgt_name);
@@ -915,7 +995,7 @@ int scst_tgt_sysfs_create(struct scst_tgt *tgt)
 		goto out_err;
 	}
 
-	res = sysfs_create_file(&tgt->tgt_kobj,
+	res = sysfs_create_file(tgt->tgt_kobj,
 			&scst_rel_tgt_id.attr);
 	if (res != 0) {
 		PRINT_ERROR("Can't add attribute %s for tgt %s",
@@ -923,7 +1003,7 @@ int scst_tgt_sysfs_create(struct scst_tgt *tgt)
 		goto out_err;
 	}
 
-	res = sysfs_create_file(&tgt->tgt_kobj,
+	res = sysfs_create_file(tgt->tgt_kobj,
 			&scst_tgt_addr_method.attr);
 	if (res != 0) {
 		PRINT_ERROR("Can't add attribute %s for tgt %s",
@@ -931,7 +1011,7 @@ int scst_tgt_sysfs_create(struct scst_tgt *tgt)
 		goto out_err;
 	}
 
-	res = sysfs_create_file(&tgt->tgt_kobj,
+	res = sysfs_create_file(tgt->tgt_kobj,
 			&scst_tgt_io_grouping_type.attr);
 	if (res != 0) {
 		PRINT_ERROR("Can't add attribute %s for tgt %s",
@@ -939,7 +1019,7 @@ int scst_tgt_sysfs_create(struct scst_tgt *tgt)
 		goto out_err;
 	}
 
-	res = sysfs_create_file(&tgt->tgt_kobj, &scst_tgt_cpu_mask.attr);
+	res = sysfs_create_file(tgt->tgt_kobj, &scst_tgt_cpu_mask.attr);
 	if (res != 0) {
 		PRINT_ERROR("Can't add attribute %s for tgt %s",
 			scst_tgt_cpu_mask.attr.name, tgt->tgt_name);
@@ -951,7 +1031,7 @@ int scst_tgt_sysfs_create(struct scst_tgt *tgt)
 		while (*pattr != NULL) {
 			TRACE_DBG("Creating attr %s for tgt %s", (*pattr)->name,
 				tgt->tgt_name);
-			res = sysfs_create_file(&tgt->tgt_kobj, *pattr);
+			res = sysfs_create_file(tgt->tgt_kobj, *pattr);
 			if (res != 0) {
 				PRINT_ERROR("Can't add tgt attr %s for tgt %s",
 					(*pattr)->name, tgt->tgt_name);
@@ -969,9 +1049,7 @@ out_nomem:
 	res = -ENOMEM;
 
 out_err:
-	mutex_unlock(&scst_mutex);
 	scst_tgt_sysfs_del(tgt);
-	mutex_lock(&scst_mutex);
 	goto out;
 }
 
@@ -982,12 +1060,7 @@ out_err:
  */
 void scst_tgt_sysfs_del(struct scst_tgt *tgt)
 {
-	int rc;
-	DECLARE_COMPLETION_ONSTACK(c);
-
 	TRACE_ENTRY();
-
-	tgt->tgt_kobj_release_cmpl = &c;
 
 	kobject_del(tgt->tgt_sess_kobj);
 	kobject_put(tgt->tgt_sess_kobj);
@@ -998,18 +1071,8 @@ void scst_tgt_sysfs_del(struct scst_tgt *tgt)
 	kobject_del(tgt->tgt_ini_grp_kobj);
 	kobject_put(tgt->tgt_ini_grp_kobj);
 
-	kobject_del(&tgt->tgt_kobj);
-	kobject_put(&tgt->tgt_kobj);
-
-	rc = wait_for_completion_timeout(tgt->tgt_kobj_release_cmpl, HZ);
-	if (rc == 0) {
-		PRINT_INFO("Waiting for releasing sysfs entry "
-			"for target %s (%d refs)...", tgt->tgt_name,
-			atomic_read(&tgt->tgt_kobj.kref.refcount));
-		wait_for_completion(tgt->tgt_kobj_release_cmpl);
-		PRINT_INFO("Done waiting for releasing sysfs "
-			"entry for target %s", tgt->tgt_name);
-	}
+	kobject_del(tgt->tgt_kobj);
+	kobject_put(tgt->tgt_kobj);
 
 	TRACE_EXIT();
 	return;
@@ -2569,7 +2632,11 @@ static ssize_t scst_luns_mgmt_store(struct kobject *kobj,
 	struct scst_tgt *tgt;
 	char *buffer;
 
-	tgt = container_of(kobj->parent, struct scst_tgt, tgt_kobj);
+	res = -ENOENT;
+	tgt = scst_kobj_to_tgt(kobj->parent);
+	if (!tgt)
+		goto out;
+
 	acg = tgt->default_acg;
 
 	res = -ENOMEM;
@@ -2639,7 +2706,10 @@ static ssize_t scst_tgt_addr_method_show(struct kobject *kobj,
 	struct scst_acg *acg;
 	struct scst_tgt *tgt;
 
-	tgt = container_of(kobj, struct scst_tgt, tgt_kobj);
+	tgt = scst_kobj_to_tgt(kobj);
+	if (!tgt)
+		return -ENOENT;
+
 	acg = tgt->default_acg;
 
 	return __scst_acg_addr_method_show(acg, buf);
@@ -2652,11 +2722,16 @@ static ssize_t scst_tgt_addr_method_store(struct kobject *kobj,
 	struct scst_acg *acg;
 	struct scst_tgt *tgt;
 
-	tgt = container_of(kobj, struct scst_tgt, tgt_kobj);
+	res = -ENOENT;
+	tgt = scst_kobj_to_tgt(kobj);
+	if (!tgt)
+		goto out;
+
 	acg = tgt->default_acg;
 
 	res = __scst_acg_addr_method_store(acg, buf, count);
 
+out:
 	TRACE_EXIT_RES(res);
 	return res;
 }
@@ -2773,7 +2848,10 @@ static ssize_t scst_tgt_io_grouping_type_show(struct kobject *kobj,
 	struct scst_acg *acg;
 	struct scst_tgt *tgt;
 
-	tgt = container_of(kobj, struct scst_tgt, tgt_kobj);
+	tgt = scst_kobj_to_tgt(kobj);
+	if (!tgt)
+		return -ENOENT;
+
 	acg = tgt->default_acg;
 
 	return __scst_acg_io_grouping_type_show(acg, buf);
@@ -2786,15 +2864,16 @@ static ssize_t scst_tgt_io_grouping_type_store(struct kobject *kobj,
 	struct scst_acg *acg;
 	struct scst_tgt *tgt;
 
-	tgt = container_of(kobj, struct scst_tgt, tgt_kobj);
+	res = -ENOENT;
+	tgt = scst_kobj_to_tgt(kobj);
+	if (!tgt)
+		goto out;
+
 	acg = tgt->default_acg;
 
 	res = __scst_acg_io_grouping_type_store(acg, buf, count);
-	if (res != 0)
-		goto out;
-
-	res = count;
-
+	if (res == 0)
+		res = count;
 out:
 	TRACE_EXIT_RES(res);
 	return res;
@@ -2927,7 +3006,10 @@ static ssize_t scst_tgt_cpu_mask_show(struct kobject *kobj,
 	struct scst_acg *acg;
 	struct scst_tgt *tgt;
 
-	tgt = container_of(kobj, struct scst_tgt, tgt_kobj);
+	tgt = scst_kobj_to_tgt(kobj);
+	if (!tgt)
+		return -ENOENT;
+
 	acg = tgt->default_acg;
 
 	return __scst_acg_cpu_mask_show(acg, buf);
@@ -2940,7 +3022,11 @@ static ssize_t scst_tgt_cpu_mask_store(struct kobject *kobj,
 	struct scst_acg *acg;
 	struct scst_tgt *tgt;
 
-	tgt = container_of(kobj, struct scst_tgt, tgt_kobj);
+	res = -ENOENT;
+	tgt = scst_kobj_to_tgt(kobj);
+	if (!tgt)
+		goto out;
+
 	acg = tgt->default_acg;
 
 	res = __scst_acg_cpu_mask_store(acg, buf, count);
@@ -3275,7 +3361,10 @@ static ssize_t scst_ini_group_mgmt_store(struct kobject *kobj,
 
 	TRACE_ENTRY();
 
-	tgt = container_of(kobj->parent, struct scst_tgt, tgt_kobj);
+	res = -ENOENT;
+	tgt = scst_kobj_to_tgt(kobj->parent);
+	if (!tgt)
+		goto out;
 
 	res = -ENOMEM;
 	buffer = zero_terminate(buf, count);
@@ -3300,11 +3389,14 @@ static ssize_t scst_rel_tgt_id_show(struct kobject *kobj,
 
 	TRACE_ENTRY();
 
-	tgt = container_of(kobj, struct scst_tgt, tgt_kobj);
+	res = -ENOENT;
+	tgt = scst_kobj_to_tgt(kobj);
+	if (!tgt)
+		goto out;
 
 	res = sprintf(buf, "%d\n%s", tgt->rel_tgt_id,
 		(tgt->rel_tgt_id != 0) ? SCST_SYSFS_KEY_MARK "\n" : "");
-
+out:
 	TRACE_EXIT_RES(res);
 	return res;
 }
@@ -3360,7 +3452,10 @@ static ssize_t scst_rel_tgt_id_store(struct kobject *kobj,
 
 	BUG_ON(!buf);
 
-	tgt = container_of(kobj, struct scst_tgt, tgt_kobj);
+	res = -ENOENT;
+	tgt = scst_kobj_to_tgt(kobj);
+	if (!tgt)
+		goto out;
 
 	res = strict_strtoul(buf, 0, &rel_tgt_id);
 	if (res != 0) {

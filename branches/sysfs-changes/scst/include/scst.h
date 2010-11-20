@@ -4,6 +4,7 @@
  *  Copyright (C) 2004 - 2010 Vladislav Bolkhovitin <vst@vlnb.net>
  *  Copyright (C) 2004 - 2005 Leonid Stoljar
  *  Copyright (C) 2007 - 2010 ID7 Ltd.
+ *  Copyright (C) 2010 Bart Van Assche <bvanassche@acm.org>
  *
  *  Main SCSI target mid-level include file.
  *
@@ -1481,10 +1482,7 @@ struct scst_tgt {
 	/* Name of the default security group ("Default_target_name") */
 	char *default_group_name;
 #else
-	/* sysfs release completion */
-	struct completion *tgt_kobj_release_cmpl;
-
-	struct kobject tgt_kobj; /* main targets/target kobject */
+	struct kobject *tgt_kobj; /* main targets/target kobject */
 	struct kobject *tgt_sess_kobj; /* target/sessions/ */
 	struct kobject *tgt_luns_kobj; /* target/luns/ */
 	struct kobject *tgt_ini_grp_kobj; /* target/ini_groups/ */
@@ -3773,8 +3771,18 @@ static inline struct kobject *scst_sysfs_get_tgtt_kobj(
 static inline struct kobject *scst_sysfs_get_tgt_kobj(
 	struct scst_tgt *tgt)
 {
-	return &tgt->tgt_kobj;
+	return tgt->tgt_kobj;
 }
+
+/**
+ * scst_kobj_to_tgt() - Converse of scst_sysfs_get_tgt_kobj().
+ *
+ * Given the tgt->tgt_kobj pointer, look up the tgt pointer.
+ *
+ * Note: this function is only safe when called from inside a sysfs
+ * .show() or .store() callback function.
+ */
+struct scst_tgt *scst_kobj_to_tgt(struct kobject *kobj);
 
 /*
  * Returns device handler's root sysfs kobject.
