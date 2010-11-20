@@ -281,8 +281,22 @@ out:
 	return res;
 }
 
+static struct scst_dev_type *__scst_lookup_devt(const char *name)
+{
+	struct scst_dev_type *dt;
+
+	list_for_each_entry(dt, &scst_virtual_dev_type_list,
+			    dev_type_list_entry)
+		if (strcmp(dt->name, name) == 0)
+			return dt;
+
+	TRACE_DBG("Devt %s not found", name);
+
+	return NULL;
+}
+
 /**
- * scst_lookup_devt() - Look up device handler pointer.
+ * scst_lookup_devt() - Look up virtual device handler pointer.
  *
  * Must be called from inside a devt sysfs .show() or .store() callback
  * function only. Since scst_unregister_dev_driver() indirectly invokes
@@ -297,15 +311,7 @@ static struct scst_dev_type *scst_lookup_devt(const char *name)
 	TRACE_ENTRY();
 
 	mutex_lock(&scst_mutex);
-
-	list_for_each_entry(dt, &scst_virtual_dev_type_list, dev_type_list_entry)
-		if (strcmp(dt->name, name) == 0)
-			goto out_unlock;
-
-	TRACE_DBG("Devt %s not found", name);
-	dt = NULL;
-
-out_unlock:
+	dt = __scst_lookup_devt(name);
 	mutex_unlock(&scst_mutex);
 
 	TRACE_EXIT_RES(dt);
@@ -1085,6 +1091,19 @@ void scst_tgt_sysfs_del(struct scst_tgt *tgt)
  ** Devices directory implementation
  **/
 
+struct scst_device *__scst_lookup_dev(const char *name)
+{
+	struct scst_device *dev;
+
+	list_for_each_entry(dev, &scst_dev_list, dev_list_entry)
+		if (strcmp(dev->virt_name, name) == 0)
+			return dev;
+
+	TRACE_DBG("Dev %s not found", name);
+
+	return NULL;
+}
+
 /**
  * scst_kobj_to_dev() - Look up virtual device pointer.
  *
@@ -1098,21 +1117,10 @@ struct scst_device *scst_kobj_to_dev(struct kobject *kobj)
 {
 	struct scst_device *dev;
 
-	TRACE_ENTRY();
-
 	mutex_lock(&scst_mutex);
-
-	list_for_each_entry(dev, &scst_dev_list, dev_list_entry)
-		if (strcmp(dev->virt_name, kobject_name(kobj)) == 0)
-			goto out_unlock;
-
-	TRACE_DBG("Dev %s not found", kobject_name(kobj));
-	dev = NULL;
-
-out_unlock:
+	dev = __scst_lookup_dev(kobject_name(kobj));
 	mutex_unlock(&scst_mutex);
 
-	TRACE_EXIT_RES(dev);
 	return dev;
 }
 EXPORT_SYMBOL(scst_kobj_to_dev);
@@ -1575,6 +1583,91 @@ void scst_dev_sysfs_del(struct scst_device *dev)
  ** Tgt_dev's directory implementation
  **/
 
+struct scst_tgt_dev_kobj {
+	struct kobject	 kobj;
+	char		*device_name;
+	uint64_t	 lun;
+};
+
+static struct scst_tgt_dev_kobj *
+scst_create_tgt_dev_kobj(const char* device_name, uint64_t lun)
+{
+	struct scst_tgt_dev_kobj *tgt_dev_kobj;
+
+	tgt_dev_kobj = kzalloc(sizeof(*tgt_dev_kobj), GFP_KERNEL);
+	if (!tgt_dev_kobj)
+		goto out;
+	tgt_dev_kobj->device_name = kstrdup(device_name, GFP_KERNEL);
+	if (!tgt_dev_kobj->device_name)
+		goto out_free;
+	tgt_dev_kobj->lun = lun;
+out:
+	return tgt_dev_kobj;
+out_free:
+	kfree(tgt_dev_kobj);
+	tgt_dev_kobj = NULL;
+	goto out;
+}
+
+static void scst_sysfs_tgt_dev_release(struct kobject *kobj)
+{
+	struct scst_tgt_dev_kobj *tgt_dev_kobj;
+
+	tgt_dev_kobj = container_of(kobj, struct scst_tgt_dev_kobj, kobj);
+
+	TRACE_ENTRY();
+	kfree(tgt_dev_kobj->device_name);
+	kfree(tgt_dev_kobj);
+	TRACE_EXIT();
+}
+
+static struct scst_tgt_dev *__scst_lookup_tgt_dev(struct scst_device *dev,
+						  uint64_t lun)
+{
+	struct scst_tgt_dev *tgt_dev;
+
+	list_for_each_entry(tgt_dev, &dev->dev_tgt_dev_list,
+			    dev_tgt_dev_list_entry)
+		if (tgt_dev->lun == lun)
+			return tgt_dev;
+
+	TRACE_DBG("Target device with LUN %lld not found", lun);
+
+	return NULL;
+}
+
+/**
+ * scst_kobj_to_tgt_dev() - Look up target device pointer.
+ *
+ * Must be called from inside a dev sysfs .show() or .store() callback
+ * function only. Since scst_acg_del_lun() indirectly invokes kobject_del()
+ * on the dev kernel object and since kobject_del() waits until all active
+ * .show() and .store() callback functions have finished, no further
+ * locking is necessary by the caller.
+ */
+struct scst_tgt_dev *scst_kobj_to_tgt_dev(struct kobject *kobj)
+{
+	struct scst_tgt_dev_kobj *tgt_dev_kobj;
+	struct scst_device *dev;
+	struct scst_tgt_dev *tgt_dev = NULL;
+
+	tgt_dev_kobj = container_of(kobj, struct scst_tgt_dev_kobj, kobj);
+
+	mutex_lock(&scst_mutex);
+
+	dev = __scst_lookup_dev(tgt_dev_kobj->device_name);
+	if (!dev)
+		goto out_unlock;
+
+	tgt_dev = __scst_lookup_tgt_dev(dev, tgt_dev_kobj->lun);
+
+out_unlock:
+	mutex_unlock(&scst_mutex);
+
+	return tgt_dev;
+}
+EXPORT_SYMBOL(scst_kobj_to_tgt_dev);
+
 #ifdef CONFIG_SCST_MEASURE_LATENCY
 
 static char *scst_io_size_names[] = {
@@ -1594,7 +1687,7 @@ static ssize_t scst_tgt_dev_latency_show(struct kobject *kobj,
 
 	TRACE_ENTRY();
 
-	tgt_dev = container_of(kobj, struct scst_tgt_dev, tgt_dev_kobj);
+	tgt_dev = scst_kobj_to_tgt_dev(kobj);
 
 	for (i = 0; i < SCST_LATENCY_STATS_NUM; i++) {
 		uint64_t scst_time_wr, tgt_time_wr, dev_time_wr;
@@ -1696,7 +1789,7 @@ static ssize_t scst_tgt_dev_active_commands_show(struct kobject *kobj,
 	int pos = 0;
 	struct scst_tgt_dev *tgt_dev;
 
-	tgt_dev = container_of(kobj, struct scst_tgt_dev, tgt_dev_kobj);
+	tgt_dev = scst_kobj_to_tgt_dev(kobj);
 
 	pos = sprintf(buf, "%d\n", atomic_read(&tgt_dev->tgt_dev_cmd_count));
 
@@ -1715,20 +1808,6 @@ static struct attribute *scst_tgt_dev_attrs[] = {
 	NULL,
 };
 
-static void scst_sysfs_tgt_dev_release(struct kobject *kobj)
-{
-	struct scst_tgt_dev *tgt_dev;
-
-	TRACE_ENTRY();
-
-	tgt_dev = container_of(kobj, struct scst_tgt_dev, tgt_dev_kobj);
-	if (tgt_dev->tgt_dev_kobj_release_cmpl)
-		complete_all(tgt_dev->tgt_dev_kobj_release_cmpl);
-
-	TRACE_EXIT();
-	return;
-}
-
 static struct kobj_type scst_tgt_dev_ktype = {
 	.sysfs_ops = &scst_sysfs_ops,
 	.release = scst_sysfs_tgt_dev_release,
@@ -1737,54 +1816,45 @@ static struct kobj_type scst_tgt_dev_ktype = {
 
 int scst_tgt_dev_sysfs_create(struct scst_tgt_dev *tgt_dev)
 {
+	struct scst_tgt_dev_kobj *tgt_dev_kobj;
 	int res = 0;
 
 	TRACE_ENTRY();
 
-	res = kobject_init_and_add(&tgt_dev->tgt_dev_kobj, &scst_tgt_dev_ktype,
+	tgt_dev_kobj = scst_create_tgt_dev_kobj(tgt_dev->dev->virt_name,
+						tgt_dev->lun);
+	if (!tgt_dev_kobj) {
+		res = -ENOMEM;
+		goto out_err;
+	}
+	tgt_dev->tgt_dev_kobj = &tgt_dev_kobj->kobj;
+	tgt_dev_kobj = NULL;
+
+	res = kobject_init_and_add(tgt_dev->tgt_dev_kobj, &scst_tgt_dev_ktype,
 			      tgt_dev->sess->sess_kobj, "lun%lld",
 			      (unsigned long long)tgt_dev->lun);
 	if (res != 0) {
 		PRINT_ERROR("Can't add tgt_dev %lld to sysfs",
 			(unsigned long long)tgt_dev->lun);
-		goto out;
+		goto out_err;
 	}
 
 out:
 	TRACE_EXIT_RES(res);
 	return res;
+out_err:
+	if (tgt_dev_kobj)
+		scst_sysfs_tgt_dev_release(&tgt_dev_kobj->kobj);
+	goto out;
 }
 
-/*
- * Called with scst_mutex held.
- *
- * !! No sysfs works must use kobject_get() to protect tgt_dev, due to possible
- * !! deadlock with scst_mutex (it is waiting for the last put, but
- * !! the last ref counter holder is waiting for scst_mutex)
- */
 void scst_tgt_dev_sysfs_del(struct scst_tgt_dev *tgt_dev)
 {
-	int rc;
-	DECLARE_COMPLETION_ONSTACK(c);
-
 	TRACE_ENTRY();
 
-	tgt_dev->tgt_dev_kobj_release_cmpl = &c;
-
-	kobject_del(&tgt_dev->tgt_dev_kobj);
-	kobject_put(&tgt_dev->tgt_dev_kobj);
-
-	rc = wait_for_completion_timeout(
-			tgt_dev->tgt_dev_kobj_release_cmpl, HZ);
-	if (rc == 0) {
-		PRINT_INFO("Waiting for releasing sysfs entry "
-			"for tgt_dev %lld (%d refs)...",
-			(unsigned long long)tgt_dev->lun,
-			atomic_read(&tgt_dev->tgt_dev_kobj.kref.refcount));
-		wait_for_completion(tgt_dev->tgt_dev_kobj_release_cmpl);
-		PRINT_INFO("Done waiting for releasing sysfs entry for "
-			"tgt_dev %lld", (unsigned long long)tgt_dev->lun);
-	}
+	kobject_del(tgt_dev->tgt_dev_kobj);
+	kobject_put(tgt_dev->tgt_dev_kobj);
+	tgt_dev->tgt_dev_kobj = NULL;
 
 	TRACE_EXIT();
 	return;
