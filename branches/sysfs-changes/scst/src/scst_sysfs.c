@@ -678,8 +678,8 @@ void scst_tgtt_sysfs_del(struct scst_tgt_template *tgtt)
  * @template_name: Target template name: template_name == scst_tgt.tgtt->name.
  */
 struct scst_tgt_kobj {
-	struct kobject	kobj;
-	char*		template_name;
+	struct kobject	 kobj;
+	char		*template_name;
 };
 
 static struct scst_tgt_kobj *scst_create_tgt_kobj(const char* template_name)
@@ -1997,7 +1997,6 @@ static ssize_t scst_sess_latency_store(struct kobject *kobj,
 	if (res == 0)
 		res = count;
 
-out:
 	TRACE_EXIT_RES(res);
 	return res;
 }
@@ -2971,12 +2970,18 @@ static ssize_t __scst_acg_cpu_mask_store(struct scst_acg *acg,
 	const char *buf, size_t count)
 {
 	int res;
-	cpumask_var_t cpu_mask;
+	cpumask_t *cpu_mask;
 
 	/* cpumask might be too big for stack */
 	res = -ENOMEM;
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 28)
 	if (!alloc_cpumask_var(&cpu_mask, GFP_KERNEL))
 		goto out;
+#else
+	cpu_mask = kmalloc(sizeof(*cpu_mask), GFP_KERNEL);
+	if (!cpu_mask)
+		goto out;
+#endif
 
 	/*
 	 * We can't use cpumask_parse_user() here, because it expects
@@ -2995,7 +3000,11 @@ static ssize_t __scst_acg_cpu_mask_store(struct scst_acg *acg,
 	res = __scst_acg_process_cpu_mask_store(acg->tgt, acg, cpu_mask);
 
 out_free:
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 28)
 	free_cpumask_var(cpu_mask);
+#else
+	kfree(cpu_mask);
+#endif
 out:
 	return res;
 }

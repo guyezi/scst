@@ -4275,6 +4275,7 @@ static ssize_t vdev_sysfs_filename_show(struct kobject *kobj,
 
 	dev = container_of(kobj, struct scst_device, dev_kobj);
 
+	filename = NULL;
 	res = vdev_sysfs_process_get_filename(dev, &filename);
 	if (res)
 		goto out;

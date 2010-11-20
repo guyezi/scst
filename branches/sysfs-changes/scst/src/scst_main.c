@@ -545,10 +545,11 @@ out:
 	TRACE_EXIT();
 	return tgt;
 
-#ifndef CONFIG_SCST_PROC
 out_sysfs_del:
+#ifndef CONFIG_SCST_PROC
 	scst_tgt_sysfs_del(tgt);
-	goto out_free_tgt;
+#else
+	scst_cleanup_proc_target_entries(tgt);
 #endif
 
 out_free_tgt:
