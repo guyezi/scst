@@ -1681,13 +1681,15 @@ static char *scst_io_size_names[] = {
 static ssize_t scst_tgt_dev_latency_show(struct kobject *kobj,
 	struct kobj_attribute *attr, char *buffer)
 {
-	int res = 0, i;
+	int res = -ENOENT, i;
 	char buf[50];
 	struct scst_tgt_dev *tgt_dev;
 
 	TRACE_ENTRY();
 
 	tgt_dev = scst_kobj_to_tgt_dev(kobj);
+	if (!tgt_dev)
+		goto out;
 
 	for (i = 0; i < SCST_LATENCY_STATS_NUM; i++) {
 		uint64_t scst_time_wr, tgt_time_wr, dev_time_wr;
@@ -1773,6 +1775,7 @@ static ssize_t scst_tgt_dev_latency_show(struct kobject *kobj,
 			"%-47s\n", buf);
 	}
 
+out:
 	TRACE_EXIT_RES(res);
 	return res;
 }
@@ -1790,6 +1793,8 @@ static ssize_t scst_tgt_dev_active_commands_show(struct kobject *kobj,
 	struct scst_tgt_dev *tgt_dev;
 
 	tgt_dev = scst_kobj_to_tgt_dev(kobj);
+	if (!tgt_dev)
+		return -ENOENT;
 
 	pos = sprintf(buf, "%d\n", atomic_read(&tgt_dev->tgt_dev_cmd_count));
 
@@ -3953,16 +3958,9 @@ static struct attribute *sgv_attrs[] = {
 
 static void sgv_kobj_release(struct kobject *kobj)
 {
-	struct sgv_pool *pool;
-
 	TRACE_ENTRY();
-
-	pool = container_of(kobj, struct sgv_pool, sgv_kobj);
-	if (pool->sgv_kobj_release_cmpl != NULL)
-		complete_all(pool->sgv_kobj_release_cmpl);
-
+	kfree(kobj);
 	TRACE_EXIT();
-	return;
 }
 
 static struct kobj_type sgv_pool_ktype = {
@@ -3991,28 +3989,12 @@ out:
 
 void scst_sgv_sysfs_del(struct sgv_pool *pool)
 {
-	int rc;
-	DECLARE_COMPLETION_ONSTACK(c);
-
 	TRACE_ENTRY();
-
-	pool->sgv_kobj_release_cmpl = &c;
 
 	kobject_del(&pool->sgv_kobj);
 	kobject_put(&pool->sgv_kobj);
 
-	rc = wait_for_completion_timeout(pool->sgv_kobj_release_cmpl, HZ);
-	if (rc == 0) {
-		PRINT_INFO("Waiting for releasing sysfs entry "
-			"for SGV pool %s (%d refs)...", pool->name,
-			atomic_read(&pool->sgv_kobj.kref.refcount));
-		wait_for_completion(pool->sgv_kobj_release_cmpl);
-		PRINT_INFO("Done waiting for releasing sysfs "
-			"entry for SGV pool %s", pool->name);
-	}
-
 	TRACE_EXIT();
-	return;
 }
 
 static struct kobj_attribute sgv_global_stat_attr =
