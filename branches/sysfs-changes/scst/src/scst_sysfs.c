@@ -782,6 +782,20 @@ static struct kobj_attribute scst_acg_cpu_mask =
 	       scst_acg_cpu_mask_show,
 	       scst_acg_cpu_mask_store);
 
+struct scst_tgt *__scst_lookup_tgt(struct scst_tgt_template *tgtt,
+				   const char *target_name)
+{
+	struct scst_tgt *tgt;
+
+	list_for_each_entry(tgt, &tgtt->tgt_list, tgt_list_entry)
+		if (strcmp(tgt->tgt_name, target_name) == 0)
+			return tgt;
+
+	TRACE_DBG("Tgt %s not found", target_name);
+
+	return NULL;
+}
+
 /**
  * scst_kobj_to_tgt() - Look up target pointer.
  *
@@ -794,17 +808,13 @@ static struct kobj_attribute scst_acg_cpu_mask =
  */
 struct scst_tgt *scst_kobj_to_tgt(struct kobject *kobj)
 {
+	struct scst_tgt_kobj *tgt_kobj;
 	struct scst_tgt_template *tgtt;
 	struct scst_tgt *tgt = NULL;
-	struct scst_tgt_kobj *tgt_kobj;
 
 	TRACE_ENTRY();
 
 	tgt_kobj = container_of(kobj, struct scst_tgt_kobj, kobj);
-
-	BUG_ON(!tgt_kobj);
-	BUG_ON(!tgt_kobj->template_name);
-	BUG_ON(!tgt_kobj->kobj.name);
 
 	mutex_lock(&scst_mutex);
 
@@ -812,12 +822,7 @@ struct scst_tgt *scst_kobj_to_tgt(struct kobject *kobj)
 	if (!tgtt)
 		goto out_unlock;
 
-	list_for_each_entry(tgt, &tgtt->tgt_list, tgt_list_entry)
-		if (strcmp(tgt->tgt_name, tgt_kobj->kobj.name) == 0)
-			goto out_unlock;
-
-	TRACE_DBG("Tgt %s not found", tgt_kobj->kobj.name);
-	tgt = NULL;
+	tgt = __scst_lookup_tgt(tgtt, tgt_kobj->kobj.name);
 
 out_unlock:
 	mutex_unlock(&scst_mutex);
@@ -1740,7 +1745,7 @@ int scst_tgt_dev_sysfs_create(struct scst_tgt_dev *tgt_dev)
 	TRACE_ENTRY();
 
 	res = kobject_init_and_add(&tgt_dev->tgt_dev_kobj, &scst_tgt_dev_ktype,
-			      &tgt_dev->sess->sess_kobj, "lun%lld",
+			      tgt_dev->sess->sess_kobj, "lun%lld",
 			      (unsigned long long)tgt_dev->lun);
 	if (res != 0) {
 		PRINT_ERROR("Can't add tgt_dev %lld to sysfs",
@@ -1791,6 +1796,81 @@ void scst_tgt_dev_sysfs_del(struct scst_tgt_dev *tgt_dev)
 /**
  ** Sessions subdirectory implementation
  **/
+
+struct scst_sess_kobj {
+	struct kobject	 kobj;
+	char		*template_name;
+	char		*target_name;
+};
+
+static struct scst_sess_kobj *scst_create_sess_kobj(const char* template_name,
+						    const char* target_name)
+{
+	struct scst_sess_kobj *sess_kobj;
+
+	sess_kobj = kzalloc(sizeof(*sess_kobj), GFP_KERNEL);
+	if (!sess_kobj)
+		goto out;
+	sess_kobj->template_name = kstrdup(template_name, GFP_KERNEL);
+	if (!sess_kobj->template_name)
+		goto out_free;
+	sess_kobj->target_name = kstrdup(target_name, GFP_KERNEL);
+	if (!sess_kobj->target_name)
+		goto out_free;
+out:
+	return sess_kobj;
+out_free:
+	kfree(sess_kobj->template_name);
+	kfree(sess_kobj);
+	sess_kobj = NULL;
+	goto out;
+}
+
+static void scst_release_sess_kobj(struct kobject *kobj)
+{
+	struct scst_sess_kobj *sess_kobj;
+
+	TRACE_ENTRY();
+	sess_kobj = container_of(kobj, struct scst_sess_kobj, kobj);
+	kfree(sess_kobj->target_name);
+	kfree(sess_kobj->template_name);
+	kfree(sess_kobj);
+	TRACE_EXIT();
+	return;
+}
+
+struct scst_session *scst_kobj_to_sess(struct kobject *kobj)
+{
+	struct scst_sess_kobj *sess_kobj;
+	struct scst_tgt_template *tgtt;
+	struct scst_tgt *tgt;
+	struct scst_session *s = NULL;
+
+	sess_kobj = container_of(kobj, struct scst_sess_kobj, kobj);
+
+	mutex_lock(&scst_mutex);
+
+	tgtt = __scst_lookup_tgtt(sess_kobj->template_name);
+	if (!tgtt)
+		goto out_unlock;
+
+	tgt = __scst_lookup_tgt(tgtt, sess_kobj->target_name);
+	if (!tgt)
+		goto out_unlock;
+
+	list_for_each_entry(s, &tgt->sess_list, sess_list_entry)
+		if (strcmp(s->initiator_name, kobj->name) == 0)
+			goto out_unlock;
+
+	TRACE_DBG("Session %s not found", kobj->name);
+
+	s = NULL;
+
+out_unlock:
+	mutex_unlock(&scst_mutex);
+	return s;
+}
+EXPORT_SYMBOL(scst_kobj_to_sess);
 
 #ifdef CONFIG_SCST_MEASURE_LATENCY
 
@@ -2104,23 +2184,9 @@ static struct attribute *scst_session_attrs[] = {
 	NULL,
 };
 
-static void scst_sysfs_session_release(struct kobject *kobj)
-{
-	struct scst_session *sess;
-
-	TRACE_ENTRY();
-
-	sess = scst_kobj_to_sess(kobj);
-	if (sess->sess_kobj_release_cmpl)
-		complete_all(sess->sess_kobj_release_cmpl);
-
-	TRACE_EXIT();
-	return;
-}
-
 static struct kobj_type scst_session_ktype = {
 	.sysfs_ops = &scst_sysfs_ops,
-	.release = scst_sysfs_session_release,
+	.release = scst_release_sess_kobj,
 	.default_attrs = scst_session_attrs,
 };
 
@@ -2134,10 +2200,10 @@ static int scst_create_sess_luns_link(struct scst_session *sess)
 	 */
 
 	if (sess->acg == sess->tgt->default_acg)
-		res = sysfs_create_link(&sess->sess_kobj,
+		res = sysfs_create_link(sess->sess_kobj,
 				sess->tgt->tgt_luns_kobj, "luns");
 	else
-		res = sysfs_create_link(&sess->sess_kobj,
+		res = sysfs_create_link(sess->sess_kobj,
 				sess->acg->luns_kobj, "luns");
 
 	if (res != 0)
@@ -2149,7 +2215,7 @@ static int scst_create_sess_luns_link(struct scst_session *sess)
 
 int scst_recreate_sess_luns_link(struct scst_session *sess)
 {
-	sysfs_remove_link(&sess->sess_kobj, "luns");
+	sysfs_remove_link(sess->sess_kobj, "luns");
 	return scst_create_sess_luns_link(sess);
 }
 
@@ -2157,57 +2223,33 @@ int scst_recreate_sess_luns_link(struct scst_session *sess)
 int scst_sess_sysfs_create(struct scst_session *sess)
 {
 	int res = 0;
-	struct scst_session *s;
 	const struct attribute **pattr;
 	char *name = (char *)sess->initiator_name;
-	int len = strlen(name) + 1, n = 1;
+	struct scst_sess_kobj *sess_kobj;
 
 	TRACE_ENTRY();
 
-restart:
-	list_for_each_entry(s, &sess->tgt->sess_list, sess_list_entry) {
-		if (!s->sess_kobj_ready)
-			continue;
-
-		if (strcmp(name, kobject_name(&s->sess_kobj)) == 0) {
-			if (s == sess)
-				continue;
-
-			TRACE_DBG("Duplicated session from the same initiator "
-				"%s found", name);
-
-			if (name == sess->initiator_name) {
-				len = strlen(sess->initiator_name);
-				len += 20;
-				name = kmalloc(len, GFP_KERNEL);
-				if (name == NULL) {
-					PRINT_ERROR("Unable to allocate a "
-						"replacement name (size %d)",
-						len);
-				}
-			}
-
-			snprintf(name, len, "%s_%d", sess->initiator_name, n);
-			n++;
-			goto restart;
-		}
-	}
-
 	TRACE_DBG("Adding session %s to sysfs", name);
 
-	res = kobject_init_and_add(&sess->sess_kobj, &scst_session_ktype,
-			      sess->tgt->tgt_sess_kobj, name);
+	sess_kobj = scst_create_sess_kobj(sess->tgt->tgtt->name,
+					  sess->tgt->tgt_name);
+	if (!sess_kobj) {
+		res = -ENOMEM;
+		goto out_free;
+	}
+
+	sess->sess_kobj = &sess_kobj->kobj;
+	res = kobject_init_and_add(sess->sess_kobj, &scst_session_ktype,
+				   sess->tgt->tgt_sess_kobj, name);
 	if (res != 0) {
 		PRINT_ERROR("Can't add session %s to sysfs", name);
 		goto out_free;
 	}
 
-	sess->sess_kobj_ready = 1;
-
 	pattr = sess->tgt->tgtt->sess_attrs;
 	if (pattr != NULL) {
 		while (*pattr != NULL) {
-			res = sysfs_create_file(&sess->sess_kobj, *pattr);
+			res = sysfs_create_file(sess->sess_kobj, *pattr);
 			if (res != 0) {
 				PRINT_ERROR("Can't add sess attr %s for sess "
 					"for initiator %s", (*pattr)->name,
@@ -2219,13 +2261,17 @@ restart:
 	}
 
 	res = scst_create_sess_luns_link(sess);
+	if (res)
+		goto out_free;
 
-out_free:
-	if (name != sess->initiator_name)
-		kfree(name);
-
+out:
 	TRACE_EXIT_RES(res);
 	return res;
+out_free:
+	if (sess_kobj)
+		scst_release_sess_kobj(&sess_kobj->kobj);
+	scst_sess_sysfs_del(sess);
+	goto out;
 }
 
 /*
@@ -2235,33 +2281,15 @@ out_free:
  */
 void scst_sess_sysfs_del(struct scst_session *sess)
 {
-	int rc;
-	DECLARE_COMPLETION_ONSTACK(c);
-
 	TRACE_ENTRY();
 
-	if (!sess->sess_kobj_ready)
-		goto out;
-
 	TRACE_DBG("Deleting session %s from sysfs",
-		kobject_name(&sess->sess_kobj));
+		kobject_name(sess->sess_kobj));
 
-	sess->sess_kobj_release_cmpl = &c;
+	kobject_del(sess->sess_kobj);
+	kobject_put(sess->sess_kobj);
+	sess->sess_kobj = NULL;
 
-	kobject_del(&sess->sess_kobj);
-	kobject_put(&sess->sess_kobj);
-
-	rc = wait_for_completion_timeout(sess->sess_kobj_release_cmpl, HZ);
-	if (rc == 0) {
-		PRINT_INFO("Waiting for releasing sysfs entry "
-			"for session from %s (%d refs)...", sess->initiator_name,
-			atomic_read(&sess->sess_kobj.kref.refcount));
-		wait_for_completion(sess->sess_kobj_release_cmpl);
-		PRINT_INFO("Done waiting for releasing sysfs "
-			"entry for session %s", sess->initiator_name);
-	}
-
-out:
 	TRACE_EXIT();
 	return;
 }

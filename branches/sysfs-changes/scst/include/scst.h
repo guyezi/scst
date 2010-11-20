@@ -1610,13 +1610,8 @@ struct scst_session {
 	/* Used if scst_unregister_session() called in wait mode */
 	struct completion *shutdown_compl;
 
-	/* sysfs release completion */
-	struct completion *sess_kobj_release_cmpl;
-
 #ifndef CONFIG_SCST_PROC
-	unsigned int sess_kobj_ready:1;
-
-	struct kobject sess_kobj; /* kobject for this struct */
+	struct kobject *sess_kobj; /* kobject for this struct */
 #endif
 
 	/*
@@ -3806,13 +3801,10 @@ struct scst_device *scst_kobj_to_dev(struct kobject *kobj);
 static inline struct kobject *scst_sysfs_get_sess_kobj(
 	struct scst_session *sess)
 {
-	return &sess->sess_kobj;
+	return sess->sess_kobj;
 }
 
-static inline struct scst_session *scst_kobj_to_sess(struct kobject *kobj)
-{
-	return container_of(kobj, struct scst_session, sess_kobj);
-}
+struct scst_session *scst_kobj_to_sess(struct kobject *kobj);
 
 #endif /* CONFIG_SCST_PROC */
 

@@ -1609,7 +1609,8 @@ static int __scst_local_add_adapter(struct scst_local_tgt *tgt,
 # ifdef CONFIG_SCST_PROC
 	sess->dev.init_name = sess->scst_sess->initiator_name;
 # else
-	sess->dev.init_name = kobject_name(&sess->scst_sess->sess_kobj);
+	sess->dev.init_name =
+		kobject_name(scst_sysfs_get_sess_kobj(sess->scst_sess));
 #endif
 #endif
 
