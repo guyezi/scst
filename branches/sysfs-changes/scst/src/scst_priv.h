@@ -309,7 +309,6 @@ void scst_free_device(struct scst_device *dev);
 struct scst_acg *scst_alloc_add_acg(struct scst_tgt *tgt,
 	const char *acg_name, bool tgt_acg);
 void scst_del_free_acg(struct scst_acg *acg);
-void scst_acg_free(struct scst_acg *acg);
 
 struct scst_acg *scst_tgt_find_acg(struct scst_tgt *tgt, const char *name);
 struct scst_acg *scst_find_acg(const struct scst_session *sess);
