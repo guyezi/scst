@@ -3962,12 +3962,15 @@ int scst_sgv_sysfs_create(struct sgv_pool *pool)
 
 	TRACE_ENTRY();
 
-	res = kobject_init_and_add(&pool->sgv_kobj, &sgv_pool_ktype,
+	res = -ENOMEM;
+	pool->sgv_kobj = kobject_create_and_add_kt(&sgv_pool_ktype,
 			scst_sgv_kobj, pool->name);
-	if (res != 0) {
+	if (!pool->sgv_kobj) {
 		PRINT_ERROR("Can't add sgv pool %s to sysfs", pool->name);
 		goto out;
 	}
+
+	res = 0;
 
 out:
 	TRACE_EXIT_RES(res);
@@ -3978,8 +3981,9 @@ void scst_sgv_sysfs_del(struct sgv_pool *pool)
 {
 	TRACE_ENTRY();
 
-	kobject_del(&pool->sgv_kobj);
-	kobject_put(&pool->sgv_kobj);
+	kobject_del(pool->sgv_kobj);
+	kobject_put(pool->sgv_kobj);
+	pool->sgv_kobj = NULL;
 
 	TRACE_EXIT();
 }

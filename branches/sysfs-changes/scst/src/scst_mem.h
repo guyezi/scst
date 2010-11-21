@@ -126,7 +126,7 @@ struct sgv_pool {
 
 	struct list_head sgv_pools_list_entry;
 
-	struct kobject sgv_kobj;
+	struct kobject *sgv_kobj;
 
 	/* sysfs release completion */
 	struct completion *sgv_kobj_release_cmpl;
