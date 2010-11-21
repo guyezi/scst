@@ -2477,7 +2477,7 @@ struct scst_acg {
 
 #ifndef CONFIG_SCST_PROC
 	/* kobject for this structure */
-	struct kobject acg_kobj;
+	struct kobject *acg_kobj;
 
 	struct kobject *luns_kobj;
 	struct kobject *initiators_kobj;
@@ -3813,6 +3813,16 @@ static inline struct kobject *scst_sysfs_get_tgt_dev_kobj(
 }
 
 struct scst_tgt_dev *scst_kobj_to_tgt_dev(struct kobject *kobj);
+
+/**
+ * scst_sysfs_get_acg_kobj() - Returns acg kobject pointer.
+ */
+static inline struct kobject *scst_sysfs_get_acg_kobj(struct scst_acg *acg)
+{
+	return acg->acg_kobj;
+}
+
+struct scst_acg *scst_kobj_to_acg(struct kobject *kobj);
 
 #endif /* CONFIG_SCST_PROC */
 
