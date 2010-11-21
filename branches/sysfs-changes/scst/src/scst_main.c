@@ -399,6 +399,12 @@ void scst_unregister_target_template(struct scst_tgt_template *vtt)
 
 	TRACE_ENTRY();
 
+#ifdef CONFIG_SCST_PROC
+	scst_cleanup_proc_target_dir_entries(vtt);
+#else
+	scst_tgtt_sysfs_del(vtt);
+#endif
+
 	mutex_lock(&scst_mutex);
 
 	list_for_each_entry(t, &scst_template_list, scst_template_list_entry) {
@@ -416,15 +422,6 @@ void scst_unregister_target_template(struct scst_tgt_template *vtt)
 	list_del(&vtt->scst_template_list_entry);
 	mutex_unlock(&scst_mutex2);
 
-	mutex_unlock(&scst_mutex);
-
-#ifdef CONFIG_SCST_PROC
-	scst_cleanup_proc_target_dir_entries(vtt);
-#else
-	scst_tgtt_sysfs_del(vtt);
-#endif
-
-	mutex_lock(&scst_mutex);
 restart:
 	list_for_each_entry(tgt, &vtt->tgt_list, tgt_list_entry) {
 		mutex_unlock(&scst_mutex);
