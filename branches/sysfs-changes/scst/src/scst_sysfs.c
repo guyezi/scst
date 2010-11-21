@@ -582,6 +582,8 @@ static struct kobject *kobject_create_and_add_kt(struct kobj_type *ktype,
 {
 	struct kobject *kobj;
 
+	BUG_ON(!ktype);
+	BUG_ON(!name);
 	kobj = kzalloc(sizeof(*kobj), GFP_KERNEL);
 	if (!kobj)
 		goto out;
@@ -3362,8 +3364,6 @@ static int scst_process_ini_group_mgmt_store(char *buffer,
 	struct scst_tgt *tgt)
 {
 	int res, action;
-	int len;
-	char *name;
 	char *p, *e = NULL;
 	struct scst_acg *a, *acg = NULL;
 
@@ -3427,23 +3427,12 @@ static int scst_process_ini_group_mgmt_store(char *buffer,
 	switch (action) {
 	case SCST_INI_GROUP_ACTION_CREATE:
 		TRACE_DBG("Creating group '%s'", p);
-		if (acg != NULL) {
+		if (acg) {
 			PRINT_ERROR("acg name %s exist", p);
 			res = -EINVAL;
 			goto out_unlock;
 		}
-
-		len = strlen(p) + 1;
-		name = kmalloc(len, GFP_KERNEL);
-		if (name == NULL) {
-			PRINT_ERROR("%s", "Allocation of name failed");
-			res = -ENOMEM;
-			goto out_unlock;
-		}
-		strlcpy(name, p, len);
-
-		acg = scst_alloc_add_acg(tgt, name, true);
-		kfree(name);
+		acg = scst_alloc_add_acg(tgt, p, true);
 		if (acg == NULL)
 			goto out_unlock;
 		break;
@@ -3603,7 +3592,6 @@ out:
 int scst_acn_sysfs_create(struct scst_acn *acn)
 {
 	int res = 0;
-	int len;
 	struct scst_acg *acg = acn->acg;
 	struct kobj_attribute *attr = NULL;
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 34)
@@ -3624,15 +3612,13 @@ int scst_acn_sysfs_create(struct scst_acn *acn)
 		goto out;
 	}
 
-	len = strlen(acn->name) + 1;
-	attr->attr.name = kzalloc(len, GFP_KERNEL);
-	if (attr->attr.name == NULL) {
+	attr->attr.name = kstrdup(acn->name, GFP_KERNEL);
+	if (!attr->attr.name) {
 		PRINT_ERROR("Unable to allocate attributes for initiator '%s'",
 			acn->name);
 		res = -ENOMEM;
 		goto out_free;
 	}
-	strlcpy((char *)attr->attr.name, acn->name, len);
 
 #if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 36)
 	attr->attr.owner = THIS_MODULE;
