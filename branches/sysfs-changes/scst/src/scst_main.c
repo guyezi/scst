@@ -578,6 +578,7 @@ void scst_unregister_target(struct scst_tgt *tgt)
 	struct scst_tgt_template *vtt = tgt->tgtt;
 #ifndef CONFIG_SCST_PROC
 	struct scst_acg *acg, *acg_tmp;
+	struct list_head acg_list;
 #endif
 
 	TRACE_ENTRY();
@@ -618,11 +619,15 @@ again:
 #ifdef CONFIG_SCST_PROC
 	scst_cleanup_proc_target_entries(tgt);
 #else
-	scst_del_free_acg(tgt->default_acg);
+	INIT_LIST_HEAD(&acg_list);
+	acg = tgt->default_acg;
+	scst_del_acg(acg);
+	list_add_tail(&acg->acg_list_entry, &acg_list);
 
 	list_for_each_entry_safe(acg, acg_tmp, &tgt->tgt_acg_list,
 					acg_list_entry) {
-		scst_del_free_acg(acg);
+		scst_del_acg(acg);
+		list_add_tail(&acg->acg_list_entry, &acg_list);
 	}
 #endif
 
@@ -630,6 +635,12 @@ again:
 	scst_resume_activity();
 
 #ifndef CONFIG_SCST_PROC
+	list_for_each_entry_safe(acg, acg_tmp, &acg_list,
+					acg_list_entry) {
+		if (acg->tgt_acg)
+			scst_acg_sysfs_del(acg);
+		scst_free_acg(acg);
+	}
 	scst_tgt_sysfs_del(tgt);
 #endif
 

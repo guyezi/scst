@@ -3509,7 +3509,7 @@ static int scst_process_ini_group_mgmt_store(char *buffer,
 			goto out_unlock;
 		}
 		acg = scst_alloc_add_acg(tgt, p, true);
-		if (acg == NULL)
+		if (!acg)
 			goto out_unlock;
 		break;
 	case SCST_INI_GROUP_ACTION_DEL:
@@ -3524,7 +3524,7 @@ static int scst_process_ini_group_mgmt_store(char *buffer,
 			res = -EBUSY;
 			goto out_unlock;
 		}
-		scst_del_free_acg(acg);
+		scst_del_acg(acg);
 		break;
 	}
 
@@ -3535,6 +3535,25 @@ out_unlock:
 
 out_resume:
 	scst_resume_activity();
+
+	switch (action) {
+	case SCST_INI_GROUP_ACTION_CREATE:
+		res = scst_acg_sysfs_create(tgt, acg);
+		if (res) {
+			PRINT_ERROR("Adding acg to sysfs failed (%d)", res);
+			scst_suspend_activity(false);
+			mutex_lock(&scst_mutex);
+			scst_del_free_acg(acg);
+			mutex_unlock(&scst_mutex);
+			scst_resume_activity();
+		}
+		break;
+	case SCST_INI_GROUP_ACTION_DEL:
+		BUG_ON(!acg->tgt_acg);
+		scst_acg_sysfs_del(acg);
+		scst_free_acg(acg);
+		break;
+	}
 
 out:
 	TRACE_EXIT_RES(res);

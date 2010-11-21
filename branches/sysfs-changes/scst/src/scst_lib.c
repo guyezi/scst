@@ -2840,27 +2840,16 @@ struct scst_acg *scst_alloc_add_acg(struct scst_tgt *tgt,
 	acg->addr_method = tgt->tgtt->preferred_addr_method;
 
 	if (tgt_acg) {
-		int rc;
-
 		TRACE_DBG("Adding acg '%s' to device '%s' acg_list", acg_name,
 			tgt->tgt_name);
 		list_add_tail(&acg->acg_list_entry, &tgt->tgt_acg_list);
 		acg->tgt_acg = 1;
-
-		rc = scst_acg_sysfs_create(tgt, acg);
-		if (rc != 0)
-			goto out_del;
 	}
 #endif
 
 out:
 	TRACE_EXIT_HRES(acg);
 	return acg;
-
-#ifndef CONFIG_SCST_PROC
-out_del:
-	list_del(&acg->acg_list_entry);
-#endif
 
 out_free:
 	kfree(acg);
@@ -2869,7 +2858,7 @@ out_free:
 }
 
 /* The activity supposed to be suspended and scst_mutex held */
-void scst_del_free_acg(struct scst_acg *acg)
+void scst_del_acg(struct scst_acg *acg)
 {
 	struct scst_acn *acn, *acnt;
 	struct scst_acg_dev *acg_dev, *acg_dev_tmp;
@@ -2906,8 +2895,6 @@ void scst_del_free_acg(struct scst_acg *acg)
 	if (acg->tgt_acg) {
 		TRACE_DBG("Removing acg %s from list", acg->acg_name);
 		list_del(&acg->acg_list_entry);
-
-		scst_acg_sysfs_del(acg);
 	} else
 		acg->tgt->default_acg = NULL;
 #endif
@@ -2916,11 +2903,26 @@ void scst_del_free_acg(struct scst_acg *acg)
 	sBUG_ON(!list_empty(&acg->acg_dev_list));
 	sBUG_ON(!list_empty(&acg->acn_list));
 
+	TRACE_EXIT();
+	return;
+}
+
+void scst_free_acg(struct scst_acg *acg)
+{
+	TRACE_ENTRY();
+
 	kfree(acg->acg_name);
 	kfree(acg);
 
 	TRACE_EXIT();
 	return;
+}
+
+/* The activity supposed to be suspended and scst_mutex held */
+void scst_del_free_acg(struct scst_acg *acg)
+{
+	scst_del_acg(acg);
+	scst_free_acg(acg);
 }
 
 #ifndef CONFIG_SCST_PROC
