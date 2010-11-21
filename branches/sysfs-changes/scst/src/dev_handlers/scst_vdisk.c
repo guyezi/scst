@@ -4076,20 +4076,22 @@ out:
 static ssize_t vdev_sysfs_size_show(struct kobject *kobj,
 	struct kobj_attribute *attr, char *buf)
 {
-	int pos = 0;
+	int pos;
 	struct scst_device *dev;
 	struct scst_vdisk_dev *virt_dev;
 
 	TRACE_ENTRY();
 
+	pos = -ENOENT;
 	dev = scst_kobj_to_dev(kobj);
 	if (!dev)
-		return -ENOENT;
+		goto out;
 
 	virt_dev = dev->dh_priv;
 
 	pos = sprintf(buf, "%lld\n", virt_dev->file_size / 1024 / 1024);
 
+out:
 	TRACE_EXIT_RES(pos);
 	return pos;
 }
@@ -4108,7 +4110,6 @@ static ssize_t vdisk_sysfs_blocksize_show(struct kobject *kobj,
 	if (!dev)
 		goto out;
 
-	pos = 0;
 	virt_dev = dev->dh_priv;
 
 	pos = sprintf(buf, "%d\n%s", (int)virt_dev->block_size,
@@ -4129,17 +4130,18 @@ static ssize_t vdisk_sysfs_rd_only_show(struct kobject *kobj,
 
 	TRACE_ENTRY();
 
+	pos = -ENOENT;
 	dev = scst_kobj_to_dev(kobj);
 	if (!dev)
-		return -ENOENT;
+		goto out;
 
-	pos = 0;
 	virt_dev = dev->dh_priv;
 
 	pos = sprintf(buf, "%d\n%s", virt_dev->rd_only ? 1 : 0,
 		(virt_dev->rd_only == DEF_RD_ONLY) ? "" :
 			SCST_SYSFS_KEY_MARK "");
 
+out:
 	TRACE_EXIT_RES(pos);
 	return pos;
 }
@@ -4147,15 +4149,16 @@ static ssize_t vdisk_sysfs_rd_only_show(struct kobject *kobj,
 static ssize_t vdisk_sysfs_wt_show(struct kobject *kobj,
 	struct kobj_attribute *attr, char *buf)
 {
-	int pos = 0;
+	int pos;
 	struct scst_device *dev;
 	struct scst_vdisk_dev *virt_dev;
 
 	TRACE_ENTRY();
 
+	pos = -ENOENT;
 	dev = scst_kobj_to_dev(kobj);
 	if (!dev)
-		return -ENOENT;
+		goto out;
 
 	virt_dev = dev->dh_priv;
 
@@ -4163,6 +4166,7 @@ static ssize_t vdisk_sysfs_wt_show(struct kobject *kobj,
 		(virt_dev->wt_flag == DEF_WRITE_THROUGH) ? "" :
 			SCST_SYSFS_KEY_MARK "");
 
+out:
 	TRACE_EXIT_RES(pos);
 	return pos;
 }
@@ -4181,7 +4185,6 @@ static ssize_t vdisk_sysfs_tp_show(struct kobject *kobj,
 	if (!dev)
 		goto out;
 
-	pos = 0;
 	virt_dev = dev->dh_priv;
 
 	pos = sprintf(buf, "%d\n%s", virt_dev->thin_provisioned ? 1 : 0,
@@ -4232,7 +4235,6 @@ static ssize_t vdisk_sysfs_o_direct_show(struct kobject *kobj,
 	if (!dev)
 		goto out;
 
-	pos = 0;
 	virt_dev = dev->dh_priv;
 
 	pos = sprintf(buf, "%d\n%s", virt_dev->o_direct_flag ? 1 : 0,
@@ -4258,7 +4260,6 @@ static ssize_t vdisk_sysfs_removable_show(struct kobject *kobj,
 	if (!dev)
 		goto out;
 
-	pos = 0;
 	virt_dev = dev->dh_priv;
 
 	pos = sprintf(buf, "%d\n", virt_dev->removable ? 1 : 0);
@@ -4438,7 +4439,6 @@ static ssize_t vdev_sysfs_t10_dev_id_show(struct kobject *kobj,
 	if (!dev)
 		goto out;
 
-	pos = 0;
 	virt_dev = dev->dh_priv;
 
 	read_lock_bh(&vdisk_t10_dev_id_rwlock);
@@ -4465,7 +4465,6 @@ static ssize_t vdev_sysfs_usn_show(struct kobject *kobj,
 	if (!dev)
 		goto out;
 
-	pos = 0;
 	virt_dev = dev->dh_priv;
 
 	pos = sprintf(buf, "%s\n", virt_dev->usn);
