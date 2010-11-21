@@ -1691,6 +1691,7 @@ static ssize_t scst_tgt_dev_latency_show(struct kobject *kobj,
 	if (!tgt_dev)
 		goto out;
 
+	res = 0;
 	for (i = 0; i < SCST_LATENCY_STATS_NUM; i++) {
 		uint64_t scst_time_wr, tgt_time_wr, dev_time_wr;
 		unsigned int processed_cmds_wr;
