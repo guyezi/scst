@@ -773,8 +773,8 @@ static struct kobj_attribute scst_acg_cpu_mask =
 	       scst_acg_cpu_mask_show,
 	       scst_acg_cpu_mask_store);
 
-struct scst_tgt *__scst_lookup_tgt(struct scst_tgt_template *tgtt,
-				   const char *target_name)
+static struct scst_tgt *__scst_lookup_tgt(struct scst_tgt_template *tgtt,
+					  const char *target_name)
 {
 	struct scst_tgt *tgt;
 
@@ -1076,7 +1076,7 @@ void scst_tgt_sysfs_del(struct scst_tgt *tgt)
  ** Devices directory implementation
  **/
 
-struct scst_device *__scst_lookup_dev(const char *name)
+static struct scst_device *__scst_lookup_dev(const char *name)
 {
 	struct scst_device *dev;
 
