@@ -691,7 +691,7 @@ struct scst_tgt_kobj {
 	char		*template_name;
 };
 
-static struct scst_tgt_kobj *scst_create_tgt_kobj(const char* template_name)
+static struct scst_tgt_kobj *scst_create_tgt_kobj(const char *template_name)
 {
 	struct scst_tgt_kobj *tgt_kobj;
 
@@ -1575,7 +1575,7 @@ struct scst_tgt_dev_kobj {
 };
 
 static struct scst_tgt_dev_kobj *
-scst_create_tgt_dev_kobj(const char* device_name, uint64_t lun)
+scst_create_tgt_dev_kobj(const char *device_name, uint64_t lun)
 {
 	struct scst_tgt_dev_kobj *tgt_dev_kobj;
 
@@ -1861,8 +1861,8 @@ struct scst_sess_kobj {
 	char		*target_name;
 };
 
-static struct scst_sess_kobj *scst_create_sess_kobj(const char* template_name,
-						    const char* target_name)
+static struct scst_sess_kobj *scst_create_sess_kobj(const char *template_name,
+						    const char *target_name)
 {
 	struct scst_sess_kobj *sess_kobj;
 
@@ -2471,8 +2471,8 @@ struct scst_acg_kobj {
 	char		*target_name;
 };
 
-static struct scst_acg_kobj *scst_create_acg_kobj(const char* template_name,
-						    const char* target_name)
+static struct scst_acg_kobj *scst_create_acg_kobj(const char *template_name,
+						  const char *target_name)
 {
 	struct scst_acg_kobj *acg_kobj;
 
