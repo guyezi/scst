@@ -1589,6 +1589,7 @@ void sgv_pool_set_allocator(struct sgv_pool *pool,
 }
 EXPORT_SYMBOL_GPL(sgv_pool_set_allocator);
 
+#ifndef CONFIG_SCST_PROC
 /**
  * sgv_kobj_to_pool() - Look up an sgv pool by name.
  *
@@ -1615,6 +1616,7 @@ out_unlock:
 
 	return pool;
 }
+#endif /* !defined(CONFIG_SCST_PROC) */
 
 /**
  * sgv_pool_create - creates and initializes an SGV pool

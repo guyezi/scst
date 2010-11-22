@@ -6119,6 +6119,7 @@ bool scst_initiator_has_luns(struct scst_tgt *tgt, const char *initiator_name)
 }
 EXPORT_SYMBOL_GPL(scst_initiator_has_luns);
 
+#ifndef CONFIG_SCST_PROC
 static bool scst_make_session_name_unique(struct scst_session *sess)
 {
 	bool res = false;
@@ -6156,6 +6157,7 @@ restart:
 out:
 	return res;
 }
+#endif /* !defined(CONFIG_SCST_PROC) */
 
 static int scst_init_session(struct scst_session *sess)
 {
