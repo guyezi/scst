@@ -308,8 +308,6 @@ void scst_free_device(struct scst_device *dev);
 
 struct scst_acg *scst_alloc_add_acg(struct scst_tgt *tgt,
 	const char *acg_name, bool tgt_acg);
-void scst_del_acg(struct scst_acg *acg);
-void scst_free_acg(struct scst_acg *acg);
 void scst_del_free_acg(struct scst_acg *acg);
 
 struct scst_acg *scst_tgt_find_acg(struct scst_tgt *tgt, const char *name);
@@ -494,6 +492,7 @@ void scst_devt_dev_sysfs_del(struct scst_device *dev);
 int scst_acg_sysfs_create(struct scst_tgt *tgt,
 	struct scst_acg *acg);
 void scst_acg_sysfs_del(struct scst_acg *acg);
+void scst_acg_sysfs_del_async(struct scst_acg *acg);
 int scst_acg_dev_sysfs_create(struct scst_acg_dev *acg_dev,
 	struct kobject *parent);
 void scst_acg_dev_sysfs_del_async(struct scst_acg_dev *acg_dev);

@@ -1785,7 +1785,13 @@ out_err:
 /* Must not be called under scst_mutex because that might cause a deadlock. */
 void scst_tgt_dev_sysfs_del(struct scst_tgt_dev *tgt_dev)
 {
+	struct scst_tgt_dev_kobj *tgt_dev_kobj;
+
 	TRACE_ENTRY();
+
+	tgt_dev_kobj = container_of(tgt_dev->tgt_dev_kobj,
+				    struct scst_tgt_dev_kobj, kobj);
+	tgt_dev_kobj->valid = false;
 
 	kobject_del(tgt_dev->tgt_dev_kobj);
 	kobject_put(tgt_dev->tgt_dev_kobj);
@@ -1821,8 +1827,7 @@ void scst_tgt_dev_sysfs_del_async(struct scst_tgt_dev *tgt_dev)
 
 	TRACE_ENTRY();
 
-	TRACE_DBG("%s: kobj %p %s", __func__, tgt_dev->tgt_dev_kobj,
-		  kobject_name(tgt_dev->tgt_dev_kobj));
+	TRACE_DBG("%s: kobj %s", __func__, kobject_name(tgt_dev->tgt_dev_kobj));
 	tgt_dev_kobj = container_of(tgt_dev->tgt_dev_kobj,
 				    struct scst_tgt_dev_kobj, kobj);
 	tgt_dev_kobj->valid = false;
@@ -2481,7 +2486,13 @@ static struct kobj_type acg_dev_ktype = {
 /* Must not be called under scst_mutex because that might cause a deadlock. */
 void scst_acg_dev_sysfs_del(struct scst_acg_dev *acg_dev)
 {
+	struct scst_acg_dev_kobj *acg_dev_kobj;
+
 	TRACE_ENTRY();
+
+	acg_dev_kobj = container_of(acg_dev->acg_dev_kobj,
+				    struct scst_acg_dev_kobj, kobj);
+	acg_dev_kobj->valid = false;
 
 	if (acg_dev->dev != NULL) {
 		sysfs_remove_link(acg_dev->dev->dev_exp_kobj,
@@ -2541,8 +2552,7 @@ void scst_acg_dev_sysfs_del_async(struct scst_acg_dev *acg_dev)
 
 	TRACE_ENTRY();
 
-	TRACE_DBG("%s: kobj %p %s", __func__, acg_dev->acg_dev_kobj,
-		  kobject_name(acg_dev->acg_dev_kobj));
+	TRACE_DBG("%s: kobj %s", __func__, kobject_name(acg_dev->acg_dev_kobj));
 
 	acg_dev_kobj = container_of(acg_dev->acg_dev_kobj,
 				    struct scst_acg_dev_kobj, kobj);
@@ -2624,6 +2634,7 @@ struct scst_acg_kobj {
 	struct kobject	 kobj;
 	char		*template_name;
 	char		*target_name;
+	bool		 valid;
 };
 
 static struct scst_acg_kobj *scst_create_acg_kobj(const char *template_name,
@@ -2640,6 +2651,7 @@ static struct scst_acg_kobj *scst_create_acg_kobj(const char *template_name,
 	acg_kobj->target_name = kstrdup(target_name, GFP_KERNEL);
 	if (!acg_kobj->target_name)
 		goto out_free;
+	acg_kobj->valid = true;
 out:
 	return acg_kobj;
 out_free:
@@ -2654,10 +2666,13 @@ static void scst_release_acg_kobj(struct kobject *kobj)
 	struct scst_acg_kobj *acg_kobj;
 
 	TRACE_ENTRY();
+
 	acg_kobj = container_of(kobj, struct scst_acg_kobj, kobj);
+	WARN_ON(acg_kobj->valid);
 	kfree(acg_kobj->target_name);
 	kfree(acg_kobj->template_name);
 	kfree(acg_kobj);
+
 	TRACE_EXIT();
 }
 
@@ -2669,6 +2684,9 @@ struct scst_acg *scst_kobj_to_acg(struct kobject *kobj)
 	struct scst_acg *acg = NULL;
 
 	acg_kobj = container_of(kobj, struct scst_acg_kobj, kobj);
+
+	if (!acg_kobj->valid)
+		goto out;
 
 	mutex_lock(&scst_mutex);
 
@@ -2687,7 +2705,7 @@ out_unlock:
 
 	if (!acg)
 		TRACE_DBG("ACG %s not found", kobject_name(kobj));
-
+out:
 	return acg;
 }
 EXPORT_SYMBOL(scst_kobj_to_acg);
@@ -3371,7 +3389,12 @@ out:
 /* Must not be called under scst_mutex because that might cause a deadlock. */
 void scst_acg_sysfs_del(struct scst_acg *acg)
 {
+	struct scst_acg_kobj *acg_kobj;
+
 	TRACE_ENTRY();
+
+	acg_kobj = container_of(acg->acg_kobj, struct scst_acg_kobj, kobj);
+	acg_kobj->valid = false;
 
 	kobject_del(acg->luns_kobj);
 	kobject_put(acg->luns_kobj);
@@ -3382,6 +3405,50 @@ void scst_acg_sysfs_del(struct scst_acg *acg)
 	kobject_del(acg->acg_kobj);
 	kobject_put(acg->acg_kobj);
 	acg->acg_kobj = NULL;
+
+	TRACE_EXIT();
+}
+
+static void scst_do_acg_sysfs_del(struct work_struct *work_struct)
+{
+	struct scst_sysfs_work_struct *w;
+	struct kobject *acg_kobj, *acg_initiators_kobj, *acg_luns_kobj;
+
+	TRACE_ENTRY();
+
+	w = container_of(work_struct, struct scst_sysfs_work_struct,
+			 work_struct);
+	acg_kobj            = w->param[0];
+	acg_initiators_kobj = w->param[1];
+	acg_luns_kobj       = w->param[2];
+
+	TRACE_DBG("%s: kobj %s", __func__, kobject_name(acg_kobj));
+
+	kobject_del(acg_luns_kobj);
+	kobject_put(acg_luns_kobj);
+
+	kobject_del(acg_initiators_kobj);
+	kobject_put(acg_initiators_kobj);
+
+	kobject_del(acg_kobj);
+	kobject_put(acg_kobj);
+
+	kfree(w);
+
+	TRACE_EXIT();
+}
+
+void scst_acg_sysfs_del_async(struct scst_acg *acg)
+{
+	struct scst_acg_kobj *acg_kobj;
+
+	TRACE_ENTRY();
+
+	TRACE_DBG("%s: kobj %s", __func__, kobject_name(acg->acg_kobj));
+	acg_kobj = container_of(acg->acg_kobj, struct scst_acg_kobj, kobj);
+	acg_kobj->valid = false;
+	scst_sysfs_queue_work(scst_do_acg_sysfs_del, acg->acg_kobj,
+			      acg->initiators_kobj, acg->luns_kobj, NULL, NULL);
 
 	TRACE_EXIT();
 }
@@ -3647,7 +3714,7 @@ static int scst_process_ini_group_mgmt_store(char *buffer,
 	switch (action) {
 	case SCST_INI_GROUP_ACTION_CREATE:
 		TRACE_DBG("Creating group '%s'", p);
-		if (acg) {
+		if (acg != NULL) {
 			PRINT_ERROR("acg name %s exist", p);
 			res = -EINVAL;
 			goto out_unlock;
@@ -3668,7 +3735,7 @@ static int scst_process_ini_group_mgmt_store(char *buffer,
 			res = -EBUSY;
 			goto out_unlock;
 		}
-		scst_del_acg(acg);
+		scst_del_free_acg(acg);
 		break;
 	}
 
@@ -3679,25 +3746,6 @@ out_unlock:
 
 out_resume:
 	scst_resume_activity();
-
-	switch (action) {
-	case SCST_INI_GROUP_ACTION_CREATE:
-		res = scst_acg_sysfs_create(tgt, acg);
-		if (res) {
-			PRINT_ERROR("Adding acg to sysfs failed (%d)", res);
-			scst_suspend_activity(false);
-			mutex_lock(&scst_mutex);
-			scst_del_free_acg(acg);
-			mutex_unlock(&scst_mutex);
-			scst_resume_activity();
-		}
-		break;
-	case SCST_INI_GROUP_ACTION_DEL:
-		WARN_ON(!acg->tgt_acg);
-		scst_acg_sysfs_del(acg);
-		scst_free_acg(acg);
-		break;
-	}
 
 out:
 	TRACE_EXIT_RES(res);
