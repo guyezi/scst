@@ -505,22 +505,27 @@ struct scst_tgt *scst_register_target(struct scst_tgt_template *vtt,
 
 #ifdef CONFIG_SCST_PROC
 	rc = scst_build_proc_target_entries(tgt);
-	if (rc < 0)
+	if (rc)
+		goto out_free_tgt;
+
+	rc = mutex_lock_interruptible(&scst_mutex);
+	if (rc)
 		goto out_free_tgt;
 #else
 	rc = scst_tgt_sysfs_create(tgt);
-	if (rc < 0)
+	if (rc)
 		goto out_free_tgt;
 
-	tgt->default_acg = scst_alloc_add_acg(tgt, tgt->tgt_name, false);
-	if (tgt->default_acg == NULL)
+	rc = mutex_lock_interruptible(&scst_mutex);
+	if (rc)
 		goto out_sysfs_del;
-#endif
 
-	if (mutex_lock_interruptible(&scst_mutex) != 0) {
-		rc = -EINTR;
+	tgt->default_acg = scst_alloc_add_acg(tgt, tgt->tgt_name, false);
+	if (!tgt->default_acg) {
+		mutex_unlock(&scst_mutex);
 		goto out_sysfs_del;
 	}
+#endif
 
 	mutex_lock(&scst_mutex2);
 	list_add_tail(&tgt->tgt_list_entry, &vtt->tgt_list);
@@ -542,11 +547,9 @@ out:
 	TRACE_EXIT();
 	return tgt;
 
-out_sysfs_del:
 #ifndef CONFIG_SCST_PROC
+out_sysfs_del:
 	scst_tgt_sysfs_del(tgt);
-#else
-	scst_cleanup_proc_target_entries(tgt);
 #endif
 
 out_free_tgt:
@@ -578,7 +581,7 @@ void scst_unregister_target(struct scst_tgt *tgt)
 	struct scst_tgt_template *vtt = tgt->tgtt;
 #ifndef CONFIG_SCST_PROC
 	struct scst_acg *acg, *acg_tmp;
-	struct list_head acg_list;
+	LIST_HEAD(acg_list);
 #endif
 
 	TRACE_ENTRY();
@@ -619,7 +622,6 @@ again:
 #ifdef CONFIG_SCST_PROC
 	scst_cleanup_proc_target_entries(tgt);
 #else
-	INIT_LIST_HEAD(&acg_list);
 	acg = tgt->default_acg;
 	scst_del_acg(acg);
 	list_add_tail(&acg->acg_list_entry, &acg_list);

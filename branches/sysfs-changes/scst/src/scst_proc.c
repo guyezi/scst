@@ -1326,7 +1326,6 @@ void scst_cleanup_proc_target_dir_entries(struct scst_tgt_template *vtt)
 	return;
 }
 
-/* Called under scst_mutex */
 int scst_build_proc_target_entries(struct scst_tgt *vtt)
 {
 	int res = 0;
