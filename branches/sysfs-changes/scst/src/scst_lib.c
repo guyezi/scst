@@ -2676,7 +2676,7 @@ static void scst_del_free_acg_dev(struct scst_acg_dev *acg_dev, bool del_sysfs)
 	list_del(&acg_dev->dev_acg_dev_list_entry);
 
 	if (del_sysfs)
-		scst_acg_dev_sysfs_del(acg_dev);
+		scst_acg_dev_sysfs_del_async(acg_dev);
 
 	kmem_cache_free(scst_acgd_cachep, acg_dev);
 

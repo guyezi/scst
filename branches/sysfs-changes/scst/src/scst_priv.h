@@ -450,6 +450,9 @@ static inline int scst_acg_dev_sysfs_create(struct scst_acg_dev *acg_dev,
 	return 0;
 }
 
+static inline void scst_acg_dev_sysfs_del_async(struct scst_acg_dev *acg_dev)
+{ }
+
 static inline void scst_acg_dev_sysfs_del(struct scst_acg_dev *acg_dev) { }
 
 static inline int scst_acn_sysfs_create(struct scst_acn *acn)
@@ -482,6 +485,7 @@ int scst_devt_sysfs_create(struct scst_dev_type *devt);
 void scst_devt_sysfs_del(struct scst_dev_type *devt);
 int scst_dev_sysfs_create(struct scst_device *dev);
 void scst_dev_sysfs_del(struct scst_device *dev);
+void scst_dev_sysfs_del(struct scst_device *dev);
 int scst_tgt_dev_sysfs_create(struct scst_tgt_dev *tgt_dev);
 void scst_tgt_dev_sysfs_del_async(struct scst_tgt_dev *tgt_dev);
 void scst_tgt_dev_sysfs_del(struct scst_tgt_dev *tgt_dev);
@@ -492,6 +496,7 @@ int scst_acg_sysfs_create(struct scst_tgt *tgt,
 void scst_acg_sysfs_del(struct scst_acg *acg);
 int scst_acg_dev_sysfs_create(struct scst_acg_dev *acg_dev,
 	struct kobject *parent);
+void scst_acg_dev_sysfs_del_async(struct scst_acg_dev *acg_dev);
 void scst_acg_dev_sysfs_del(struct scst_acg_dev *acg_dev);
 int scst_acn_sysfs_create(struct scst_acn *acn);
 void scst_acn_sysfs_del(struct scst_acn *acn);

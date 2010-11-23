@@ -176,10 +176,11 @@ static ssize_t scst_acn_file_show(struct kobject *kobj,
 
 struct scst_sysfs_work_struct {
 	struct work_struct  work_struct;
-	void		   *data;
+	void		   *param[5];
 };
 
-static void scst_sysfs_queue_work(work_func_t func, void *data)
+static void scst_sysfs_queue_work(work_func_t func, void *param1,
+			void *param2, void *param3, void *param4, void *param5)
 {
 	struct scst_sysfs_work_struct *w;
 
@@ -189,30 +190,16 @@ static void scst_sysfs_queue_work(work_func_t func, void *data)
 	if (WARN_ON(!w))
 		return;
 	INIT_WORK(&w->work_struct, func);
-	w->data = data;
+	w->param[0] = param1;
+	w->param[1] = param2;
+	w->param[2] = param3;
+	w->param[3] = param4;
+	w->param[4] = param5;
 	TRACE_DBG("%s: w = %p", __func__, w);
 	queue_work(scst_sysfs_wq, &w->work_struct);
 
 	TRACE_EXIT();
 }
-
-static void scst_sysfs_del_put_kobj(struct work_struct *work_struct)
-{
-	struct scst_sysfs_work_struct *w;
-	struct kobject *kobj;
-
-	TRACE_ENTRY();
-	w = container_of(work_struct, struct scst_sysfs_work_struct,
-			 work_struct);
-	kobj = w->data;
-	TRACE_DBG("%s: w = %p; kobj %p %s", __func__, w, kobj,
-		  kobject_name(kobj));
-	kobject_del(kobj);
-	kobject_put(kobj);
-	kfree(w);
-	TRACE_EXIT();
-}
-
 
 /* Locking: caller must hold lock on scst_mutex. */
 static struct scst_tgt_template *__scst_lookup_tgtt(const char *name)
@@ -627,11 +614,7 @@ out_del:
 	goto out;
 }
 
-/*
- * Must not be called under scst_mutex, due to possible deadlock with
- * sysfs ref counting in sysfs works (it is waiting for the last put, but
- * the last ref counter holder is waiting for scst_mutex)
- */
+/* Must not be called under scst_mutex because that might cause a deadlock. */
 void scst_tgtt_sysfs_del(struct scst_tgt_template *tgtt)
 {
 	TRACE_ENTRY();
@@ -1014,11 +997,7 @@ out_err:
 	goto out;
 }
 
-/*
- * Must not be called under scst_mutex, due to possible deadlock with
- * sysfs ref counting in sysfs works (it is waiting for the last put, but
- * the last ref counter holder is waiting for scst_mutex)
- */
+/* Must not be called under scst_mutex because that might cause a deadlock. */
 void scst_tgt_sysfs_del(struct scst_tgt *tgt)
 {
 	TRACE_ENTRY();
@@ -1411,6 +1390,7 @@ out_err:
 	goto out;
 }
 
+/* Must not be called under scst_mutex because that might cause a deadlock. */
 void scst_devt_dev_sysfs_del(struct scst_device *dev)
 {
 	const struct attribute **pattr;
@@ -1449,10 +1429,7 @@ static struct kobj_type scst_dev_ktype = {
 	.default_attrs = scst_dev_attrs,
 };
 
-/*
- * Must not be called under scst_mutex, because it can call
- * scst_dev_sysfs_del()
- */
+/* Must not be called under scst_mutex because that might cause a deadlock. */
 int scst_dev_sysfs_create(struct scst_device *dev)
 {
 	int res = 0;
@@ -1507,11 +1484,7 @@ out_del:
 	goto out;
 }
 
-/*
- * Must not be called under scst_mutex, due to possible deadlock with
- * sysfs ref counting in sysfs works (it is waiting for the last put, but
- * the last ref counter holder is waiting for scst_mutex)
- */
+/* Must not be called under scst_mutex because that might cause a deadlock. */
 void scst_dev_sysfs_del(struct scst_device *dev)
 {
 	TRACE_ENTRY();
@@ -1567,7 +1540,7 @@ static void scst_sysfs_tgt_dev_release(struct kobject *kobj)
 
 	tgt_dev_kobj = container_of(kobj, struct scst_tgt_dev_kobj, kobj);
 
-	BUG_ON(tgt_dev_kobj->valid);
+	WARN_ON(tgt_dev_kobj->valid);
 	kfree(tgt_dev_kobj->device_name);
 	kfree(tgt_dev_kobj);
 
@@ -1809,6 +1782,39 @@ out_err:
 	goto out;
 }
 
+/* Must not be called under scst_mutex because that might cause a deadlock. */
+void scst_tgt_dev_sysfs_del(struct scst_tgt_dev *tgt_dev)
+{
+	TRACE_ENTRY();
+
+	kobject_del(tgt_dev->tgt_dev_kobj);
+	kobject_put(tgt_dev->tgt_dev_kobj);
+	tgt_dev->tgt_dev_kobj = NULL;
+
+	TRACE_EXIT();
+}
+
+static void scst_do_tgt_sysfs_del(struct work_struct *work_struct)
+{
+	struct scst_sysfs_work_struct *w;
+	struct kobject *kobj;
+
+	TRACE_ENTRY();
+
+	w = container_of(work_struct, struct scst_sysfs_work_struct,
+			 work_struct);
+	kobj = w->param[0];
+
+	TRACE_DBG("%s: kobj %s", __func__, kobject_name(kobj));
+
+	kobject_del(kobj);
+	kobject_put(kobj);
+
+	kfree(w);
+
+	TRACE_EXIT();
+}
+
 void scst_tgt_dev_sysfs_del_async(struct scst_tgt_dev *tgt_dev)
 {
 	struct scst_tgt_dev_kobj *tgt_dev_kobj;
@@ -1820,18 +1826,8 @@ void scst_tgt_dev_sysfs_del_async(struct scst_tgt_dev *tgt_dev)
 	tgt_dev_kobj = container_of(tgt_dev->tgt_dev_kobj,
 				    struct scst_tgt_dev_kobj, kobj);
 	tgt_dev_kobj->valid = false;
-	scst_sysfs_queue_work(scst_sysfs_del_put_kobj, tgt_dev->tgt_dev_kobj);
-
-	TRACE_EXIT();
-}
-
-void scst_tgt_dev_sysfs_del(struct scst_tgt_dev *tgt_dev)
-{
-	TRACE_ENTRY();
-
-	kobject_del(tgt_dev->tgt_dev_kobj);
-	kobject_put(tgt_dev->tgt_dev_kobj);
-	tgt_dev->tgt_dev_kobj = NULL;
+	scst_sysfs_queue_work(scst_do_tgt_sysfs_del, tgt_dev->tgt_dev_kobj,
+			      NULL, NULL, NULL, NULL);
 
 	TRACE_EXIT();
 }
@@ -2262,7 +2258,7 @@ int scst_recreate_sess_luns_link(struct scst_session *sess)
 	return scst_create_sess_luns_link(sess);
 }
 
-/* Supposed to be called under scst_mutex */
+/* Must not be called under scst_mutex because that might cause a deadlock. */
 int scst_sess_sysfs_create(struct scst_session *sess)
 {
 	int res = 0;
@@ -2317,11 +2313,7 @@ out_free:
 	goto out;
 }
 
-/*
- * Must not be called under scst_mutex, due to possible deadlock with
- * sysfs ref counting in sysfs works (it is waiting for the last put, but
- * the last ref counter holder is waiting for scst_mutex)
- */
+/* Must not be called under scst_mutex because that might cause a deadlock. */
 void scst_sess_sysfs_del(struct scst_session *sess)
 {
 	TRACE_ENTRY();
@@ -2347,6 +2339,7 @@ struct scst_acg_dev_kobj {
 	char		*target_name;
 	char		*acg_name;
 	uint64_t	 lun;
+	bool		 valid;
 };
 
 static struct scst_acg_dev_kobj *scst_create_acg_dev_kobj(
@@ -2370,6 +2363,7 @@ static struct scst_acg_dev_kobj *scst_create_acg_dev_kobj(
 	if (!acg_dev_kobj->acg_name)
 		goto out_free;
 	acg_dev_kobj->lun = lun;
+	acg_dev_kobj->valid = true;
 out:
 	return acg_dev_kobj;
 out_free:
@@ -2386,6 +2380,7 @@ static void scst_release_acg_dev_kobj(struct kobject *kobj)
 
 	TRACE_ENTRY();
 	acg_dev_kobj = container_of(kobj, struct scst_acg_dev_kobj, kobj);
+	WARN_ON(acg_dev_kobj->valid);
 	kfree(acg_dev_kobj->acg_name);
 	kfree(acg_dev_kobj->target_name);
 	kfree(acg_dev_kobj->template_name);
@@ -2483,6 +2478,7 @@ static struct kobj_type acg_dev_ktype = {
 	.default_attrs = lun_attrs,
 };
 
+/* Must not be called under scst_mutex because that might cause a deadlock. */
 void scst_acg_dev_sysfs_del(struct scst_acg_dev *acg_dev)
 {
 	TRACE_ENTRY();
@@ -2499,6 +2495,71 @@ void scst_acg_dev_sysfs_del(struct scst_acg_dev *acg_dev)
 
 	TRACE_EXIT();
 	return;
+}
+
+static void scst_do_acg_dev_sysfs_del(struct work_struct *work_struct)
+{
+	struct scst_sysfs_work_struct *w;
+	struct kobject *acg_dev_kobj;
+	struct kobject *dev_kobj;
+	struct kobject *dev_exp_kobj;
+	char *acg_dev_link_name;
+
+	TRACE_ENTRY();
+
+	w = container_of(work_struct, struct scst_sysfs_work_struct,
+			 work_struct);
+	acg_dev_kobj = w->param[0];
+	dev_kobj = w->param[1];
+	dev_exp_kobj = w->param[2];
+	acg_dev_link_name = w->param[3];
+
+	BUG_ON(!acg_dev_kobj);
+
+	TRACE_DBG("%s: kobj %s dev %s link %s", __func__,
+		  kobject_name(acg_dev_kobj),
+		  dev_kobj ? kobject_name(dev_kobj) : "(null)",
+		  acg_dev_link_name ? acg_dev_link_name : "(null)");
+
+	if (dev_kobj) {
+		sysfs_remove_link(dev_exp_kobj, acg_dev_link_name);
+		kobject_put(dev_kobj);
+	}
+	kobject_del(acg_dev_kobj);
+	kobject_put(acg_dev_kobj);
+
+	kfree(w);
+	kfree(acg_dev_link_name);
+
+	TRACE_EXIT();
+}
+
+void scst_acg_dev_sysfs_del_async(struct scst_acg_dev *acg_dev)
+{
+	struct scst_acg_dev_kobj *acg_dev_kobj;
+	char *link_name = NULL;
+
+	TRACE_ENTRY();
+
+	TRACE_DBG("%s: kobj %p %s", __func__, acg_dev->acg_dev_kobj,
+		  kobject_name(acg_dev->acg_dev_kobj));
+
+	acg_dev_kobj = container_of(acg_dev->acg_dev_kobj,
+				    struct scst_acg_dev_kobj, kobj);
+	acg_dev_kobj->valid = false;
+	if (acg_dev->dev) {
+		link_name = kstrdup(acg_dev->acg_dev_link_name, GFP_KERNEL);
+		if (WARN_ON(!link_name))
+			goto out;
+	}
+	scst_sysfs_queue_work(scst_do_acg_dev_sysfs_del,
+			      acg_dev->acg_dev_kobj,
+			      acg_dev->dev ? acg_dev->dev->dev_kobj : NULL,
+			      acg_dev->dev ? acg_dev->dev->dev_exp_kobj : NULL,
+			      link_name,
+			      NULL);
+out:
+	TRACE_EXIT();
 }
 
 int scst_acg_dev_sysfs_create(struct scst_acg_dev *acg_dev,
@@ -3309,6 +3370,7 @@ out:
 	return res;
 }
 
+/* Must not be called under scst_mutex because that might cause a deadlock. */
 void scst_acg_sysfs_del(struct scst_acg *acg)
 {
 	TRACE_ENTRY();
@@ -3617,7 +3679,7 @@ out_resume:
 		}
 		break;
 	case SCST_INI_GROUP_ACTION_DEL:
-		BUG_ON(!acg->tgt_acg);
+		WARN_ON(!acg->tgt_acg);
 		scst_acg_sysfs_del(acg);
 		scst_free_acg(acg);
 		break;
@@ -3815,6 +3877,7 @@ out_free:
 	goto out;
 }
 
+/* Must not be called under scst_mutex because that might cause a deadlock. */
 void scst_acn_sysfs_del(struct scst_acn *acn)
 {
 	struct scst_acg *acg = acn->acg;
