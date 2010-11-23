@@ -206,81 +206,6 @@ struct scst_tgt_template *scst_kobj_to_tgtt(struct kobject *kobj)
 }
 EXPORT_SYMBOL(scst_kobj_to_tgtt);
 
-/* scst_mutex supposed to be locked */
-static int scst_check_tgt_acg_ptrs(struct scst_tgt *tgt, struct scst_acg *acg)
-{
-	int res = 0;
-	struct scst_tgt_template *tgtt;
-
-	list_for_each_entry(tgtt, &scst_template_list, scst_template_list_entry) {
-		struct scst_tgt *t;
-		list_for_each_entry(t, &tgtt->tgt_list, tgt_list_entry) {
-			if (t == tgt) {
-				struct scst_acg *a;
-				if (acg == NULL)
-					goto out;
-				if (acg == tgt->default_acg)
-					goto out;
-				list_for_each_entry(a, &tgt->tgt_acg_list,
-							acg_list_entry) {
-					if (a == acg)
-						goto out;
-				}
-			}
-		}
-	}
-
-	TRACE_DBG("Tgt %p/ACG %p not found", tgt, acg);
-	res = -ENOENT;
-
-out:
-	TRACE_EXIT_RES(res);
-	return res;
-}
-
-/* scst_mutex supposed to be locked */
-static int scst_check_devt_ptr(struct scst_dev_type *devt,
-	struct list_head *list)
-{
-	int res = 0;
-	struct scst_dev_type *dt;
-
-	TRACE_ENTRY();
-
-	list_for_each_entry(dt, list, dev_type_list_entry) {
-		if (dt == devt)
-			goto out;
-	}
-
-	TRACE_DBG("Devt %p not found", devt);
-	res = -ENOENT;
-
-out:
-	TRACE_EXIT_RES(res);
-	return res;
-}
-
-/* scst_mutex supposed to be locked */
-static int scst_check_dev_ptr(struct scst_device *dev)
-{
-	int res = 0;
-	struct scst_device *d;
-
-	TRACE_ENTRY();
-
-	list_for_each_entry(d, &scst_dev_list, dev_list_entry) {
-		if (d == dev)
-			goto out;
-	}
-
-	TRACE_DBG("Dev %p not found", dev);
-	res = -ENOENT;
-
-out:
-	TRACE_EXIT_RES(res);
-	return res;
-}
-
 static struct scst_dev_type *__scst_lookup_devt(const char *name)
 {
 	struct scst_dev_type *dt;
@@ -1172,10 +1097,6 @@ static int scst_process_dev_sysfs_threads_data_store(
 		res = -EINTR;
 		goto out_resume;
 	}
-
-	/* Check if our pointer is still alive */
-	if (scst_check_dev_ptr(dev) != 0)
-		goto out_unlock;
 
 	scst_stop_dev_threads(dev);
 
@@ -2394,13 +2315,6 @@ static struct kobj_type acg_dev_ktype = {
 	.default_attrs = lun_attrs,
 };
 
-/*
- * Called with scst_mutex held.
- *
- * !! No sysfs works must use kobject_get() to protect acg_dev, due to possible
- * !! deadlock with scst_mutex (it is waiting for the last put, but
- * !! the last ref counter holder is waiting for scst_mutex)
- */
 void scst_acg_dev_sysfs_del(struct scst_acg_dev *acg_dev)
 {
 	TRACE_ENTRY();
@@ -2586,10 +2500,6 @@ static int __scst_process_luns_mgmt_store(char *buffer,
 		res = -EINTR;
 		goto out_resume;
 	}
-
-	/* Check if tgt and acg not already freed while we were coming here */
-	if (scst_check_tgt_acg_ptrs(tgt, acg) != 0)
-		goto out_unlock;
 
 	if ((action != SCST_LUN_ACTION_CLEAR) &&
 	    (action != SCST_LUN_ACTION_DEL)) {
@@ -2956,10 +2866,6 @@ static int __scst_acg_process_io_grouping_type_store(struct scst_tgt *tgt,
 		goto out_resume;
 	}
 
-	/* Check if tgt and acg not already freed while we were coming here */
-	if (scst_check_tgt_acg_ptrs(tgt, acg) != 0)
-		goto out_unlock;
-
 	acg->acg_io_grouping_type = io_grouping_type;
 
 	list_for_each_entry(acg_dev, &acg->acg_dev_list, acg_dev_list_entry) {
@@ -2972,7 +2878,6 @@ static int __scst_acg_process_io_grouping_type_store(struct scst_tgt *tgt,
 			res = rc;
 	}
 
-out_unlock:
 	mutex_unlock(&scst_mutex);
 
 out_resume:
@@ -3085,10 +2990,6 @@ static int __scst_acg_process_cpu_mask_store(struct scst_tgt *tgt,
 		goto out;
 	}
 
-	/* Check if tgt and acg not already freed while we were coming here */
-	if (scst_check_tgt_acg_ptrs(tgt, acg) != 0)
-		goto out_unlock;
-
 	cpumask_copy(&acg->acg_cpu_mask, cpu_mask);
 
 	list_for_each_entry(sess, &acg->acg_sess_list, acg_sess_list_entry) {
@@ -3135,8 +3036,6 @@ static int __scst_acg_process_cpu_mask_store(struct scst_tgt *tgt,
 		}
 	}
 
-
-out_unlock:
 	mutex_unlock(&scst_mutex);
 
 out:
@@ -3230,13 +3129,6 @@ out:
 	return res;
 }
 
-/*
- * Called with scst_mutex held.
- *
- * !! No sysfs works must use kobject_get() to protect acg, due to possible
- * !! deadlock with scst_mutex (it is waiting for the last put, but
- * !! the last ref counter holder is waiting for scst_mutex)
- */
 void scst_acg_sysfs_del(struct scst_acg *acg)
 {
 	TRACE_ENTRY();
@@ -3473,10 +3365,6 @@ static int scst_process_ini_group_mgmt_store(char *buffer,
 		res = -EINTR;
 		goto out_resume;
 	}
-
-	/* Check if our pointer is still alive */
-	if (scst_check_tgt_acg_ptrs(tgt, NULL) != 0)
-		goto out_unlock;
 
 	while (isspace(*p) && *p != '\0')
 		p++;
@@ -3863,10 +3751,6 @@ static int scst_process_acg_ini_mgmt_store(char *buffer,
 		res = -EINTR;
 		goto out_resume;
 	}
-
-	/* Check if tgt and acg not already freed while we were coming here */
-	if (scst_check_tgt_acg_ptrs(tgt, acg) != 0)
-		goto out_unlock;
 
 	if (action != SCST_ACG_ACTION_INI_CLEAR)
 		while (isspace(*p) && *p != '\0')
@@ -4865,10 +4749,6 @@ static int scst_process_devt_pass_through_mgmt_store(char *buffer,
 		res = -EINTR;
 		goto out;
 	}
-
-	/* Check if devt not be already freed while we were coming here */
-	if (scst_check_devt_ptr(devt, &scst_dev_type_list) != 0)
-		goto out_unlock;
 
 	list_for_each_entry(d, &scst_dev_list, dev_list_entry) {
 		if ((d->virt_id == 0) &&
