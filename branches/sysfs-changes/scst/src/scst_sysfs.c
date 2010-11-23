@@ -1495,8 +1495,8 @@ struct scst_tgt_dev_kobj {
 	uint64_t	 lun;
 };
 
-static struct scst_tgt_dev_kobj *
-scst_create_tgt_dev_kobj(const char *device_name, uint64_t lun)
+static struct scst_tgt_dev_kobj *scst_create_tgt_dev_kobj(
+				const char *device_name, uint64_t lun)
 {
 	struct scst_tgt_dev_kobj *tgt_dev_kobj;
 
