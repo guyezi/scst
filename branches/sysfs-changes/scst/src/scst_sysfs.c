@@ -1508,7 +1508,7 @@ struct scst_tgt_dev_kobj {
 	struct kobject	 kobj;
 	char		*device_name;
 	uint64_t	 lun;
-	bool		 valid;
+	bool		 deleted;
 };
 
 static struct scst_tgt_dev_kobj *scst_create_tgt_dev_kobj(
@@ -1523,7 +1523,6 @@ static struct scst_tgt_dev_kobj *scst_create_tgt_dev_kobj(
 	if (!tgt_dev_kobj->device_name)
 		goto out_free;
 	tgt_dev_kobj->lun = lun;
-	tgt_dev_kobj->valid = true;
 out:
 	return tgt_dev_kobj;
 out_free:
@@ -1540,7 +1539,7 @@ static void scst_sysfs_tgt_dev_release(struct kobject *kobj)
 
 	tgt_dev_kobj = container_of(kobj, struct scst_tgt_dev_kobj, kobj);
 
-	WARN_ON(tgt_dev_kobj->valid);
+	WARN_ON(!tgt_dev_kobj->deleted);
 	kfree(tgt_dev_kobj->device_name);
 	kfree(tgt_dev_kobj);
 
@@ -1578,7 +1577,7 @@ struct scst_tgt_dev *scst_kobj_to_tgt_dev(struct kobject *kobj)
 	struct scst_tgt_dev *tgt_dev = NULL;
 
 	tgt_dev_kobj = container_of(kobj, struct scst_tgt_dev_kobj, kobj);
-	if (!tgt_dev_kobj->valid)
+	if (unlikely(tgt_dev_kobj->deleted))
 		goto out;
 
 	mutex_lock(&scst_mutex);
@@ -1791,7 +1790,7 @@ void scst_tgt_dev_sysfs_del(struct scst_tgt_dev *tgt_dev)
 
 	tgt_dev_kobj = container_of(tgt_dev->tgt_dev_kobj,
 				    struct scst_tgt_dev_kobj, kobj);
-	tgt_dev_kobj->valid = false;
+	tgt_dev_kobj->deleted = true;
 
 	kobject_del(tgt_dev->tgt_dev_kobj);
 	kobject_put(tgt_dev->tgt_dev_kobj);
@@ -1830,7 +1829,7 @@ void scst_tgt_dev_sysfs_del_async(struct scst_tgt_dev *tgt_dev)
 	TRACE_DBG("%s: kobj %s", __func__, kobject_name(tgt_dev->tgt_dev_kobj));
 	tgt_dev_kobj = container_of(tgt_dev->tgt_dev_kobj,
 				    struct scst_tgt_dev_kobj, kobj);
-	tgt_dev_kobj->valid = false;
+	tgt_dev_kobj->deleted = true;
 	scst_sysfs_queue_work(scst_do_tgt_sysfs_del, tgt_dev->tgt_dev_kobj,
 			      NULL, NULL, NULL, NULL);
 
@@ -2344,7 +2343,7 @@ struct scst_acg_dev_kobj {
 	char		*target_name;
 	char		*acg_name;
 	uint64_t	 lun;
-	bool		 valid;
+	bool		 deleted;
 };
 
 static struct scst_acg_dev_kobj *scst_create_acg_dev_kobj(
@@ -2368,7 +2367,6 @@ static struct scst_acg_dev_kobj *scst_create_acg_dev_kobj(
 	if (!acg_dev_kobj->acg_name)
 		goto out_free;
 	acg_dev_kobj->lun = lun;
-	acg_dev_kobj->valid = true;
 out:
 	return acg_dev_kobj;
 out_free:
@@ -2385,7 +2383,7 @@ static void scst_release_acg_dev_kobj(struct kobject *kobj)
 
 	TRACE_ENTRY();
 	acg_dev_kobj = container_of(kobj, struct scst_acg_dev_kobj, kobj);
-	WARN_ON(acg_dev_kobj->valid);
+	WARN_ON(!acg_dev_kobj->deleted);
 	kfree(acg_dev_kobj->acg_name);
 	kfree(acg_dev_kobj->target_name);
 	kfree(acg_dev_kobj->template_name);
@@ -2492,7 +2490,7 @@ void scst_acg_dev_sysfs_del(struct scst_acg_dev *acg_dev)
 
 	acg_dev_kobj = container_of(acg_dev->acg_dev_kobj,
 				    struct scst_acg_dev_kobj, kobj);
-	acg_dev_kobj->valid = false;
+	acg_dev_kobj->deleted = true;
 
 	if (acg_dev->dev != NULL) {
 		sysfs_remove_link(acg_dev->dev->dev_exp_kobj,
@@ -2556,7 +2554,7 @@ void scst_acg_dev_sysfs_del_async(struct scst_acg_dev *acg_dev)
 
 	acg_dev_kobj = container_of(acg_dev->acg_dev_kobj,
 				    struct scst_acg_dev_kobj, kobj);
-	acg_dev_kobj->valid = false;
+	acg_dev_kobj->deleted = true;
 	if (acg_dev->dev) {
 		link_name = kstrdup(acg_dev->acg_dev_link_name, GFP_KERNEL);
 		if (WARN_ON(!link_name))
@@ -2634,7 +2632,7 @@ struct scst_acg_kobj {
 	struct kobject	 kobj;
 	char		*template_name;
 	char		*target_name;
-	bool		 valid;
+	bool		 deleted;
 };
 
 static struct scst_acg_kobj *scst_create_acg_kobj(const char *template_name,
@@ -2651,7 +2649,6 @@ static struct scst_acg_kobj *scst_create_acg_kobj(const char *template_name,
 	acg_kobj->target_name = kstrdup(target_name, GFP_KERNEL);
 	if (!acg_kobj->target_name)
 		goto out_free;
-	acg_kobj->valid = true;
 out:
 	return acg_kobj;
 out_free:
@@ -2668,7 +2665,7 @@ static void scst_release_acg_kobj(struct kobject *kobj)
 	TRACE_ENTRY();
 
 	acg_kobj = container_of(kobj, struct scst_acg_kobj, kobj);
-	WARN_ON(acg_kobj->valid);
+	WARN_ON(!acg_kobj->deleted);
 	kfree(acg_kobj->target_name);
 	kfree(acg_kobj->template_name);
 	kfree(acg_kobj);
@@ -2685,7 +2682,7 @@ struct scst_acg *scst_kobj_to_acg(struct kobject *kobj)
 
 	acg_kobj = container_of(kobj, struct scst_acg_kobj, kobj);
 
-	if (!acg_kobj->valid)
+	if (unlikely(acg_kobj->deleted))
 		goto out;
 
 	mutex_lock(&scst_mutex);
@@ -3394,7 +3391,7 @@ void scst_acg_sysfs_del(struct scst_acg *acg)
 	TRACE_ENTRY();
 
 	acg_kobj = container_of(acg->acg_kobj, struct scst_acg_kobj, kobj);
-	acg_kobj->valid = false;
+	acg_kobj->deleted = true;
 
 	kobject_del(acg->luns_kobj);
 	kobject_put(acg->luns_kobj);
@@ -3446,7 +3443,7 @@ void scst_acg_sysfs_del_async(struct scst_acg *acg)
 
 	TRACE_DBG("%s: kobj %s", __func__, kobject_name(acg->acg_kobj));
 	acg_kobj = container_of(acg->acg_kobj, struct scst_acg_kobj, kobj);
-	acg_kobj->valid = false;
+	acg_kobj->deleted = true;
 	scst_sysfs_queue_work(scst_do_acg_sysfs_del, acg->acg_kobj,
 			      acg->initiators_kobj, acg->luns_kobj, NULL, NULL);
 
