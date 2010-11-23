@@ -2341,13 +2341,117 @@ void scst_sess_sysfs_del(struct scst_session *sess)
  ** Target luns directory implementation
  **/
 
-static void scst_acg_dev_release(struct kobject *kobj)
+struct scst_acg_dev_kobj {
+	struct kobject	 kobj;
+	char		*template_name;
+	char		*target_name;
+	char		*acg_name;
+	uint64_t	 lun;
+};
+
+static struct scst_acg_dev_kobj *scst_create_acg_dev_kobj(
+					const char *template_name,
+					const char *target_name,
+					const char *acg_name,
+					const uint64_t lun)
 {
-	struct scst_acg_dev *acg_dev;
+	struct scst_acg_dev_kobj *acg_dev_kobj;
+
+	acg_dev_kobj = kzalloc(sizeof(*acg_dev_kobj), GFP_KERNEL);
+	if (!acg_dev_kobj)
+		goto out;
+	acg_dev_kobj->template_name = kstrdup(template_name, GFP_KERNEL);
+	if (!acg_dev_kobj->template_name)
+		goto out_free;
+	acg_dev_kobj->target_name = kstrdup(target_name, GFP_KERNEL);
+	if (!acg_dev_kobj->target_name)
+		goto out_free;
+	acg_dev_kobj->acg_name = kstrdup(acg_name, GFP_KERNEL);
+	if (!acg_dev_kobj->acg_name)
+		goto out_free;
+	acg_dev_kobj->lun = lun;
+out:
+	return acg_dev_kobj;
+out_free:
+	kfree(acg_dev_kobj->acg_name);
+	kfree(acg_dev_kobj->template_name);
+	kfree(acg_dev_kobj);
+	acg_dev_kobj = NULL;
+	goto out;
+}
+
+static void scst_release_acg_dev_kobj(struct kobject *kobj)
+{
+	struct scst_acg_dev_kobj *acg_dev_kobj;
 
 	TRACE_ENTRY();
-	acg_dev = container_of(kobj, struct scst_acg_dev, acg_dev_kobj);
-	scst_release_acg_dev(acg_dev);
+	acg_dev_kobj = container_of(kobj, struct scst_acg_dev_kobj, kobj);
+	kfree(acg_dev_kobj->acg_name);
+	kfree(acg_dev_kobj->target_name);
+	kfree(acg_dev_kobj->template_name);
+	kfree(acg_dev_kobj);
+	TRACE_EXIT();
+	return;
+}
+
+static struct scst_acg *__scst_lookup_acg(const struct scst_tgt *tgt,
+					  const char *acg_name)
+{
+	struct scst_acg *acg;
+
+	acg = tgt->default_acg;
+	if (strcmp(acg->acg_name, acg_name) == 0)
+		return acg;
+
+	list_for_each_entry(acg, &tgt->tgt_acg_list, acg_list_entry)
+		if (strcmp(acg->acg_name, acg_name) == 0)
+			return acg;
+
+	return NULL;
+}
+
+struct scst_acg_dev *scst_kobj_to_acg_dev(struct kobject *kobj)
+{
+	struct scst_acg_dev_kobj *acg_dev_kobj;
+	struct scst_tgt_template *tgtt;
+	struct scst_tgt *tgt;
+	struct scst_acg *acg;
+	struct scst_acg_dev *acg_dev = NULL;
+
+	acg_dev_kobj = container_of(kobj, struct scst_acg_dev_kobj, kobj);
+
+	mutex_lock(&scst_mutex);
+
+	tgtt = __scst_lookup_tgtt(acg_dev_kobj->template_name);
+	if (!tgtt)
+		goto out_unlock;
+
+	tgt = __scst_lookup_tgt(tgtt, acg_dev_kobj->target_name);
+	if (!tgt)
+		goto out_unlock;
+
+	acg = __scst_lookup_acg(tgt, acg_dev_kobj->acg_name);
+	if (!acg)
+		goto out_unlock;
+
+	list_for_each_entry(acg_dev, &acg->acg_dev_list, acg_dev_list_entry)
+		if (acg_dev->lun == acg_dev_kobj->lun)
+			goto out_unlock;
+
+	TRACE_DBG("acg_dev %s not found", kobject_name(kobj));
+
+	acg_dev = NULL;
+
+out_unlock:
+	mutex_unlock(&scst_mutex);
+	return acg_dev;
+}
+EXPORT_SYMBOL(scst_kobj_to_acg_dev);
+
+static void scst_acg_dev_release(struct kobject *kobj)
+{
+	TRACE_ENTRY();
+	scst_release_acg_dev_kobj(kobj);
 	TRACE_EXIT();
 }
 
@@ -2357,7 +2461,7 @@ static ssize_t scst_lun_rd_only_show(struct kobject *kobj,
 {
 	struct scst_acg_dev *acg_dev;
 
-	acg_dev = container_of(kobj, struct scst_acg_dev, acg_dev_kobj);
+	acg_dev = scst_kobj_to_acg_dev(kobj);
 
 	if (acg_dev->rd_only || acg_dev->dev->rd_only)
 		return sprintf(buf, "%d\n%s\n", 1, SCST_SYSFS_KEY_MARK);
@@ -2389,8 +2493,9 @@ void scst_acg_dev_sysfs_del(struct scst_acg_dev *acg_dev)
 		kobject_put(acg_dev->dev->dev_kobj);
 	}
 
-	kobject_del(&acg_dev->acg_dev_kobj);
-	kobject_put(&acg_dev->acg_dev_kobj);
+	kobject_del(acg_dev->acg_dev_kobj);
+	kobject_put(acg_dev->acg_dev_kobj);
+	acg_dev->acg_dev_kobj = NULL;
 
 	TRACE_EXIT();
 	return;
@@ -2399,14 +2504,25 @@ void scst_acg_dev_sysfs_del(struct scst_acg_dev *acg_dev)
 int scst_acg_dev_sysfs_create(struct scst_acg_dev *acg_dev,
 	struct kobject *parent)
 {
+	struct scst_acg_dev_kobj *acg_dev_kobj;
 	int res;
 
 	TRACE_ENTRY();
 
-	res = kobject_init_and_add(&acg_dev->acg_dev_kobj, &acg_dev_ktype,
+	res = -ENOMEM;
+	acg_dev_kobj = scst_create_acg_dev_kobj(acg_dev->acg->tgt->tgtt->name,
+						acg_dev->acg->tgt->tgt_name,
+						acg_dev->acg->acg_name,
+						acg_dev->lun);
+	if (!acg_dev_kobj)
+		goto out;
+
+	acg_dev->acg_dev_kobj = &acg_dev_kobj->kobj;
+	res = kobject_init_and_add(acg_dev->acg_dev_kobj, &acg_dev_ktype,
 				      parent, "%u", acg_dev->lun);
 	if (res != 0) {
 		PRINT_ERROR("Can't add acg_dev %p to sysfs", acg_dev);
+		scst_release_acg_dev_kobj(&acg_dev_kobj->kobj);
 		goto out;
 	}
 
@@ -2416,14 +2532,14 @@ int scst_acg_dev_sysfs_create(struct scst_acg_dev *acg_dev,
 		"export%u", acg_dev->dev->dev_exported_lun_num++);
 
 	res = sysfs_create_link(acg_dev->dev->dev_exp_kobj,
-			   &acg_dev->acg_dev_kobj, acg_dev->acg_dev_link_name);
+			   acg_dev->acg_dev_kobj, acg_dev->acg_dev_link_name);
 	if (res != 0) {
 		PRINT_ERROR("Can't create acg %s LUN link",
 			acg_dev->acg->acg_name);
 		goto out_del;
 	}
 
-	res = sysfs_create_link(&acg_dev->acg_dev_kobj,
+	res = sysfs_create_link(acg_dev->acg_dev_kobj,
 			acg_dev->dev->dev_kobj, "device");
 	if (res != 0) {
 		PRINT_ERROR("Can't create acg %s device link",
@@ -2503,16 +2619,16 @@ struct scst_acg *scst_kobj_to_acg(struct kobject *kobj)
 	if (!tgt)
 		goto out_unlock;
 
-	list_for_each_entry(acg, &tgt->tgt_acg_list, acg_list_entry)
-		if (strcmp(acg->acg_name, kobject_name(kobj)) == 0)
-			goto out_unlock;
-
-	TRACE_DBG("ACG %s not found", kobject_name(kobj));
+	acg = __scst_lookup_acg(tgt, kobject_name(kobj));
 
 	acg = NULL;
 
 out_unlock:
 	mutex_unlock(&scst_mutex);
+
+	if (!acg)
+		TRACE_DBG("ACG %s not found", kobject_name(kobj));
+
 	return acg;
 }
 EXPORT_SYMBOL(scst_kobj_to_acg);

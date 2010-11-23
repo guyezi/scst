@@ -2678,20 +2678,10 @@ static void scst_del_free_acg_dev(struct scst_acg_dev *acg_dev, bool del_sysfs)
 	if (del_sysfs)
 		scst_acg_dev_sysfs_del(acg_dev);
 
-#ifdef CONFIG_SCST_PROC
-	scst_release_acg_dev(acg_dev);
-#endif
+	kmem_cache_free(scst_acgd_cachep, acg_dev);
 
 	TRACE_EXIT();
 	return;
-}
-
-/**
- * scst_release_acg_dev() - acg_dev memory deallocation.
- */
-void scst_release_acg_dev(struct scst_acg_dev *acg_dev)
-{
-	kmem_cache_free(scst_acgd_cachep, acg_dev);
 }
 
 /* The activity supposed to be suspended and scst_mutex held */

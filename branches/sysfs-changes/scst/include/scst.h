@@ -2435,7 +2435,7 @@ struct scst_acg_dev {
 
 #ifndef CONFIG_SCST_PROC
 	/* kobject for this structure */
-	struct kobject acg_dev_kobj;
+	struct kobject *acg_dev_kobj;
 
 	/* Name of the link to the corresponding LUN */
 	char acg_dev_link_name[20];
@@ -3826,6 +3826,17 @@ static inline struct kobject *scst_sysfs_get_acg_kobj(struct scst_acg *acg)
 }
 
 struct scst_acg *scst_kobj_to_acg(struct kobject *kobj);
+
+/**
+ * scst_sysfs_get_acg_dev_kobj() - Returns acg_dev kobject pointer.
+ */
+static inline struct kobject *scst_sysfs_get_acg_dev_kobj(
+					struct scst_acg_dev *acg_dev)
+{
+	return acg_dev->acg_dev_kobj;
+}
+
+struct scst_acg_dev *scst_kobj_to_acg_dev(struct kobject *kobj);
 
 #endif /* CONFIG_SCST_PROC */
 
