@@ -24,7 +24,7 @@
 #include <linux/init.h>
 #include <linux/ctype.h>
 #include <linux/slab.h>
-#include <linux/kthread.h>
+#include <linux/workqueue.h>
 
 #ifdef INSIDE_KERNEL_TREE
 #include <scst/scst.h>
@@ -42,6 +42,7 @@ static struct kobject *scst_targets_kobj;
 static struct kobject *scst_devices_kobj;
 static struct kobject *scst_sgv_kobj;
 static struct kobject *scst_handlers_kobj;
+static struct workqueue_struct *scst_sysfs_wq;
 
 static const char *scst_dev_handler_types[] = {
 	"Direct-access device (e.g., magnetic disk)",
@@ -171,6 +172,47 @@ static ssize_t scst_acg_cpu_mask_store(struct kobject *kobj,
 				    const char *buf, size_t count);
 static ssize_t scst_acn_file_show(struct kobject *kobj,
 	struct kobj_attribute *attr, char *buf);
+
+
+struct scst_sysfs_work_struct {
+	struct work_struct  work_struct;
+	void		   *data;
+};
+
+static void scst_sysfs_queue_work(work_func_t func, void *data)
+{
+	struct scst_sysfs_work_struct *w;
+
+	TRACE_ENTRY();
+
+	w = kmalloc(sizeof(*w), GFP_KERNEL);
+	if (WARN_ON(!w))
+		return;
+	INIT_WORK(&w->work_struct, func);
+	w->data = data;
+	TRACE_DBG("%s: w = %p", __func__, w);
+	queue_work(scst_sysfs_wq, &w->work_struct);
+
+	TRACE_EXIT();
+}
+
+static void scst_sysfs_del_put_kobj(struct work_struct *work_struct)
+{
+	struct scst_sysfs_work_struct *w;
+	struct kobject *kobj;
+
+	TRACE_ENTRY();
+	w = container_of(work_struct, struct scst_sysfs_work_struct,
+			 work_struct);
+	kobj = w->data;
+	TRACE_DBG("%s: w = %p; kobj %p %s", __func__, w, kobj,
+		  kobject_name(kobj));
+	kobject_del(kobj);
+	kobject_put(kobj);
+	kfree(w);
+	TRACE_EXIT();
+}
+
 
 /* Locking: caller must hold lock on scst_mutex. */
 static struct scst_tgt_template *__scst_lookup_tgtt(const char *name)
@@ -1493,6 +1535,7 @@ struct scst_tgt_dev_kobj {
 	struct kobject	 kobj;
 	char		*device_name;
 	uint64_t	 lun;
+	bool		 valid;
 };
 
 static struct scst_tgt_dev_kobj *scst_create_tgt_dev_kobj(
@@ -1507,6 +1550,7 @@ static struct scst_tgt_dev_kobj *scst_create_tgt_dev_kobj(
 	if (!tgt_dev_kobj->device_name)
 		goto out_free;
 	tgt_dev_kobj->lun = lun;
+	tgt_dev_kobj->valid = true;
 out:
 	return tgt_dev_kobj;
 out_free:
@@ -1519,11 +1563,14 @@ static void scst_sysfs_tgt_dev_release(struct kobject *kobj)
 {
 	struct scst_tgt_dev_kobj *tgt_dev_kobj;
 
+	TRACE_ENTRY();
+
 	tgt_dev_kobj = container_of(kobj, struct scst_tgt_dev_kobj, kobj);
 
-	TRACE_ENTRY();
+	BUG_ON(tgt_dev_kobj->valid);
 	kfree(tgt_dev_kobj->device_name);
 	kfree(tgt_dev_kobj);
+
 	TRACE_EXIT();
 }
 
@@ -1558,6 +1605,8 @@ struct scst_tgt_dev *scst_kobj_to_tgt_dev(struct kobject *kobj)
 	struct scst_tgt_dev *tgt_dev = NULL;
 
 	tgt_dev_kobj = container_of(kobj, struct scst_tgt_dev_kobj, kobj);
+	if (!tgt_dev_kobj->valid)
+		goto out;
 
 	mutex_lock(&scst_mutex);
 
@@ -1569,7 +1618,7 @@ struct scst_tgt_dev *scst_kobj_to_tgt_dev(struct kobject *kobj)
 
 out_unlock:
 	mutex_unlock(&scst_mutex);
-
+out:
 	return tgt_dev;
 }
 EXPORT_SYMBOL(scst_kobj_to_tgt_dev);
@@ -1760,6 +1809,22 @@ out_err:
 	goto out;
 }
 
+void scst_tgt_dev_sysfs_del_async(struct scst_tgt_dev *tgt_dev)
+{
+	struct scst_tgt_dev_kobj *tgt_dev_kobj;
+
+	TRACE_ENTRY();
+
+	TRACE_DBG("%s: kobj %p %s", __func__, tgt_dev->tgt_dev_kobj,
+		  kobject_name(tgt_dev->tgt_dev_kobj));
+	tgt_dev_kobj = container_of(tgt_dev->tgt_dev_kobj,
+				    struct scst_tgt_dev_kobj, kobj);
+	tgt_dev_kobj->valid = false;
+	scst_sysfs_queue_work(scst_sysfs_del_put_kobj, tgt_dev->tgt_dev_kobj);
+
+	TRACE_EXIT();
+}
+
 void scst_tgt_dev_sysfs_del(struct scst_tgt_dev *tgt_dev)
 {
 	TRACE_ENTRY();
@@ -1769,7 +1834,6 @@ void scst_tgt_dev_sysfs_del(struct scst_tgt_dev *tgt_dev)
 	tgt_dev->tgt_dev_kobj = NULL;
 
 	TRACE_EXIT();
-	return;
 }
 
 /**
@@ -5129,23 +5193,24 @@ EXPORT_SYMBOL_GPL(scst_wait_info_completion);
 
 int __init scst_sysfs_init(void)
 {
-	int res = 0;
+	int res;
 
 	TRACE_ENTRY();
 
+	res = -EINVAL;
 	scst_sysfs_root_kobj = kobject_create_and_add_kt(&scst_sysfs_root_ktype,
 						       kernel_kobj, "scst_tgt");
-	if (scst_sysfs_root_kobj == NULL)
+	if (!scst_sysfs_root_kobj)
 		goto sysfs_root_kobj_error;
 
 	scst_targets_kobj = kobject_create_and_add("targets",
 						   scst_sysfs_root_kobj);
-	if (scst_targets_kobj == NULL)
+	if (!scst_targets_kobj)
 		goto targets_kobj_error;
 
 	scst_devices_kobj = kobject_create_and_add("devices",
 						   scst_sysfs_root_kobj);
-	if (scst_devices_kobj == NULL)
+	if (!scst_devices_kobj)
 		goto devices_kobj_error;
 
 	scst_sgv_kobj = kobject_create_and_add_kt(&sgv_ktype,
@@ -5155,12 +5220,22 @@ int __init scst_sysfs_init(void)
 
 	scst_handlers_kobj = kobject_create_and_add("handlers",
 						    scst_sysfs_root_kobj);
-	if (scst_handlers_kobj == NULL)
+	if (!scst_handlers_kobj)
 		goto handlers_kobj_error;
+
+	scst_sysfs_wq = create_workqueue("scst_sysfs");
+	if (!scst_sysfs_wq)
+		goto sysfs_wq_error;
+
+	res = 0;
 
 out:
 	TRACE_EXIT_RES(res);
 	return res;
+
+sysfs_wq_error:
+	kobject_del(scst_handlers_kobj);
+	kobject_put(scst_handlers_kobj);
 
 handlers_kobj_error:
 	kobject_del(scst_sgv_kobj);
@@ -5179,9 +5254,6 @@ targets_kobj_error:
 	kobject_put(scst_sysfs_root_kobj);
 
 sysfs_root_kobj_error:
-	if (res == 0)
-		res = -EINVAL;
-
 	goto out;
 }
 
@@ -5190,6 +5262,9 @@ void scst_sysfs_cleanup(void)
 	TRACE_ENTRY();
 
 	PRINT_INFO("%s", "Exiting SCST sysfs hierarchy...");
+
+	flush_workqueue(scst_sysfs_wq);
+	destroy_workqueue(scst_sysfs_wq);
 
 	kobject_del(scst_sgv_kobj);
 	kobject_put(scst_sgv_kobj);

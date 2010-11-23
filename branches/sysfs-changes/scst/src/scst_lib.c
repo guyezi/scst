@@ -3482,7 +3482,7 @@ static void scst_free_tgt_dev(struct scst_tgt_dev *tgt_dev)
 
 	list_del(&tgt_dev->sess_tgt_dev_list_entry);
 
-	scst_tgt_dev_sysfs_del(tgt_dev);
+	scst_tgt_dev_sysfs_del_async(tgt_dev);
 
 	if (tgt_dev->sess->tgt->tgtt->get_initiator_port_transport_id == NULL)
 		dev->not_pr_supporting_tgt_devs_num--;
