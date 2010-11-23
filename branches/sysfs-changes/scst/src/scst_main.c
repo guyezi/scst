@@ -964,6 +964,12 @@ static void scst_unregister_device(struct scsi_device *scsidp)
 
 	list_del(&dev->dev_list_entry);
 
+	mutex_unlock(&scst_mutex);
+
+	scst_devt_dev_sysfs_del(dev);
+
+	mutex_lock(&scst_mutex);
+
 	scst_assign_dev_handler(dev, &scst_null_devtype);
 
 	list_for_each_entry_safe(acg_dev, aa, &dev->dev_acg_dev_list,
@@ -1398,10 +1404,10 @@ void scst_unregister_dev_driver(struct scst_dev_type *dev_type)
 
 	TRACE_ENTRY();
 
+	BUG_ON(dev_type == &scst_null_devtype);
+
 #ifdef CONFIG_SCST_PROC
 	scst_cleanup_proc_dev_handler_dir_entries(dev_type);
-#else
-	scst_devt_sysfs_del(dev_type);
 #endif
 
 	scst_suspend_activity(false);
@@ -1419,17 +1425,31 @@ void scst_unregister_dev_driver(struct scst_dev_type *dev_type)
 		goto out_up;
 	}
 
+	list_del(&dev_type->dev_type_list_entry);
+
+restart:
 	list_for_each_entry(dev, &scst_dev_list, dev_list_entry) {
 		if (dev->handler == dev_type) {
+			list_del(&dev->dev_list_entry);
+			mutex_unlock(&scst_mutex);
+
+			scst_devt_dev_sysfs_del(dev);
+
+			mutex_lock(&scst_mutex);
+			list_add_tail(&dev->dev_list_entry, &scst_dev_list);
 			scst_assign_dev_handler(dev, &scst_null_devtype);
 			TRACE_DBG("Dev handler removed from device %p", dev);
+			goto restart;
 		}
 	}
 
-	list_del(&dev_type->dev_type_list_entry);
-
 	mutex_unlock(&scst_mutex);
 	scst_resume_activity();
+
+
+#ifndef CONFIG_SCST_PROC
+	scst_devt_sysfs_del(dev_type);
+#endif
 
 	PRINT_INFO("Device handler \"%s\" for type %d unloaded",
 		   dev_type->name, dev_type->type);

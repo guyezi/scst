@@ -4778,10 +4778,19 @@ static int scst_process_devt_pass_through_mgmt_store(char *buffer,
 	}
 
 	if (strcasecmp("add_device", action) == 0) {
+		list_del(&dev->dev_list_entry);
+		mutex_unlock(&scst_mutex);
+		scst_devt_dev_sysfs_del(dev);
+		mutex_lock(&scst_mutex);
 		res = scst_assign_dev_handler(dev, devt);
-		if (res == 0)
+		if (res == 0) {
+			mutex_unlock(&scst_mutex);
+			res = scst_devt_dev_sysfs_create(dev);
+			mutex_lock(&scst_mutex);
 			PRINT_INFO("Device %s assigned to dev handler %s",
 				dev->virt_name, devt->name);
+		}
+		list_add_tail(&dev->dev_list_entry, &scst_dev_list);
 	} else if (strcasecmp("del_device", action) == 0) {
 		if (dev->handler != devt) {
 			PRINT_ERROR("Device %s is not assigned to handler %s",
@@ -4789,6 +4798,11 @@ static int scst_process_devt_pass_through_mgmt_store(char *buffer,
 			res = -EINVAL;
 			goto out_unlock;
 		}
+		list_del(&dev->dev_list_entry);
+		mutex_unlock(&scst_mutex);
+		scst_devt_dev_sysfs_del(dev);
+		mutex_lock(&scst_mutex);
+		list_add_tail(&dev->dev_list_entry, &scst_dev_list);
 		res = scst_assign_dev_handler(dev, &scst_null_devtype);
 		if (res == 0)
 			PRINT_INFO("Device %s unassigned from dev handler %s",
