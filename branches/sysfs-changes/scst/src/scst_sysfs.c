@@ -2203,7 +2203,7 @@ int scst_sess_sysfs_create(struct scst_session *sess)
 {
 	int res = 0;
 	const struct attribute **pattr;
-	char *name = (char *)sess->initiator_name;
+	const char *name = sess->unique_initiator_name;
 	struct scst_sess_kobj *sess_kobj;
 
 	TRACE_ENTRY();

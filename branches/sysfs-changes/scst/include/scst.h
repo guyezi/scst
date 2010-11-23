@@ -1612,6 +1612,9 @@ struct scst_session {
 
 #ifndef CONFIG_SCST_PROC
 	struct kobject *sess_kobj; /* kobject for this struct */
+
+	/* initiator_name + suffix */
+	const char *unique_initiator_name;
 #endif
 
 	/*
