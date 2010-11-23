@@ -3815,7 +3815,7 @@ static ssize_t vdisk_del_device(const char *device_name)
 {
 	int res = 0;
 	struct scst_vdisk_dev *virt_dev;
-	int id;
+	int id = -1;
 
 	TRACE_ENTRY();
 
@@ -3921,7 +3921,7 @@ static ssize_t vcdrom_del_device(const char *device_name)
 {
 	int res = 0;
 	struct scst_vdisk_dev *virt_dev;
-	int id;
+	int id = -1;
 
 	TRACE_ENTRY();
 
