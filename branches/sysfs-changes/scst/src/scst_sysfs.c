@@ -2395,7 +2395,7 @@ static struct scst_acg *__scst_lookup_acg(const struct scst_tgt *tgt,
 	struct scst_acg *acg;
 
 	acg = tgt->default_acg;
-	if (strcmp(acg->acg_name, acg_name) == 0)
+	if (acg && strcmp(acg->acg_name, acg_name) == 0)
 		return acg;
 
 	list_for_each_entry(acg, &tgt->tgt_acg_list, acg_list_entry)
@@ -2681,8 +2681,6 @@ struct scst_acg *scst_kobj_to_acg(struct kobject *kobj)
 		goto out_unlock;
 
 	acg = __scst_lookup_acg(tgt, kobject_name(kobj));
-
-	acg = NULL;
 
 out_unlock:
 	mutex_unlock(&scst_mutex);
@@ -3484,6 +3482,8 @@ static ssize_t scst_acg_addr_method_show(struct kobject *kobj,
 	struct scst_acg *acg;
 
 	acg = scst_kobj_to_acg(kobj);
+	if (!acg)
+		return -ENOENT;
 
 	return __scst_acg_addr_method_show(acg, buf);
 }
@@ -3494,10 +3494,14 @@ static ssize_t scst_acg_addr_method_store(struct kobject *kobj,
 	int res;
 	struct scst_acg *acg;
 
+	res = -ENOENT;
 	acg = scst_kobj_to_acg(kobj);
+	if (!acg)
+		goto out;
 
 	res = __scst_acg_addr_method_store(acg, buf, count);
 
+out:
 	TRACE_EXIT_RES(res);
 	return res;
 }
@@ -3508,6 +3512,8 @@ static ssize_t scst_acg_io_grouping_type_show(struct kobject *kobj,
 	struct scst_acg *acg;
 
 	acg = scst_kobj_to_acg(kobj);
+	if (!acg)
+		return -ENOENT;
 
 	return __scst_acg_io_grouping_type_show(acg, buf);
 }
@@ -3518,7 +3524,10 @@ static ssize_t scst_acg_io_grouping_type_store(struct kobject *kobj,
 	int res;
 	struct scst_acg *acg;
 
+	res = -ENOENT;
 	acg = scst_kobj_to_acg(kobj);
+	if (!acg)
+		goto out;
 
 	res = __scst_acg_io_grouping_type_store(acg, buf, count);
 	if (res != 0)
@@ -3537,6 +3546,8 @@ static ssize_t scst_acg_cpu_mask_show(struct kobject *kobj,
 	struct scst_acg *acg;
 
 	acg = scst_kobj_to_acg(kobj);
+	if (!acg)
+		return -ENOENT;
 
 	return __scst_acg_cpu_mask_show(acg, buf);
 }
@@ -3547,7 +3558,10 @@ static ssize_t scst_acg_cpu_mask_store(struct kobject *kobj,
 	int res;
 	struct scst_acg *acg;
 
+	res = -ENOENT;
 	acg = scst_kobj_to_acg(kobj);
+	if (!acg)
+		goto out;
 
 	res = __scst_acg_cpu_mask_store(acg, buf, count);
 	if (res != 0)
@@ -3910,7 +3924,10 @@ static ssize_t scst_acg_luns_mgmt_store(struct kobject *kobj,
 	struct scst_acg *acg;
 	char *buffer;
 
+	res = -ENOENT;
 	acg = scst_kobj_to_acg(kobj->parent);
+	if (!acg)
+		goto out;
 
 	res = -ENOMEM;
 	buffer = zero_terminate(buf, count);
@@ -4135,7 +4152,10 @@ static ssize_t scst_acg_ini_mgmt_store(struct kobject *kobj,
 	struct scst_acg *acg;
 	char *buffer;
 
+	res = -ENOENT;
 	acg = scst_kobj_to_acg(kobj->parent);
+	if (!acg)
+		goto out;
 
 	res = -ENOMEM;
 	buffer = zero_terminate(buf, count);
