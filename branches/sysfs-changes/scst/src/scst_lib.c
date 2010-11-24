@@ -2675,8 +2675,9 @@ static void scst_del_free_acg_dev(struct scst_acg_dev *acg_dev, bool del_sysfs)
 	list_del(&acg_dev->acg_dev_list_entry);
 	list_del(&acg_dev->dev_acg_dev_list_entry);
 
-	if (del_sysfs)
-		scst_acg_dev_sysfs_del_async(acg_dev);
+	if (del_sysfs && scst_acg_dev_sysfs_del_async(acg_dev))
+		PRINT_ERROR("Removing acg_dev %s from sysfs failed",
+			    kobject_name(acg_dev->acg_dev_kobj));
 
 	kmem_cache_free(scst_acgd_cachep, acg_dev);
 
@@ -2897,7 +2898,9 @@ void scst_del_free_acg(struct scst_acg *acg)
 		TRACE_DBG("Removing acg %s from list", acg->acg_name);
 		list_del(&acg->acg_list_entry);
 
-		scst_acg_sysfs_del_async(acg);
+		if (scst_acg_sysfs_del_async(acg))
+			PRINT_ERROR("Removing acg %s from sysfs failed",
+				    kobject_name(acg->acg_kobj));
 	} else
 		acg->tgt->default_acg = NULL;
 #endif
@@ -3470,7 +3473,9 @@ static void scst_free_tgt_dev(struct scst_tgt_dev *tgt_dev)
 
 	list_del(&tgt_dev->sess_tgt_dev_list_entry);
 
-	scst_tgt_dev_sysfs_del_async(tgt_dev);
+	if (scst_tgt_dev_sysfs_del_async(tgt_dev))
+		PRINT_ERROR("Removing tgt_dev %s from sysfs failed",
+			    kobject_name(tgt_dev->tgt_dev_kobj));
 
 	if (tgt_dev->sess->tgt->tgtt->get_initiator_port_transport_id == NULL)
 		dev->not_pr_supporting_tgt_devs_num--;

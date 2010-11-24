@@ -42,7 +42,6 @@ static struct kobject *scst_targets_kobj;
 static struct kobject *scst_devices_kobj;
 static struct kobject *scst_sgv_kobj;
 static struct kobject *scst_handlers_kobj;
-static struct workqueue_struct *scst_sysfs_wq;
 
 static const char *scst_dev_handler_types[] = {
 	"Direct-access device (e.g., magnetic disk)",
@@ -173,32 +172,38 @@ static ssize_t scst_acg_cpu_mask_store(struct kobject *kobj,
 static ssize_t scst_acn_file_show(struct kobject *kobj,
 	struct kobj_attribute *attr, char *buf);
 
+/**
+ ** Sysfs work
+ **/
+
+static struct workqueue_struct *scst_sysfs_wq;
 
 struct scst_sysfs_work_struct {
 	struct work_struct  work_struct;
-	void		   *param[5];
+	void		   *param[4];
 };
 
-static void scst_sysfs_queue_work(work_func_t func, void *param1,
-			void *param2, void *param3, void *param4, void *param5)
+static struct scst_sysfs_work_struct* scst_sysfs_alloc_work(work_func_t func,
+					void *param1, void *param2,
+					void *param3, void *param4)
 {
 	struct scst_sysfs_work_struct *w;
 
 	TRACE_ENTRY();
 
 	w = kmalloc(sizeof(*w), GFP_KERNEL);
-	if (WARN_ON(!w))
-		return;
+	if (!w)
+		goto out;
+
 	INIT_WORK(&w->work_struct, func);
 	w->param[0] = param1;
 	w->param[1] = param2;
 	w->param[2] = param3;
 	w->param[3] = param4;
-	w->param[4] = param5;
-	TRACE_DBG("%s: w = %p", __func__, w);
-	queue_work(scst_sysfs_wq, &w->work_struct);
 
-	TRACE_EXIT();
+out:
+	TRACE_EXIT_HRES(w);
+	return w;
 }
 
 /* Locking: caller must hold lock on scst_mutex. */
@@ -1820,20 +1825,30 @@ static void scst_do_tgt_sysfs_del(struct work_struct *work_struct)
 	TRACE_EXIT();
 }
 
-void scst_tgt_dev_sysfs_del_async(struct scst_tgt_dev *tgt_dev)
+int scst_tgt_dev_sysfs_del_async(struct scst_tgt_dev *tgt_dev)
 {
 	struct scst_tgt_dev_kobj *tgt_dev_kobj;
+	struct scst_sysfs_work_struct *w;
+	int res;
 
 	TRACE_ENTRY();
 
 	TRACE_DBG("%s: kobj %s", __func__, kobject_name(tgt_dev->tgt_dev_kobj));
 	tgt_dev_kobj = container_of(tgt_dev->tgt_dev_kobj,
 				    struct scst_tgt_dev_kobj, kobj);
+	res = -ENOMEM;
+	w = scst_sysfs_alloc_work(scst_do_tgt_sysfs_del,
+				    tgt_dev->tgt_dev_kobj,
+				    NULL, NULL, NULL);
+	if (!w)
+		goto out;
 	tgt_dev_kobj->deleted = true;
-	scst_sysfs_queue_work(scst_do_tgt_sysfs_del, tgt_dev->tgt_dev_kobj,
-			      NULL, NULL, NULL, NULL);
+	queue_work(scst_sysfs_wq, &w->work_struct);
+	res = 0;
 
-	TRACE_EXIT();
+out:
+	TRACE_EXIT_RES(res);
+	return res;
 }
 
 /**
@@ -2543,10 +2558,12 @@ static void scst_do_acg_dev_sysfs_del(struct work_struct *work_struct)
 	TRACE_EXIT();
 }
 
-void scst_acg_dev_sysfs_del_async(struct scst_acg_dev *acg_dev)
+int scst_acg_dev_sysfs_del_async(struct scst_acg_dev *acg_dev)
 {
 	struct scst_acg_dev_kobj *acg_dev_kobj;
 	char *link_name = NULL;
+	struct scst_sysfs_work_struct *w;
+	int res;
 
 	TRACE_ENTRY();
 
@@ -2554,20 +2571,29 @@ void scst_acg_dev_sysfs_del_async(struct scst_acg_dev *acg_dev)
 
 	acg_dev_kobj = container_of(acg_dev->acg_dev_kobj,
 				    struct scst_acg_dev_kobj, kobj);
-	acg_dev_kobj->deleted = true;
+	res = -ENOMEM;
 	if (acg_dev->dev) {
 		link_name = kstrdup(acg_dev->acg_dev_link_name, GFP_KERNEL);
-		if (WARN_ON(!link_name))
+		if (!link_name)
 			goto out;
 	}
-	scst_sysfs_queue_work(scst_do_acg_dev_sysfs_del,
-			      acg_dev->acg_dev_kobj,
-			      acg_dev->dev ? acg_dev->dev->dev_kobj : NULL,
-			      acg_dev->dev ? acg_dev->dev->dev_exp_kobj : NULL,
-			      link_name,
-			      NULL);
+	w = scst_sysfs_alloc_work(scst_do_acg_dev_sysfs_del,
+				  acg_dev->acg_dev_kobj,
+				  acg_dev->dev ? acg_dev->dev->dev_kobj : NULL,
+				  acg_dev->dev ? acg_dev->dev->dev_exp_kobj
+				  : NULL,
+				  link_name);
+	if (!w)
+		goto out_free;
+	acg_dev_kobj->deleted = true;
+	queue_work(scst_sysfs_wq, &w->work_struct);
+	res = 0;
 out:
-	TRACE_EXIT();
+	TRACE_EXIT_RES(res);
+	return res;
+out_free:
+	kfree(link_name);
+	goto out;
 }
 
 int scst_acg_dev_sysfs_create(struct scst_acg_dev *acg_dev,
@@ -3435,19 +3461,27 @@ static void scst_do_acg_sysfs_del(struct work_struct *work_struct)
 	TRACE_EXIT();
 }
 
-void scst_acg_sysfs_del_async(struct scst_acg *acg)
+int scst_acg_sysfs_del_async(struct scst_acg *acg)
 {
 	struct scst_acg_kobj *acg_kobj;
+	struct scst_sysfs_work_struct *w;
+	int res;
 
 	TRACE_ENTRY();
 
 	TRACE_DBG("%s: kobj %s", __func__, kobject_name(acg->acg_kobj));
 	acg_kobj = container_of(acg->acg_kobj, struct scst_acg_kobj, kobj);
+	res = -ENOMEM;
+	w = scst_sysfs_alloc_work(scst_do_acg_sysfs_del, acg->acg_kobj,
+				  acg->initiators_kobj, acg->luns_kobj, NULL);
+	if (!w)
+		goto out;
 	acg_kobj->deleted = true;
-	scst_sysfs_queue_work(scst_do_acg_sysfs_del, acg->acg_kobj,
-			      acg->initiators_kobj, acg->luns_kobj, NULL, NULL);
+	queue_work(scst_sysfs_wq, &w->work_struct);
 
-	TRACE_EXIT();
+out:
+	TRACE_EXIT_RES(res);
+	return res;
 }
 
 static struct kobj_type acg_ktype = {
