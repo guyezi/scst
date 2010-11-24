@@ -2960,7 +2960,7 @@ static int __scst_process_luns_mgmt_store(char *buffer,
 			} else {
 				/* Replace */
 				res = scst_acg_del_lun(acg, acg_dev->lun,
-						false);
+						       false, true);
 				if (res != 0)
 					goto out_unlock;
 
@@ -2970,7 +2970,7 @@ static int __scst_process_luns_mgmt_store(char *buffer,
 
 		res = scst_acg_add_lun(acg,
 			tgt_kobj ? tgt->tgt_luns_kobj : acg->luns_kobj,
-			dev, virt_lun, read_only, !dev_replaced, NULL);
+			dev, virt_lun, read_only, !dev_replaced, NULL, true);
 		if (res != 0)
 			goto out_unlock;
 
@@ -2996,7 +2996,7 @@ static int __scst_process_luns_mgmt_store(char *buffer,
 			p++;
 		virt_lun = simple_strtoul(p, &p, 0);
 
-		res = scst_acg_del_lun(acg, virt_lun, true);
+		res = scst_acg_del_lun(acg, virt_lun, true, true);
 		if (res != 0)
 			goto out_unlock;
 		break;
@@ -3008,7 +3008,7 @@ static int __scst_process_luns_mgmt_store(char *buffer,
 					 acg_dev_list_entry) {
 			res = scst_acg_del_lun(acg, acg_dev->lun,
 				list_is_last(&acg_dev->acg_dev_list_entry,
-					     &acg->acg_dev_list));
+					     &acg->acg_dev_list), true);
 			if (res)
 				goto out_unlock;
 		}
@@ -3832,7 +3832,7 @@ static int scst_process_ini_group_mgmt_store(char *buffer,
 			res = -EBUSY;
 			goto out_unlock;
 		}
-		scst_del_free_acg(acg);
+		scst_del_free_acg(acg, true);
 		break;
 	}
 
@@ -5242,7 +5242,7 @@ static int scst_process_devt_pass_through_mgmt_store(char *buffer,
 		mutex_unlock(&scst_mutex);
 		scst_devt_dev_sysfs_del(dev);
 		mutex_lock(&scst_mutex);
-		res = scst_assign_dev_handler(dev, devt, false);
+		res = scst_assign_dev_handler(dev, devt, true);
 		if (res == 0) {
 			mutex_unlock(&scst_mutex);
 			res = scst_devt_dev_sysfs_create(dev);
@@ -5263,7 +5263,7 @@ static int scst_process_devt_pass_through_mgmt_store(char *buffer,
 		scst_devt_dev_sysfs_del(dev);
 		mutex_lock(&scst_mutex);
 		list_add_tail(&dev->dev_list_entry, &scst_dev_list);
-		res = scst_assign_dev_handler(dev, &scst_null_devtype, false);
+		res = scst_assign_dev_handler(dev, &scst_null_devtype, true);
 		if (res == 0)
 			PRINT_INFO("Device %s unassigned from dev handler %s",
 				dev->virt_name, devt->name);

@@ -308,7 +308,7 @@ void scst_free_device(struct scst_device *dev);
 
 struct scst_acg *scst_alloc_add_acg(struct scst_tgt *tgt,
 	const char *acg_name, bool tgt_acg);
-void scst_del_free_acg(struct scst_acg *acg);
+void scst_del_free_acg(struct scst_acg *acg, bool synchr_sysfs_update);
 
 struct scst_acg *scst_tgt_find_acg(struct scst_tgt *tgt, const char *name);
 struct scst_acg *scst_find_acg(const struct scst_session *sess);
@@ -321,9 +321,11 @@ void scst_nexus_loss(struct scst_tgt_dev *tgt_dev, bool queue_UA);
 
 int scst_acg_add_lun(struct scst_acg *acg, struct kobject *parent,
 	struct scst_device *dev, uint64_t lun, int read_only,
-	bool gen_scst_report_luns_changed, struct scst_acg_dev **out_acg_dev);
+	bool gen_scst_report_luns_changed, struct scst_acg_dev **out_acg_dev,
+	bool synchr_sysfs_update);
 int scst_acg_del_lun(struct scst_acg *acg, uint64_t lun,
-	bool gen_scst_report_luns_changed);
+		     bool gen_scst_report_luns_changed,
+		     bool synchr_sysfs_update);
 
 int scst_acg_add_acn(struct scst_acg *acg, const char *name);
 #ifdef CONFIG_SCST_PROC
@@ -345,7 +347,7 @@ void scst_store_sense(struct scst_cmd *cmd);
 
 int scst_assign_dev_handler(struct scst_device *dev,
 			    struct scst_dev_type *handler,
-			    bool async_sysfs_mod);
+			    bool synchr_sysfs_update);
 
 struct scst_session *scst_alloc_session(struct scst_tgt *tgt, gfp_t gfp_mask,
 	const char *initiator_name);
