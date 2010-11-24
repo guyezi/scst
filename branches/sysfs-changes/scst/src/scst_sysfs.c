@@ -35,12 +35,6 @@
 #include "scst_mem.h"
 #include "scst_pres.h"
 
-#ifdef CONFIG_LOCKDEP
-#define lockdep_assert_not_held(l) WARN_ON(debug_locks && lockdep_is_held(l))
-#else
-#define lockdep_assert_not_held(l) do { } while(0)
-#endif
-
 static DECLARE_COMPLETION(scst_sysfs_root_release_completion);
 
 static struct kobject *scst_sysfs_root_kobj;
@@ -628,12 +622,10 @@ out_del:
 	goto out;
 }
 
-/* Must not be called under scst_mutex because that might cause a deadlock. */
+/* Sysfs callback functions that invoke this function may hold scst_mutex. */
 void scst_tgtt_sysfs_del(struct scst_tgt_template *tgtt)
 {
 	TRACE_ENTRY();
-
-	lockdep_assert_not_held(&scst_mutex);
 
 	kobject_del(tgtt->tgtt_kobj);
 	kobject_put(tgtt->tgtt_kobj);
@@ -1007,12 +999,10 @@ out_err:
 	goto out;
 }
 
-/* Must not be called under scst_mutex because that might cause a deadlock. */
+/* Sysfs callback functions that invoke this function may hold scst_mutex. */
 void scst_tgt_sysfs_del(struct scst_tgt *tgt)
 {
 	TRACE_ENTRY();
-
-	lockdep_assert_not_held(&scst_mutex);
 
 	kobject_del(tgt->tgt_sess_kobj);
 	kobject_put(tgt->tgt_sess_kobj);
@@ -1399,12 +1389,10 @@ out_err:
 	goto out;
 }
 
-/* Must not be called under scst_mutex because that might cause a deadlock. */
+/* Sysfs callback functions that invoke this function may hold scst_mutex. */
 void scst_devt_dev_sysfs_del(struct scst_device *dev)
 {
 	TRACE_ENTRY();
-
-	lockdep_assert_not_held(&scst_mutex);
 
 	if (dev->handler == &scst_null_devtype)
 		goto out;
@@ -1419,6 +1407,7 @@ out:
 	TRACE_EXIT();
 }
 
+/* Sysfs callback functions that invoke this function may hold scst_mutex. */
 static void scst_do_devt_dev_sysfs_del(struct work_struct *work_struct)
 {
 	struct scst_sysfs_work_struct *w;
@@ -1427,8 +1416,6 @@ static void scst_do_devt_dev_sysfs_del(struct work_struct *work_struct)
 	const struct attribute **attr;
 
 	TRACE_ENTRY();
-
-	lockdep_assert_not_held(&scst_mutex);
 
 	w = container_of(work_struct, struct scst_sysfs_work_struct,
 			 work_struct);
@@ -1450,7 +1437,7 @@ static void scst_do_devt_dev_sysfs_del(struct work_struct *work_struct)
 	TRACE_EXIT();
 }
 
-int __must_check scst_devt_dev_sysfs_del_async(struct scst_device *dev)
+int scst_devt_dev_sysfs_del_async(struct scst_device *dev)
 {
 	char *virt_name;
 	struct scst_sysfs_work_struct *w;
@@ -1544,12 +1531,10 @@ out_del:
 	goto out;
 }
 
-/* Must not be called under scst_mutex because that might cause a deadlock. */
+/* Sysfs callback functions that invoke this function may hold scst_mutex. */
 void scst_dev_sysfs_del(struct scst_device *dev)
 {
 	TRACE_ENTRY();
-
-	lockdep_assert_not_held(&scst_mutex);
 
 	kobject_del(dev->dev_exp_kobj);
 	kobject_put(dev->dev_exp_kobj);
@@ -1844,14 +1829,12 @@ out_err:
 	goto out;
 }
 
-/* Must not be called under scst_mutex because that might cause a deadlock. */
+/* Sysfs callback functions that invoke this function may hold scst_mutex. */
 void scst_tgt_dev_sysfs_del(struct scst_tgt_dev *tgt_dev)
 {
 	struct scst_tgt_dev_kobj *tgt_dev_kobj;
 
 	TRACE_ENTRY();
-
-	lockdep_assert_not_held(&scst_mutex);
 
 	tgt_dev_kobj = container_of(tgt_dev->tgt_dev_kobj,
 				    struct scst_tgt_dev_kobj, kobj);
@@ -1864,15 +1847,13 @@ void scst_tgt_dev_sysfs_del(struct scst_tgt_dev *tgt_dev)
 	TRACE_EXIT();
 }
 
-/* Must not be called under scst_mutex because that might cause a deadlock. */
+/* Sysfs callback functions that invoke this function may hold scst_mutex. */
 static void scst_do_tgt_sysfs_del(struct work_struct *work_struct)
 {
 	struct scst_sysfs_work_struct *w;
 	struct kobject *kobj;
 
 	TRACE_ENTRY();
-
-	lockdep_assert_not_held(&scst_mutex);
 
 	w = container_of(work_struct, struct scst_sysfs_work_struct,
 			 work_struct);
@@ -2390,15 +2371,13 @@ out_free:
 	goto out;
 }
 
-/* Must not be called under scst_mutex because that might cause a deadlock. */
+/* Sysfs callback functions that invoke this function may hold scst_mutex. */
 void scst_sess_sysfs_del(struct scst_session *sess)
 {
 	TRACE_ENTRY();
 
 	TRACE_DBG("Deleting session %s from sysfs",
 		kobject_name(sess->sess_kobj));
-
-	lockdep_assert_not_held(&scst_mutex);
 
 	kobject_del(sess->sess_kobj);
 	kobject_put(sess->sess_kobj);
@@ -2556,14 +2535,12 @@ static struct kobj_type acg_dev_ktype = {
 	.default_attrs = lun_attrs,
 };
 
-/* Must not be called under scst_mutex because that might cause a deadlock. */
+/* Sysfs callback functions that invoke this function may hold scst_mutex. */
 void scst_acg_dev_sysfs_del(struct scst_acg_dev *acg_dev)
 {
 	struct scst_acg_dev_kobj *acg_dev_kobj;
 
 	TRACE_ENTRY();
-
-	lockdep_assert_not_held(&scst_mutex);
 
 	acg_dev_kobj = container_of(acg_dev->acg_dev_kobj,
 				    struct scst_acg_dev_kobj, kobj);
@@ -2583,7 +2560,7 @@ void scst_acg_dev_sysfs_del(struct scst_acg_dev *acg_dev)
 	return;
 }
 
-/* Must not be called under scst_mutex because that might cause a deadlock. */
+/* Sysfs callback functions that invoke this function may hold scst_mutex. */
 static void scst_do_acg_dev_sysfs_del(struct work_struct *work_struct)
 {
 	struct scst_sysfs_work_struct *w;
@@ -2593,8 +2570,6 @@ static void scst_do_acg_dev_sysfs_del(struct work_struct *work_struct)
 	char *acg_dev_link_name;
 
 	TRACE_ENTRY();
-
-	lockdep_assert_not_held(&scst_mutex);
 
 	w = container_of(work_struct, struct scst_sysfs_work_struct,
 			 work_struct);
@@ -3476,14 +3451,12 @@ out:
 	return res;
 }
 
-/* Must not be called under scst_mutex because that might cause a deadlock. */
+/* Sysfs callback functions that invoke this function may hold scst_mutex. */
 void scst_acg_sysfs_del(struct scst_acg *acg)
 {
 	struct scst_acg_kobj *acg_kobj;
 
 	TRACE_ENTRY();
-
-	lockdep_assert_not_held(&scst_mutex);
 
 	acg_kobj = container_of(acg->acg_kobj, struct scst_acg_kobj, kobj);
 	acg_kobj->deleted = true;
@@ -3501,15 +3474,13 @@ void scst_acg_sysfs_del(struct scst_acg *acg)
 	TRACE_EXIT();
 }
 
-/* Must not be called under scst_mutex because that might cause a deadlock. */
+/* Sysfs callback functions that invoke this function may hold scst_mutex. */
 static void scst_do_acg_sysfs_del(struct work_struct *work_struct)
 {
 	struct scst_sysfs_work_struct *w;
 	struct kobject *acg_kobj, *acg_initiators_kobj, *acg_luns_kobj;
 
 	TRACE_ENTRY();
-
-	lockdep_assert_not_held(&scst_mutex);
 
 	w = container_of(work_struct, struct scst_sysfs_work_struct,
 			 work_struct);
@@ -4045,14 +4016,12 @@ out_free:
 	goto out;
 }
 
-/* Must not be called under scst_mutex because that might cause a deadlock. */
+/* Sysfs callback functions that invoke this function may hold scst_mutex. */
 void scst_acn_sysfs_del(struct scst_acn *acn)
 {
 	struct scst_acg *acg = acn->acg;
 
 	TRACE_ENTRY();
-
-	lockdep_assert_not_held(&scst_mutex);
 
 	if (acn->acn_attr != NULL) {
 		sysfs_remove_file(acg->initiators_kobj,
@@ -4063,6 +4032,55 @@ void scst_acn_sysfs_del(struct scst_acn *acn)
 
 	TRACE_EXIT();
 	return;
+}
+
+static void scst_do_acn_sysfs_del(struct work_struct *work_struct)
+{
+	struct scst_sysfs_work_struct *w;
+	struct kobject *initiators_kobj;
+	const struct kobj_attribute *attr;
+
+	TRACE_ENTRY();
+
+	w = container_of(work_struct, struct scst_sysfs_work_struct,
+			 work_struct);
+	initiators_kobj = w->param[0];
+	attr            = w->param[1];
+
+	scst_sysfs_free_work(w);
+
+	sysfs_remove_file(initiators_kobj, &attr->attr);
+	kobject_put(initiators_kobj);
+
+	kfree(attr->attr.name);
+	kfree(attr);
+
+	TRACE_EXIT();
+}
+
+int scst_acn_sysfs_del_async(struct scst_acn *acn)
+{
+	struct scst_sysfs_work_struct *w;
+	int res;
+
+	TRACE_ENTRY();
+
+	if (!acn->acn_attr)
+		goto out_noerr;
+
+	res = -ENOMEM;
+	w = scst_sysfs_alloc_work(scst_do_acn_sysfs_del,
+				  acn->acg->initiators_kobj,
+				  acn->acn_attr, NULL, NULL);
+	if (!w)
+		goto out;
+	kobject_get(acn->acg->initiators_kobj);
+	scst_sysfs_queue_work(w);
+out_noerr:
+	res = 0;
+out:
+	TRACE_EXIT_RES(res);
+	return res;
 }
 
 static ssize_t scst_acn_file_show(struct kobject *kobj,
@@ -4376,12 +4394,10 @@ out:
 	return res;
 }
 
-/* Must not be called under scst_mutex because that might cause a deadlock. */
+/* Sysfs callback functions that invoke this function may hold scst_mutex. */
 void scst_sgv_sysfs_del(struct sgv_pool *pool)
 {
 	TRACE_ENTRY();
-
-	lockdep_assert_not_held(&scst_mutex);
 
 	kobject_del(pool->sgv_kobj);
 	kobject_put(pool->sgv_kobj);
@@ -5203,9 +5219,7 @@ static int scst_process_devt_pass_through_mgmt_store(char *buffer,
 	if (strcasecmp("add_device", action) == 0) {
 		list_del(&dev->dev_list_entry);
 		mutex_unlock(&scst_mutex);
-		if (scst_devt_dev_sysfs_del_async(dev))
-			PRINT_ERROR("Deleting devt node for dev %s failed",
-				    dev->virt_name);
+		scst_devt_dev_sysfs_del(dev);
 		mutex_lock(&scst_mutex);
 		res = scst_assign_dev_handler(dev, devt);
 		if (res == 0) {
@@ -5225,9 +5239,7 @@ static int scst_process_devt_pass_through_mgmt_store(char *buffer,
 		}
 		list_del(&dev->dev_list_entry);
 		mutex_unlock(&scst_mutex);
-		if (scst_devt_dev_sysfs_del_async(dev))
-			PRINT_ERROR("Deleting devt node for dev %s failed",
-				    dev->virt_name);
+		scst_devt_dev_sysfs_del(dev);
 		mutex_lock(&scst_mutex);
 		list_add_tail(&dev->dev_list_entry, &scst_dev_list);
 		res = scst_assign_dev_handler(dev, &scst_null_devtype);
@@ -5328,12 +5340,10 @@ out_err:
 	goto out;
 }
 
-/* Must not be called under scst_mutex because that might cause a deadlock. */
+/* Sysfs callback functions that invoke this function may hold scst_mutex. */
 void scst_devt_sysfs_del(struct scst_dev_type *devt)
 {
 	TRACE_ENTRY();
-
-	lockdep_assert_not_held(&scst_mutex);
 
 	kobject_del(devt->devt_kobj);
 	kobject_put(devt->devt_kobj);
@@ -5560,8 +5570,6 @@ int __init scst_sysfs_init(void)
 
 	TRACE_ENTRY();
 
-	lockdep_assert_not_held(&scst_mutex);
-
 	res = -EINVAL;
 
 	scst_sysfs_wq = create_workqueue("scst_sysfs");
@@ -5630,8 +5638,6 @@ void scst_sysfs_cleanup(void)
 	TRACE_ENTRY();
 
 	PRINT_INFO("%s", "Exiting SCST sysfs hierarchy...");
-
-	lockdep_assert_not_held(&scst_mutex);
 
 	kobject_del(scst_handlers_kobj);
 	kobject_put(scst_handlers_kobj);

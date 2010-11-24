@@ -457,6 +457,7 @@ void scst_acg_dev_sysfs_del(struct scst_acg_dev *acg_dev);
 int __must_check scst_acg_dev_sysfs_del_async(struct scst_acg_dev *acg_dev);
 int scst_acn_sysfs_create(struct scst_acn *acn);
 void scst_acn_sysfs_del(struct scst_acn *acn);
+int __must_check scst_acn_sysfs_del_async(struct scst_acn *acn);
 
 #endif /* CONFIG_SCST_PROC */
 

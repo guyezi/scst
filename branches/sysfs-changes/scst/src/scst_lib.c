@@ -3622,7 +3622,7 @@ void scst_del_free_acn(struct scst_acn *acn, bool reassign)
 
 	list_del(&acn->acn_list_entry);
 
-	scst_acn_sysfs_del(acn);
+	scst_acn_sysfs_del_async(acn);
 
 	kfree(acn->name);
 	kfree(acn);
