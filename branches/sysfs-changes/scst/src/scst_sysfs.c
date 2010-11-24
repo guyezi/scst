@@ -5442,6 +5442,11 @@ int __init scst_sysfs_init(void)
 	TRACE_ENTRY();
 
 	res = -EINVAL;
+
+	scst_sysfs_wq = create_workqueue("scst_sysfs");
+	if (!scst_sysfs_wq)
+		goto sysfs_wq_error;
+
 	scst_sysfs_root_kobj = kobject_create_and_add_kt(&scst_sysfs_root_ktype,
 						       kernel_kobj, "scst_tgt");
 	if (!scst_sysfs_root_kobj)
@@ -5467,17 +5472,12 @@ int __init scst_sysfs_init(void)
 	if (!scst_handlers_kobj)
 		goto handlers_kobj_error;
 
-	scst_sysfs_wq = create_workqueue("scst_sysfs");
-	if (!scst_sysfs_wq)
-		goto sysfs_wq_error;
-
 	res = 0;
 
 out:
 	TRACE_EXIT_RES(res);
 	return res;
 
-sysfs_wq_error:
 	kobject_del(scst_handlers_kobj);
 	kobject_put(scst_handlers_kobj);
 
@@ -5498,6 +5498,9 @@ targets_kobj_error:
 	kobject_put(scst_sysfs_root_kobj);
 
 sysfs_root_kobj_error:
+	destroy_workqueue(scst_sysfs_wq);
+
+sysfs_wq_error:
 	goto out;
 }
 
@@ -5507,8 +5510,8 @@ void scst_sysfs_cleanup(void)
 
 	PRINT_INFO("%s", "Exiting SCST sysfs hierarchy...");
 
-	flush_workqueue(scst_sysfs_wq);
-	destroy_workqueue(scst_sysfs_wq);
+	kobject_del(scst_handlers_kobj);
+	kobject_put(scst_handlers_kobj);
 
 	kobject_del(scst_sgv_kobj);
 	kobject_put(scst_sgv_kobj);
@@ -5519,11 +5522,11 @@ void scst_sysfs_cleanup(void)
 	kobject_del(scst_targets_kobj);
 	kobject_put(scst_targets_kobj);
 
-	kobject_del(scst_handlers_kobj);
-	kobject_put(scst_handlers_kobj);
-
 	kobject_del(scst_sysfs_root_kobj);
 	kobject_put(scst_sysfs_root_kobj);
+
+	flush_workqueue(scst_sysfs_wq);
+	destroy_workqueue(scst_sysfs_wq);
 
 	wait_for_completion(&scst_sysfs_root_release_completion);
 	/*
