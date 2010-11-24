@@ -5242,7 +5242,7 @@ static int scst_process_devt_pass_through_mgmt_store(char *buffer,
 		mutex_unlock(&scst_mutex);
 		scst_devt_dev_sysfs_del(dev);
 		mutex_lock(&scst_mutex);
-		res = scst_assign_dev_handler(dev, devt);
+		res = scst_assign_dev_handler(dev, devt, false);
 		if (res == 0) {
 			mutex_unlock(&scst_mutex);
 			res = scst_devt_dev_sysfs_create(dev);
@@ -5263,7 +5263,7 @@ static int scst_process_devt_pass_through_mgmt_store(char *buffer,
 		scst_devt_dev_sysfs_del(dev);
 		mutex_lock(&scst_mutex);
 		list_add_tail(&dev->dev_list_entry, &scst_dev_list);
-		res = scst_assign_dev_handler(dev, &scst_null_devtype);
+		res = scst_assign_dev_handler(dev, &scst_null_devtype, false);
 		if (res == 0)
 			PRINT_INFO("Device %s unassigned from dev handler %s",
 				dev->virt_name, devt->name);

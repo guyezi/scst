@@ -344,7 +344,8 @@ int scst_finish_internal_cmd(struct scst_cmd *cmd);
 void scst_store_sense(struct scst_cmd *cmd);
 
 int scst_assign_dev_handler(struct scst_device *dev,
-	struct scst_dev_type *handler);
+			    struct scst_dev_type *handler,
+			    bool async_sysfs_mod);
 
 struct scst_session *scst_alloc_session(struct scst_tgt *tgt, gfp_t gfp_mask,
 	const char *initiator_name);

@@ -916,7 +916,7 @@ static int scst_register_device(struct scsi_device *scsidp)
 	 */
 	list_for_each_entry(dt, &scst_dev_type_list, dev_type_list_entry) {
 		if (dt->type == scsidp->type) {
-			res = scst_assign_dev_handler(dev, dt);
+			res = scst_assign_dev_handler(dev, dt, false);
 			if (res != 0)
 				goto out_del;
 			break;
@@ -982,13 +982,7 @@ static void scst_unregister_device(struct scsi_device *scsidp)
 
 	list_del(&dev->dev_list_entry);
 
-	mutex_unlock(&scst_mutex);
-
-	scst_devt_dev_sysfs_del(dev);
-
-	mutex_lock(&scst_mutex);
-
-	scst_assign_dev_handler(dev, &scst_null_devtype);
+	scst_assign_dev_handler(dev, &scst_null_devtype, true);
 
 	list_for_each_entry_safe(acg_dev, aa, &dev->dev_acg_dev_list,
 				 dev_acg_dev_list_entry) {
@@ -1074,6 +1068,12 @@ static int scst_check_device_name(const char *dev_name)
  *
  * Registers a virtual device and returns ID assigned to the device on
  * success, or negative value otherwise
+#ifndef CONFIG_SCST_PROC
+ *
+ * Note: Must be called from inside a sysfs .store() callback function in order
+ * to avoid triggering locking inversion between the sysfs s_active locking
+ * object and scst_mutex.
+#endif
  */
 int scst_register_virtual_device(struct scst_dev_type *dev_handler,
 	const char *dev_name)
@@ -1166,7 +1166,7 @@ int scst_register_virtual_device(struct scst_dev_type *dev_handler,
 		}
 	}
 
-	rc = scst_assign_dev_handler(dev, dev_handler);
+	rc = scst_assign_dev_handler(dev, dev_handler, false);
 	if (rc != 0) {
 		res = rc;
 		sysfs_del = true;
@@ -1178,15 +1178,6 @@ int scst_register_virtual_device(struct scst_dev_type *dev_handler,
 	mutex_unlock(&scst_mutex);
 	scst_resume_activity();
 
-	/*
-	 * The devt_dev sysfs objects must be created after attach() finished
-	 * to avoid that the callback functions registered with sysfs are
-	 * invoked for an object that has not yet been initialized.
-	 */
-	res = scst_devt_dev_sysfs_create(dev);
-	if (res != 0)
-		goto out_suspend_lock_pr_clear_dev;
-
 	res = dev->virt_id;
 
 	PRINT_INFO("Attached to virtual device %s (id %d)",
@@ -1196,8 +1187,6 @@ out:
 	TRACE_EXIT_RES(res);
 	return res;
 
-out_suspend_lock_pr_clear_dev:
-	scst_suspend_activity(false);
 #ifndef CONFIG_SCST_PROC
 out_lock_pr_clear_dev:
 	mutex_lock(&scst_mutex);
@@ -1208,10 +1197,8 @@ out_pr_clear_dev:
 
 out_free_dev:
 	mutex_unlock(&scst_mutex);
-	if (sysfs_del) {
-		scst_devt_dev_sysfs_del(dev);
+	if (sysfs_del)
 		scst_dev_sysfs_del(dev);
-	}
 	scst_free_device(dev);
 	goto out_resume;
 
@@ -1252,20 +1239,19 @@ void scst_unregister_virtual_device(int id)
 
 	list_del(&dev->dev_list_entry);
 
-	mutex_unlock(&scst_mutex);
-	scst_resume_activity();
-
-	scst_devt_dev_sysfs_del(dev);
-	scst_dev_sysfs_del(dev);
-
 	scst_pr_clear_dev(dev);
 
-	scst_assign_dev_handler(dev, &scst_null_devtype);
+	scst_assign_dev_handler(dev, &scst_null_devtype, true);
 
 	list_for_each_entry_safe(acg_dev, aa, &dev->dev_acg_dev_list,
 				 dev_acg_dev_list_entry) {
 		scst_acg_del_lun(acg_dev->acg, acg_dev->lun, true);
 	}
+
+	mutex_unlock(&scst_mutex);
+	scst_resume_activity();
+
+	scst_dev_sysfs_del(dev);
 
 	PRINT_INFO("Detached from virtual device %s (id %d)",
 		dev->virt_name, dev->virt_id);
@@ -1443,23 +1429,14 @@ void scst_unregister_dev_driver(struct scst_dev_type *dev_type)
 		goto out_up;
 	}
 
-	list_del(&dev_type->dev_type_list_entry);
-
-restart:
 	list_for_each_entry(dev, &scst_dev_list, dev_list_entry) {
 		if (dev->handler == dev_type) {
-			list_del(&dev->dev_list_entry);
-			mutex_unlock(&scst_mutex);
-
-			scst_devt_dev_sysfs_del(dev);
-
-			mutex_lock(&scst_mutex);
-			list_add_tail(&dev->dev_list_entry, &scst_dev_list);
-			scst_assign_dev_handler(dev, &scst_null_devtype);
+			scst_assign_dev_handler(dev, &scst_null_devtype, true);
 			TRACE_DBG("Dev handler removed from device %p", dev);
-			goto restart;
 		}
 	}
+
+	list_del(&dev_type->dev_type_list_entry);
 
 	mutex_unlock(&scst_mutex);
 	scst_resume_activity();
@@ -1775,9 +1752,22 @@ out_err:
 	goto out;
 }
 
-/* The activity supposed to be suspended and scst_mutex held */
+/**
+ * scst_assign_dev_handler() - Assign a device handler to a device.
+ * @dev: SCST device to be updated.
+ * @handler: New handler to be assigned.
+ * @async_sysfs_mod: Whether to perform sysfs modifications asynchronously
+ *   or synchronously. Only set this argument to true when invoking this
+ *   function from inside a sysfs .show() or .store() callback. Otherwise
+ *   locking inversion between the sysfs s_active lock and scst_mutex will
+ *   be triggered.
+ *
+ * Notes:
+ * - It is supposed that activity is suspended and that scst_mutex is held.
+ * - If async_sysfs_mod == false, the only valid handler is &scst_null_devtype.
+ */
 int scst_assign_dev_handler(struct scst_device *dev,
-	struct scst_dev_type *handler)
+			    struct scst_dev_type *handler, bool async_sysfs_mod)
 {
 	int res = 0;
 	struct scst_tgt_dev *tgt_dev;
@@ -1802,6 +1792,18 @@ int scst_assign_dev_handler(struct scst_device *dev,
 			TRACE_DBG("%s", "Dev handler's detach_tgt() returned");
 		}
 	}
+
+	/*
+	 * devt_dev sysfs must be created AFTER attach() and deleted BEFORE
+	 * detach() to avoid calls from sysfs for not yet ready or already dead
+	 * objects.
+	 */
+	if (async_sysfs_mod) {
+		if (scst_devt_dev_sysfs_del_async(dev))
+			PRINT_ERROR("Asynchronous removal of devt %s failed",
+				    dev->virt_name);
+	} else
+		scst_devt_dev_sysfs_del(dev);
 
 	if (dev->handler->detach) {
 		TRACE_DBG("%s", "Calling dev handler's detach()");
@@ -1831,6 +1833,22 @@ assign:
 		}
 	}
 
+	if (async_sysfs_mod) {
+		if (dev->handler == &scst_null_devtype)
+			res = 0;
+		else {
+			/*
+			 * Can't create sysfs objects asynchronously without
+			 * triggering a race condition - give up.
+			 */
+			WARN("%s: bad arguments", __func__);
+			res = -EINVAL;
+		}
+	} else
+		res = scst_devt_dev_sysfs_create(dev);
+	if (res != 0)
+		goto out_detach;
+
 	if (handler->attach_tgt) {
 		list_for_each_entry(tgt_dev, &dev->dev_tgt_dev_list,
 				dev_tgt_dev_list_entry) {
@@ -1841,7 +1859,7 @@ assign:
 			if (res != 0) {
 				PRINT_ERROR("Device handler's %s attach_tgt() "
 				    "failed: %d", handler->name, res);
-				goto out_detach;
+				goto out_err_remove_sysfs;
 			}
 			list_add_tail(&tgt_dev->extra_tgt_dev_list_entry,
 				&attached_tgt_devs);
@@ -1866,6 +1884,9 @@ out_err_detach_tgt:
 			TRACE_DBG("%s", "Handler's detach_tgt() returned");
 		}
 	}
+
+out_err_remove_sysfs:
+	scst_devt_dev_sysfs_del(dev);
 
 out_detach:
 	if (handler && handler->detach) {
