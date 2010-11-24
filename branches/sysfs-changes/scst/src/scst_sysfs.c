@@ -35,6 +35,12 @@
 #include "scst_mem.h"
 #include "scst_pres.h"
 
+#ifdef CONFIG_LOCKDEP
+#define lockdep_assert_not_held(l) WARN_ON(debug_locks && lockdep_is_held(l))
+#else
+#define lockdep_assert_not_held(l) do { } while(0)
+#endif
+
 static DECLARE_COMPLETION(scst_sysfs_root_release_completion);
 
 static struct kobject *scst_sysfs_root_kobj;
@@ -556,12 +562,14 @@ kfree:
 	goto out;
 }
 
+/* Must not be called under scst_mutex because that might cause a deadlock. */
 int scst_tgtt_sysfs_create(struct scst_tgt_template *tgtt)
 {
 	int res;
-	const struct attribute **pattr;
 
 	TRACE_ENTRY();
+
+	lockdep_assert_not_held(&scst_mutex);
 
 	res = -EEXIST;
 	tgtt->tgtt_kobj = kobject_create_and_add_kt(&tgtt_ktype,
@@ -581,19 +589,12 @@ int scst_tgtt_sysfs_create(struct scst_tgt_template *tgtt)
 		}
 	}
 
-	pattr = tgtt->tgtt_attrs;
-	if (pattr != NULL) {
-		while (*pattr != NULL) {
-			TRACE_DBG("Creating attr %s for target driver %s",
-				(*pattr)->name, tgtt->name);
-			res = sysfs_create_file(tgtt->tgtt_kobj, *pattr);
-			if (res != 0) {
-				PRINT_ERROR("Can't add attr %s for target "
-					"driver %s", (*pattr)->name,
-					tgtt->name);
-				goto out_del;
-			}
-			pattr++;
+	if (tgtt->tgtt_attrs) {
+		res = sysfs_create_files(tgtt->tgtt_kobj, tgtt->tgtt_attrs);
+		if (res) {
+			PRINT_ERROR("Can't add attributes for target driver %s",
+				    tgtt->name);
+			goto out_del;
 		}
 	}
 
@@ -623,6 +624,8 @@ out_del:
 void scst_tgtt_sysfs_del(struct scst_tgt_template *tgtt)
 {
 	TRACE_ENTRY();
+
+	lockdep_assert_not_held(&scst_mutex);
 
 	kobject_del(tgtt->tgtt_kobj);
 	kobject_put(tgtt->tgtt_kobj);
@@ -878,13 +881,15 @@ static struct kobj_attribute tgt_enable_attr =
 	__ATTR(enabled, S_IRUGO | S_IWUSR,
 	       scst_tgt_enable_show, scst_tgt_enable_store);
 
+/* Must not be called under scst_mutex because that might cause a deadlock. */
 int scst_tgt_sysfs_create(struct scst_tgt *tgt)
 {
 	int res;
 	struct scst_tgt_kobj *tgt_kobj;
-	const struct attribute **pattr;
 
 	TRACE_ENTRY();
+
+	lockdep_assert_not_held(&scst_mutex);
 
 	tgt_kobj = scst_create_tgt_kobj(tgt->tgtt->name);
 	if (!tgt_kobj)
@@ -975,18 +980,12 @@ int scst_tgt_sysfs_create(struct scst_tgt *tgt)
 		goto out_err;
 	}
 
-	pattr = tgt->tgtt->tgt_attrs;
-	if (pattr != NULL) {
-		while (*pattr != NULL) {
-			TRACE_DBG("Creating attr %s for tgt %s", (*pattr)->name,
-				tgt->tgt_name);
-			res = sysfs_create_file(tgt->tgt_kobj, *pattr);
-			if (res != 0) {
-				PRINT_ERROR("Can't add tgt attr %s for tgt %s",
-					(*pattr)->name, tgt->tgt_name);
-				goto out_err;
-			}
-			pattr++;
+	if (tgt->tgtt->tgt_attrs) {
+		res = sysfs_create_files(tgt->tgt_kobj, tgt->tgtt->tgt_attrs);
+		if (res) {
+			PRINT_ERROR("Can't add attributes for tgt %s",
+				    tgt->tgt_name);
+			goto out_err;
 		}
 	}
 
@@ -1006,6 +1005,8 @@ out_err:
 void scst_tgt_sysfs_del(struct scst_tgt *tgt)
 {
 	TRACE_ENTRY();
+
+	lockdep_assert_not_held(&scst_mutex);
 
 	kobject_del(tgt->tgt_sess_kobj);
 	kobject_put(tgt->tgt_sess_kobj);
@@ -1328,12 +1329,14 @@ static void scst_sysfs_dev_release(struct kobject *kobj)
 	TRACE_EXIT();
 }
 
+/* Must not be called under scst_mutex because that might cause a deadlock. */
 int scst_devt_dev_sysfs_create(struct scst_device *dev)
 {
 	int res = 0;
-	const struct attribute **pattr;
 
 	TRACE_ENTRY();
+
+	lockdep_assert_not_held(&scst_mutex);
 
 	if (dev->handler == &scst_null_devtype)
 		goto out;
@@ -1373,16 +1376,13 @@ int scst_devt_dev_sysfs_create(struct scst_device *dev)
 		}
 	}
 
-	pattr = dev->handler->dev_attrs;
-	if (pattr != NULL) {
-		while (*pattr != NULL) {
-			res = sysfs_create_file(dev->dev_kobj, *pattr);
-			if (res != 0) {
-				PRINT_ERROR("Can't add dev attr %s for dev %s",
-					(*pattr)->name, dev->virt_name);
-				goto out_err;
-			}
-			pattr++;
+	if (dev->handler->dev_attrs) {
+		res = sysfs_create_files(dev->dev_kobj,
+					 dev->handler->dev_attrs);
+		if (res) {
+			PRINT_ERROR("Can't add device attributes for dev %s",
+				    dev->virt_name);
+			goto out_err;
 		}
 	}
 
@@ -1398,34 +1398,84 @@ out_err:
 /* Must not be called under scst_mutex because that might cause a deadlock. */
 void scst_devt_dev_sysfs_del(struct scst_device *dev)
 {
-	const struct attribute **pattr;
-
 	TRACE_ENTRY();
+
+	lockdep_assert_not_held(&scst_mutex);
 
 	if (dev->handler == &scst_null_devtype)
 		goto out;
 
-	pattr = dev->handler->dev_attrs;
-	if (pattr != NULL) {
-		while (*pattr != NULL) {
-			sysfs_remove_file(dev->dev_kobj, *pattr);
-			pattr++;
-		}
-	}
-
-	sysfs_remove_link(dev->dev_kobj, "handler");
+	sysfs_remove_files(dev->dev_kobj, dev->handler->dev_attrs);
+	sysfs_remove_file(dev->dev_kobj, &dev_threads_pool_type_attr.attr);
+	sysfs_remove_file(dev->dev_kobj, &dev_threads_num_attr.attr);
 	sysfs_remove_link(dev->handler->devt_kobj, dev->virt_name);
-
-	if (dev->handler->threads_num >= 0) {
-		sysfs_remove_file(dev->dev_kobj,
-			&dev_threads_num_attr.attr);
-		sysfs_remove_file(dev->dev_kobj,
-			&dev_threads_pool_type_attr.attr);
-	}
+	sysfs_remove_link(dev->dev_kobj, "handler");
 
 out:
 	TRACE_EXIT();
-	return;
+}
+
+static void scst_do_devt_dev_sysfs_del(struct work_struct *work_struct)
+{
+	struct scst_sysfs_work_struct *w;
+	struct kobject *dev_kobj, *dev_devt_kobj;
+	char *virt_name;
+	const struct attribute **attr;
+
+	TRACE_ENTRY();
+
+	lockdep_assert_not_held(&scst_mutex);
+
+	w = container_of(work_struct, struct scst_sysfs_work_struct,
+			 work_struct);
+	dev_kobj      = w->param[0];
+	dev_devt_kobj = w->param[1];
+	virt_name     = w->param[2];
+	attr          = w->param[3];
+
+	sysfs_remove_files(dev_kobj, attr);
+	sysfs_remove_file(dev_kobj, &dev_threads_pool_type_attr.attr);
+	sysfs_remove_file(dev_kobj, &dev_threads_num_attr.attr);
+	sysfs_remove_link(dev_devt_kobj, virt_name);
+	sysfs_remove_link(dev_kobj, "handler");
+
+	kfree(w);
+	kfree(virt_name);
+
+	TRACE_EXIT();
+}
+
+int __must_check scst_devt_dev_sysfs_del_async(struct scst_device *dev)
+{
+	char *virt_name;
+	struct scst_sysfs_work_struct *w;
+	int res;
+
+	TRACE_ENTRY();
+
+	if (dev->handler == &scst_null_devtype)
+		goto out_noerr;
+
+	res = -ENOMEM;
+	virt_name = kstrdup(dev->virt_name, GFP_KERNEL);
+	if (!virt_name)
+		goto out;
+	w = scst_sysfs_alloc_work(scst_do_devt_dev_sysfs_del,
+				  dev->dev_kobj,
+				  dev->handler->devt_kobj,
+				  virt_name,
+				  dev->handler->dev_attrs);
+	if (!w)
+		goto out_free;
+	queue_work(scst_sysfs_wq, &w->work_struct);
+out_noerr:
+	res = 0;
+out:
+	TRACE_EXIT_RES(res);
+	return res;
+out_free:
+	kfree(virt_name);
+	goto out;
 }
 
 static struct kobj_type scst_dev_ktype = {
@@ -1440,6 +1490,8 @@ int scst_dev_sysfs_create(struct scst_device *dev)
 	int res = 0;
 
 	TRACE_ENTRY();
+
+	lockdep_assert_not_held(&scst_mutex);
 
 	dev->dev_kobj = kobject_create_and_add_kt(&scst_dev_ktype,
 				      scst_devices_kobj, dev->virt_name);
@@ -1493,6 +1545,8 @@ out_del:
 void scst_dev_sysfs_del(struct scst_device *dev)
 {
 	TRACE_ENTRY();
+
+	lockdep_assert_not_held(&scst_mutex);
 
 	kobject_del(dev->dev_exp_kobj);
 	kobject_put(dev->dev_exp_kobj);
@@ -1793,6 +1847,8 @@ void scst_tgt_dev_sysfs_del(struct scst_tgt_dev *tgt_dev)
 
 	TRACE_ENTRY();
 
+	lockdep_assert_not_held(&scst_mutex);
+
 	tgt_dev_kobj = container_of(tgt_dev->tgt_dev_kobj,
 				    struct scst_tgt_dev_kobj, kobj);
 	tgt_dev_kobj->deleted = true;
@@ -1804,12 +1860,15 @@ void scst_tgt_dev_sysfs_del(struct scst_tgt_dev *tgt_dev)
 	TRACE_EXIT();
 }
 
+/* Must not be called under scst_mutex because that might cause a deadlock. */
 static void scst_do_tgt_sysfs_del(struct work_struct *work_struct)
 {
 	struct scst_sysfs_work_struct *w;
 	struct kobject *kobj;
 
 	TRACE_ENTRY();
+
+	lockdep_assert_not_held(&scst_mutex);
 
 	w = container_of(work_struct, struct scst_sysfs_work_struct,
 			 work_struct);
@@ -2281,13 +2340,14 @@ int scst_recreate_sess_luns_link(struct scst_session *sess)
 int scst_sess_sysfs_create(struct scst_session *sess)
 {
 	int res = 0;
-	const struct attribute **pattr;
 	const char *name = sess->unique_initiator_name;
 	struct scst_sess_kobj *sess_kobj;
 
 	TRACE_ENTRY();
 
 	TRACE_DBG("Adding session %s to sysfs", name);
+
+	lockdep_assert_not_held(&scst_mutex);
 
 	sess_kobj = scst_create_sess_kobj(sess->tgt->tgtt->name,
 					  sess->tgt->tgt_name);
@@ -2304,17 +2364,13 @@ int scst_sess_sysfs_create(struct scst_session *sess)
 		goto out_free;
 	}
 
-	pattr = sess->tgt->tgtt->sess_attrs;
-	if (pattr != NULL) {
-		while (*pattr != NULL) {
-			res = sysfs_create_file(sess->sess_kobj, *pattr);
-			if (res != 0) {
-				PRINT_ERROR("Can't add sess attr %s for sess "
-					"for initiator %s", (*pattr)->name,
-					name);
-				goto out_free;
-			}
-			pattr++;
+	if (sess->tgt->tgtt->sess_attrs) {
+		res = sysfs_create_files(sess->sess_kobj,
+					 sess->tgt->tgtt->sess_attrs);
+		if (res) {
+			PRINT_ERROR("Can't add attributes for initiator %s",
+				    name);
+			goto out_free;
 		}
 	}
 
@@ -2339,6 +2395,8 @@ void scst_sess_sysfs_del(struct scst_session *sess)
 
 	TRACE_DBG("Deleting session %s from sysfs",
 		kobject_name(sess->sess_kobj));
+
+	lockdep_assert_not_held(&scst_mutex);
 
 	kobject_del(sess->sess_kobj);
 	kobject_put(sess->sess_kobj);
@@ -2503,6 +2561,8 @@ void scst_acg_dev_sysfs_del(struct scst_acg_dev *acg_dev)
 
 	TRACE_ENTRY();
 
+	lockdep_assert_not_held(&scst_mutex);
+
 	acg_dev_kobj = container_of(acg_dev->acg_dev_kobj,
 				    struct scst_acg_dev_kobj, kobj);
 	acg_dev_kobj->deleted = true;
@@ -2521,6 +2581,7 @@ void scst_acg_dev_sysfs_del(struct scst_acg_dev *acg_dev)
 	return;
 }
 
+/* Must not be called under scst_mutex because that might cause a deadlock. */
 static void scst_do_acg_dev_sysfs_del(struct work_struct *work_struct)
 {
 	struct scst_sysfs_work_struct *w;
@@ -2530,6 +2591,8 @@ static void scst_do_acg_dev_sysfs_del(struct work_struct *work_struct)
 	char *acg_dev_link_name;
 
 	TRACE_ENTRY();
+
+	lockdep_assert_not_held(&scst_mutex);
 
 	w = container_of(work_struct, struct scst_sysfs_work_struct,
 			 work_struct);
@@ -3416,6 +3479,8 @@ void scst_acg_sysfs_del(struct scst_acg *acg)
 
 	TRACE_ENTRY();
 
+	lockdep_assert_not_held(&scst_mutex);
+
 	acg_kobj = container_of(acg->acg_kobj, struct scst_acg_kobj, kobj);
 	acg_kobj->deleted = true;
 
@@ -3432,12 +3497,15 @@ void scst_acg_sysfs_del(struct scst_acg *acg)
 	TRACE_EXIT();
 }
 
+/* Must not be called under scst_mutex because that might cause a deadlock. */
 static void scst_do_acg_sysfs_del(struct work_struct *work_struct)
 {
 	struct scst_sysfs_work_struct *w;
 	struct kobject *acg_kobj, *acg_initiators_kobj, *acg_luns_kobj;
 
 	TRACE_ENTRY();
+
+	lockdep_assert_not_held(&scst_mutex);
 
 	w = container_of(work_struct, struct scst_sysfs_work_struct,
 			 work_struct);
@@ -3478,6 +3546,7 @@ int scst_acg_sysfs_del_async(struct scst_acg *acg)
 		goto out;
 	acg_kobj->deleted = true;
 	queue_work(scst_sysfs_wq, &w->work_struct);
+	res = 0;
 
 out:
 	TRACE_EXIT_RES(res);
@@ -3489,12 +3558,15 @@ static struct kobj_type acg_ktype = {
 	.release = scst_release_acg_kobj,
 };
 
+/* Must not be called under scst_mutex because that might cause a deadlock. */
 int scst_acg_sysfs_create(struct scst_tgt *tgt, struct scst_acg *acg)
 {
 	int res = 0;
 	struct scst_acg_kobj *acg_kobj;
 
 	TRACE_ENTRY();
+
+	lockdep_assert_not_held(&scst_mutex);
 
 	res = -ENOMEM;
 	acg_kobj = scst_create_acg_kobj(tgt->tgtt->name, tgt->tgt_name);
@@ -3907,6 +3979,7 @@ out:
 	return res;
 }
 
+/* Must not be called under scst_mutex because that might cause a deadlock. */
 int scst_acn_sysfs_create(struct scst_acn *acn)
 {
 	int res = 0;
@@ -3919,6 +3992,8 @@ int scst_acn_sysfs_create(struct scst_acn *acn)
 #endif
 
 	TRACE_ENTRY();
+
+	lockdep_assert_not_held(&scst_mutex);
 
 	acn->acn_attr = NULL;
 
@@ -3976,6 +4051,8 @@ void scst_acn_sysfs_del(struct scst_acn *acn)
 	struct scst_acg *acg = acn->acg;
 
 	TRACE_ENTRY();
+
+	lockdep_assert_not_held(&scst_mutex);
 
 	if (acn->acn_attr != NULL) {
 		sysfs_remove_file(acg->initiators_kobj,
@@ -4298,9 +4375,12 @@ out:
 	return res;
 }
 
+/* Must not be called under scst_mutex because that might cause a deadlock. */
 void scst_sgv_sysfs_del(struct sgv_pool *pool)
 {
 	TRACE_ENTRY();
+
+	lockdep_assert_not_held(&scst_mutex);
 
 	kobject_del(pool->sgv_kobj);
 	kobject_put(pool->sgv_kobj);
@@ -5122,7 +5202,9 @@ static int scst_process_devt_pass_through_mgmt_store(char *buffer,
 	if (strcasecmp("add_device", action) == 0) {
 		list_del(&dev->dev_list_entry);
 		mutex_unlock(&scst_mutex);
-		scst_devt_dev_sysfs_del(dev);
+		if (scst_devt_dev_sysfs_del_async(dev))
+			PRINT_ERROR("Deleting devt node for dev %s failed",
+				    dev->virt_name);
 		mutex_lock(&scst_mutex);
 		res = scst_assign_dev_handler(dev, devt);
 		if (res == 0) {
@@ -5142,7 +5224,9 @@ static int scst_process_devt_pass_through_mgmt_store(char *buffer,
 		}
 		list_del(&dev->dev_list_entry);
 		mutex_unlock(&scst_mutex);
-		scst_devt_dev_sysfs_del(dev);
+		if (scst_devt_dev_sysfs_del_async(dev))
+			PRINT_ERROR("Deleting devt node for dev %s failed",
+				    dev->virt_name);
 		mutex_lock(&scst_mutex);
 		list_add_tail(&dev->dev_list_entry, &scst_dev_list);
 		res = scst_assign_dev_handler(dev, &scst_null_devtype);
@@ -5183,7 +5267,6 @@ int scst_devt_sysfs_create(struct scst_dev_type *devt)
 {
 	int res;
 	struct kobject *parent;
-	const struct attribute **pattr;
 
 	TRACE_ENTRY();
 
@@ -5213,17 +5296,12 @@ int scst_devt_sysfs_create(struct scst_dev_type *devt)
 		goto out_err;
 	}
 
-	pattr = devt->devt_attrs;
-	if (pattr != NULL) {
-		while (*pattr != NULL) {
-			res = sysfs_create_file(devt->devt_kobj, *pattr);
-			if (res != 0) {
-				PRINT_ERROR("Can't add devt attr %s for dev "
-					"handler %s", (*pattr)->name,
-					devt->name);
-				goto out_err;
-			}
-			pattr++;
+	if (devt->devt_attrs) {
+		res = sysfs_create_files(devt->devt_kobj, devt->devt_attrs);
+		if (res) {
+			PRINT_ERROR("Can't add attributes for dev handler %s",
+				    devt->name);
+			goto out_err;
 		}
 	}
 
@@ -5248,12 +5326,17 @@ out_err:
 	goto out;
 }
 
+/* Must not be called under scst_mutex because that might cause a deadlock. */
 void scst_devt_sysfs_del(struct scst_dev_type *devt)
 {
 	TRACE_ENTRY();
+
+	lockdep_assert_not_held(&scst_mutex);
+
 	kobject_del(devt->devt_kobj);
 	kobject_put(devt->devt_kobj);
 	devt->devt_kobj = NULL;
+
 	TRACE_EXIT();
 }
 
@@ -5475,6 +5558,8 @@ int __init scst_sysfs_init(void)
 
 	TRACE_ENTRY();
 
+	lockdep_assert_not_held(&scst_mutex);
+
 	res = -EINVAL;
 
 	scst_sysfs_wq = create_workqueue("scst_sysfs");
@@ -5543,6 +5628,8 @@ void scst_sysfs_cleanup(void)
 	TRACE_ENTRY();
 
 	PRINT_INFO("%s", "Exiting SCST sysfs hierarchy...");
+
+	lockdep_assert_not_held(&scst_mutex);
 
 	kobject_del(scst_handlers_kobj);
 	kobject_put(scst_handlers_kobj);

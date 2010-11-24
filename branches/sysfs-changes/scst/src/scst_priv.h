@@ -446,6 +446,7 @@ void scst_tgt_dev_sysfs_del(struct scst_tgt_dev *tgt_dev);
 int __must_check scst_tgt_dev_sysfs_del_async(struct scst_tgt_dev *tgt_dev);
 int scst_devt_dev_sysfs_create(struct scst_device *dev);
 void scst_devt_dev_sysfs_del(struct scst_device *dev);
+int __must_check scst_devt_dev_sysfs_del_async(struct scst_device *dev);
 int scst_acg_sysfs_create(struct scst_tgt *tgt,
 	struct scst_acg *acg);
 void scst_acg_sysfs_del(struct scst_acg *acg);
