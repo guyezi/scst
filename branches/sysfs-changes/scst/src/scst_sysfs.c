@@ -212,6 +212,16 @@ out:
 	return w;
 }
 
+static void scst_sysfs_queue_work(struct scst_sysfs_work_struct *w)
+{
+	queue_work(scst_sysfs_wq, &w->work_struct);
+}
+
+static void scst_sysfs_free_work(struct scst_sysfs_work_struct *w)
+{
+	kfree(w);
+}
+
 /* Locking: caller must hold lock on scst_mutex. */
 static struct scst_tgt_template *__scst_lookup_tgtt(const char *name)
 {
@@ -1433,13 +1443,14 @@ static void scst_do_devt_dev_sysfs_del(struct work_struct *work_struct)
 	virt_name     = w->param[2];
 	attr          = w->param[3];
 
+	scst_sysfs_free_work(w);
+
 	sysfs_remove_files(dev_kobj, attr);
 	sysfs_remove_file(dev_kobj, &dev_threads_pool_type_attr.attr);
 	sysfs_remove_file(dev_kobj, &dev_threads_num_attr.attr);
 	sysfs_remove_link(dev_devt_kobj, virt_name);
 	sysfs_remove_link(dev_kobj, "handler");
 
-	kfree(w);
 	kfree(virt_name);
 
 	TRACE_EXIT();
@@ -1467,7 +1478,7 @@ int __must_check scst_devt_dev_sysfs_del_async(struct scst_device *dev)
 				  dev->handler->dev_attrs);
 	if (!w)
 		goto out_free;
-	queue_work(scst_sysfs_wq, &w->work_struct);
+	scst_sysfs_queue_work(w);
 out_noerr:
 	res = 0;
 out:
@@ -1874,12 +1885,12 @@ static void scst_do_tgt_sysfs_del(struct work_struct *work_struct)
 			 work_struct);
 	kobj = w->param[0];
 
+	scst_sysfs_free_work(w);
+
 	TRACE_DBG("%s: kobj %s", __func__, kobject_name(kobj));
 
 	kobject_del(kobj);
 	kobject_put(kobj);
-
-	kfree(w);
 
 	TRACE_EXIT();
 }
@@ -1902,7 +1913,7 @@ int scst_tgt_dev_sysfs_del_async(struct scst_tgt_dev *tgt_dev)
 	if (!w)
 		goto out;
 	tgt_dev_kobj->deleted = true;
-	queue_work(scst_sysfs_wq, &w->work_struct);
+	scst_sysfs_queue_work(w);
 	res = 0;
 
 out:
@@ -2601,6 +2612,8 @@ static void scst_do_acg_dev_sysfs_del(struct work_struct *work_struct)
 	dev_exp_kobj = w->param[2];
 	acg_dev_link_name = w->param[3];
 
+	scst_sysfs_free_work(w);
+
 	BUG_ON(!acg_dev_kobj);
 
 	TRACE_DBG("%s: kobj %s dev %s link %s", __func__,
@@ -2615,7 +2628,6 @@ static void scst_do_acg_dev_sysfs_del(struct work_struct *work_struct)
 	kobject_del(acg_dev_kobj);
 	kobject_put(acg_dev_kobj);
 
-	kfree(w);
 	kfree(acg_dev_link_name);
 
 	TRACE_EXIT();
@@ -2649,7 +2661,7 @@ int scst_acg_dev_sysfs_del_async(struct scst_acg_dev *acg_dev)
 	if (!w)
 		goto out_free;
 	acg_dev_kobj->deleted = true;
-	queue_work(scst_sysfs_wq, &w->work_struct);
+	scst_sysfs_queue_work(w);
 	res = 0;
 out:
 	TRACE_EXIT_RES(res);
@@ -3513,6 +3525,8 @@ static void scst_do_acg_sysfs_del(struct work_struct *work_struct)
 	acg_initiators_kobj = w->param[1];
 	acg_luns_kobj       = w->param[2];
 
+	scst_sysfs_free_work(w);
+
 	TRACE_DBG("%s: kobj %s", __func__, kobject_name(acg_kobj));
 
 	kobject_del(acg_luns_kobj);
@@ -3523,8 +3537,6 @@ static void scst_do_acg_sysfs_del(struct work_struct *work_struct)
 
 	kobject_del(acg_kobj);
 	kobject_put(acg_kobj);
-
-	kfree(w);
 
 	TRACE_EXIT();
 }
@@ -3545,7 +3557,7 @@ int scst_acg_sysfs_del_async(struct scst_acg *acg)
 	if (!w)
 		goto out;
 	acg_kobj->deleted = true;
-	queue_work(scst_sysfs_wq, &w->work_struct);
+	scst_sysfs_queue_work(w);
 	res = 0;
 
 out:
