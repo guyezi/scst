@@ -3752,30 +3752,6 @@ out:
 
 }
 
-#endif /* CONFIG_SCST_PROC */
-
-#ifdef CONFIG_SCST_PROC
-
-/* scst_vdisk_mutex supposed to be held */
-static void vdev_del_device(struct scst_vdisk_dev *virt_dev)
-{
-	TRACE_ENTRY();
-
-	scst_unregister_virtual_device(virt_dev->virt_id);
-
-	list_del(&virt_dev->vdev_list_entry);
-
-	PRINT_INFO("Virtual device %s unregistered", virt_dev->name);
-	TRACE_DBG("virt_id %d unregistered", virt_dev->virt_id);
-
-	vdev_destroy(virt_dev);
-
-	TRACE_EXIT();
-	return;
-}
-
-#endif /* CONFIG_SCST_PROC */
-
 /* scst_vdisk_mutex supposed not to be held */
 static void vdev_del_device_by_id(const int id)
 {
@@ -3808,6 +3784,27 @@ out:
 	TRACE_EXIT();
 	return;
 }
+
+#else /* CONFIG_SCST_PROC */
+
+/* scst_vdisk_mutex supposed to be held */
+static void vdev_del_device(struct scst_vdisk_dev *virt_dev)
+{
+	TRACE_ENTRY();
+
+	scst_unregister_virtual_device(virt_dev->virt_id);
+
+	list_del(&virt_dev->vdev_list_entry);
+
+	PRINT_INFO("Virtual device %s unregistered", virt_dev->name);
+	TRACE_DBG("virt_id %d unregistered", virt_dev->virt_id);
+
+	vdev_destroy(virt_dev);
+
+	return;
+}
+
+#endif /* CONFIG_SCST_PROC */
 
 #ifndef CONFIG_SCST_PROC
 
@@ -4181,7 +4178,7 @@ static ssize_t vdisk_sysfs_rd_only_show(struct kobject *kobj,
 	if (!dev)
 		goto out;
 
-	virt_dev = dev->dh_priv;
+	virt_dev = (struct scst_vdisk_dev *)dev->dh_priv;
 
 	pos = sprintf(buf, "%d\n%s", virt_dev->rd_only ? 1 : 0,
 		(virt_dev->rd_only == DEF_RD_ONLY) ? "" :
@@ -4256,7 +4253,7 @@ static ssize_t vdisk_sysfs_nv_cache_show(struct kobject *kobj,
 	if (!dev)
 		goto out;
 
-	virt_dev = dev->dh_priv;
+	virt_dev = (struct scst_vdisk_dev *)dev->dh_priv;
 
 	pos = sprintf(buf, "%d\n%s", virt_dev->nv_cache ? 1 : 0,
 		(virt_dev->nv_cache == DEF_NV_CACHE) ? "" :
@@ -4281,7 +4278,7 @@ static ssize_t vdisk_sysfs_o_direct_show(struct kobject *kobj,
 	if (!dev)
 		goto out;
 
-	virt_dev = dev->dh_priv;
+	virt_dev = (struct scst_vdisk_dev *)dev->dh_priv;
 
 	pos = sprintf(buf, "%d\n%s", virt_dev->o_direct_flag ? 1 : 0,
 		(virt_dev->o_direct_flag == DEF_O_DIRECT) ? "" :
@@ -4306,7 +4303,7 @@ static ssize_t vdisk_sysfs_removable_show(struct kobject *kobj,
 	if (!dev)
 		goto out;
 
-	virt_dev = dev->dh_priv;
+	virt_dev = (struct scst_vdisk_dev *)dev->dh_priv;
 
 	pos = sprintf(buf, "%d\n", virt_dev->removable ? 1 : 0);
 
@@ -4432,7 +4429,7 @@ static ssize_t vdev_sysfs_t10_dev_id_store(struct kobject *kobj,
 	if (!dev)
 		goto out;
 
-	virt_dev = dev->dh_priv;
+	virt_dev = (struct scst_vdisk_dev *)dev->dh_priv;
 
 	write_lock_bh(&vdisk_t10_dev_id_rwlock);
 
@@ -4485,7 +4482,7 @@ static ssize_t vdev_sysfs_t10_dev_id_show(struct kobject *kobj,
 	if (!dev)
 		goto out;
 
-	virt_dev = dev->dh_priv;
+	virt_dev = (struct scst_vdisk_dev *)dev->dh_priv;
 
 	read_lock_bh(&vdisk_t10_dev_id_rwlock);
 	pos = sprintf(buf, "%s\n%s", virt_dev->t10_dev_id,
@@ -4511,7 +4508,7 @@ static ssize_t vdev_sysfs_usn_show(struct kobject *kobj,
 	if (!dev)
 		goto out;
 
-	virt_dev = dev->dh_priv;
+	virt_dev = (struct scst_vdisk_dev *)dev->dh_priv;
 
 	pos = sprintf(buf, "%s\n", virt_dev->usn);
 

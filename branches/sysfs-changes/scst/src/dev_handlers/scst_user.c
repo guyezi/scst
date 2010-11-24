@@ -3541,7 +3541,7 @@ static ssize_t dev_user_sysfs_commands_show(struct kobject *kobj,
 	if (!dev)
 		goto out;
 
-	udev = dev->dh_priv;
+	udev = (struct scst_user_dev *)dev->dh_priv;
 
 	pos = 0;
 	spin_lock_irqsave(&udev->udev_cmd_threads.cmd_list_lock, flags);
