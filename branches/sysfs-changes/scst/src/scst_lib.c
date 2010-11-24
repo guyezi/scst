@@ -2689,9 +2689,8 @@ static void scst_del_free_acg_dev(struct scst_acg_dev *acg_dev, bool del_sysfs,
 			scst_acg_dev_sysfs_del(acg_dev);
 		else {
 			if (scst_acg_dev_sysfs_del_async(acg_dev)) {
-				PRINT_ERROR("Removing acg_dev %s from sysfs"
-					" failed",
-					kobject_name(acg_dev->acg_dev_kobj));
+				PRINT_ERROR("Removing acg_dev %llu from sysfs"
+					    " failed", acg_dev->lun);
 			}
 		}
 	}
@@ -3493,7 +3492,7 @@ static void scst_free_tgt_dev(struct scst_tgt_dev *tgt_dev)
 
 	if (scst_tgt_dev_sysfs_del_async(tgt_dev))
 		PRINT_ERROR("Removing tgt_dev %s from sysfs failed",
-			    kobject_name(tgt_dev->tgt_dev_kobj));
+			    tgt_dev->dev->virt_name);
 
 	if (tgt_dev->sess->tgt->tgtt->get_initiator_port_transport_id == NULL)
 		dev->not_pr_supporting_tgt_devs_num--;

@@ -425,6 +425,82 @@ static inline int scst_sysfs_init(void)
 }
 static inline void scst_sysfs_cleanup(void) { }
 
+static inline int scst_devt_dev_sysfs_create(struct scst_device *dev)
+{
+	return 0;
+}
+static inline void scst_devt_dev_sysfs_del(struct scst_device *dev) { }
+
+static inline int __must_check scst_devt_dev_sysfs_del_async(
+						struct scst_device *dev)
+{
+	return 0;
+}
+
+static inline void scst_dev_sysfs_del(struct scst_device *dev) { }
+
+static inline int scst_tgt_dev_sysfs_create(struct scst_tgt_dev *tgt_dev)
+{
+	return 0;
+}
+
+static inline void scst_tgt_dev_sysfs_del(struct scst_tgt_dev *tgt_dev) { }
+
+static inline int __must_check scst_tgt_dev_sysfs_del_async(
+						struct scst_tgt_dev *tgt_dev)
+{
+	return 0;
+}
+
+static inline int scst_sess_sysfs_create(struct scst_session *sess)
+{
+	return 0;
+}
+
+static inline int scst_acg_sysfs_create(struct scst_tgt *tgt,
+					struct scst_acg *acg)
+{
+	return 0;
+}
+
+static inline void scst_acg_sysfs_del(struct scst_acg *acg) { }
+
+static inline int __must_check scst_acg_sysfs_del_async(struct scst_acg *acg)
+{
+	return 0;
+}
+
+static inline int scst_acg_dev_sysfs_create(struct scst_acg_dev *acg_dev,
+	struct kobject *parent)
+{
+	return 0;
+}
+
+static inline void scst_acg_dev_sysfs_del(struct scst_acg_dev *acg_dev) { }
+
+static inline int __must_check scst_acg_dev_sysfs_del_async(
+						struct scst_acg_dev *acg_dev)
+{
+	return 0;
+}
+
+static inline int scst_acn_sysfs_create(struct scst_acn *acn)
+{
+	return 0;
+}
+static inline void scst_acn_sysfs_del(struct scst_acn *acn) { }
+
+static inline int __must_check scst_acn_sysfs_del_async(struct scst_acn *acn)
+{
+	return 0;
+}
+
+static inline int scst_sgv_sysfs_create(struct sgv_pool *pool)
+{
+	return 0;
+}
+static inline void scst_sgv_sysfs_del(struct sgv_pool *pool) { }
+
 #else /* CONFIG_SCST_PROC */
 
 int scst_sysfs_init(void);

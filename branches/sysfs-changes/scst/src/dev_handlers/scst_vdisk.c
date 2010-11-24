@@ -3752,6 +3752,27 @@ out:
 
 }
 
+#else /* CONFIG_SCST_PROC */
+
+/* scst_vdisk_mutex supposed to be held */
+static void vdev_del_device(struct scst_vdisk_dev *virt_dev)
+{
+	TRACE_ENTRY();
+
+	scst_unregister_virtual_device(virt_dev->virt_id);
+
+	list_del(&virt_dev->vdev_list_entry);
+
+	PRINT_INFO("Virtual device %s unregistered", virt_dev->name);
+	TRACE_DBG("virt_id %d unregistered", virt_dev->virt_id);
+
+	vdev_destroy(virt_dev);
+
+	return;
+}
+
+#endif /* CONFIG_SCST_PROC */
+
 /* scst_vdisk_mutex supposed not to be held */
 static void vdev_del_device_by_id(const int id)
 {
@@ -3784,27 +3805,6 @@ out:
 	TRACE_EXIT();
 	return;
 }
-
-#else /* CONFIG_SCST_PROC */
-
-/* scst_vdisk_mutex supposed to be held */
-static void vdev_del_device(struct scst_vdisk_dev *virt_dev)
-{
-	TRACE_ENTRY();
-
-	scst_unregister_virtual_device(virt_dev->virt_id);
-
-	list_del(&virt_dev->vdev_list_entry);
-
-	PRINT_INFO("Virtual device %s unregistered", virt_dev->name);
-	TRACE_DBG("virt_id %d unregistered", virt_dev->virt_id);
-
-	vdev_destroy(virt_dev);
-
-	return;
-}
-
-#endif /* CONFIG_SCST_PROC */
 
 #ifndef CONFIG_SCST_PROC
 
