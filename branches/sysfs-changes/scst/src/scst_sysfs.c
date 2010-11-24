@@ -221,6 +221,8 @@ static struct scst_tgt_template *__scst_lookup_tgtt(const char *name)
 {
 	struct scst_tgt_template *tt;
 
+	lockdep_assert_held(&scst_mutex);
+
 	BUG_ON(!name);
 	list_for_each_entry(tt, &scst_template_list, scst_template_list_entry)
 		if (strcmp(tt->name, name) == 0)
@@ -253,6 +255,8 @@ EXPORT_SYMBOL(scst_kobj_to_tgtt);
 static struct scst_dev_type *__scst_lookup_devt(const char *name)
 {
 	struct scst_dev_type *dt;
+
+	lockdep_assert_held(&scst_mutex);
 
 	list_for_each_entry(dt, &scst_virtual_dev_type_list,
 			    dev_type_list_entry)
@@ -736,6 +740,8 @@ static struct scst_tgt *__scst_lookup_tgt(struct scst_tgt_template *tgtt,
 {
 	struct scst_tgt *tgt;
 
+	lockdep_assert_held(&scst_mutex);
+
 	list_for_each_entry(tgt, &tgtt->tgt_list, tgt_list_entry)
 		if (strcmp(tgt->tgt_name, target_name) == 0)
 			return tgt;
@@ -1027,6 +1033,8 @@ void scst_tgt_sysfs_del(struct scst_tgt *tgt)
 static struct scst_device *__scst_lookup_dev(const char *name)
 {
 	struct scst_device *dev;
+
+	lockdep_assert_held(&scst_mutex);
 
 	list_for_each_entry(dev, &scst_dev_list, dev_list_entry)
 		if (strcmp(dev->virt_name, name) == 0)
@@ -1586,7 +1594,6 @@ static void scst_sysfs_tgt_dev_release(struct kobject *kobj)
 
 	tgt_dev_kobj = container_of(kobj, struct scst_tgt_dev_kobj, kobj);
 
-	WARN_ON(!tgt_dev_kobj->deleted);
 	kfree(tgt_dev_kobj->device_name);
 	kfree(tgt_dev_kobj);
 
@@ -1597,6 +1604,8 @@ static struct scst_tgt_dev *__scst_lookup_tgt_dev(struct scst_device *dev,
 						  uint64_t lun)
 {
 	struct scst_tgt_dev *tgt_dev;
+
+	lockdep_assert_held(&scst_mutex);
 
 	list_for_each_entry(tgt_dev, &dev->dev_tgt_dev_list,
 			    dev_tgt_dev_list_entry)
@@ -2436,20 +2445,22 @@ static void scst_release_acg_dev_kobj(struct kobject *kobj)
 	struct scst_acg_dev_kobj *acg_dev_kobj;
 
 	TRACE_ENTRY();
+
 	acg_dev_kobj = container_of(kobj, struct scst_acg_dev_kobj, kobj);
-	WARN_ON(!acg_dev_kobj->deleted);
 	kfree(acg_dev_kobj->acg_name);
 	kfree(acg_dev_kobj->target_name);
 	kfree(acg_dev_kobj->template_name);
 	kfree(acg_dev_kobj);
+
 	TRACE_EXIT();
-	return;
 }
 
 static struct scst_acg *__scst_lookup_acg(const struct scst_tgt *tgt,
 					  const char *acg_name)
 {
 	struct scst_acg *acg;
+
+	lockdep_assert_held(&scst_mutex);
 
 	acg = tgt->default_acg;
 	if (acg && strcmp(acg->acg_name, acg_name) == 0)
@@ -2656,9 +2667,12 @@ int scst_acg_dev_sysfs_create(struct scst_acg_dev *acg_dev,
 
 	acg_dev->acg_dev_kobj = &acg_dev_kobj->kobj;
 	res = kobject_init_and_add(acg_dev->acg_dev_kobj, &acg_dev_ktype,
-				      parent, "%u", acg_dev->lun);
+				      parent, "%llu", acg_dev->lun);
 	if (res != 0) {
-		PRINT_ERROR("Can't add acg_dev %p to sysfs", acg_dev);
+		PRINT_ERROR("Can't add acg_dev %s/%s/%s/%llu to sysfs",
+			    acg_dev->acg->tgt->tgtt->name,
+			    acg_dev->acg->tgt->tgt_name,
+			    acg_dev->acg->acg_name, acg_dev->lun);
 		scst_release_acg_dev_kobj(&acg_dev_kobj->kobj);
 		goto out;
 	}
@@ -2733,7 +2747,6 @@ static void scst_release_acg_kobj(struct kobject *kobj)
 	TRACE_ENTRY();
 
 	acg_kobj = container_of(kobj, struct scst_acg_kobj, kobj);
-	WARN_ON(!acg_kobj->deleted);
 	kfree(acg_kobj->target_name);
 	kfree(acg_kobj->template_name);
 	kfree(acg_kobj);

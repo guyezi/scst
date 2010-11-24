@@ -147,7 +147,7 @@ struct list_head scst_sess_shut_list;
 wait_queue_head_t scst_dev_cmd_waitQ;
 
 #ifdef CONFIG_DEBUG_LOCK_ALLOC
-static struct lockdep_map scst_suspend_dep_map = {
+static struct lockdep_map scst_suspend_activity_dep_map = {
 	.name = "scst_suspend_activity"
 };
 #endif
@@ -680,6 +680,17 @@ static int scst_susp_wait(bool interruptible)
 	return res;
 }
 
+#ifdef CONFIG_DEBUG_LOCK_ALLOC
+/**
+ * scst_assert_activity_suspended() - Warn if activity has not been suspended.
+ */
+void scst_assert_activity_suspended(void)
+{
+	WARN_ON(!lock_is_held(&scst_suspend_activity_dep_map));
+}
+EXPORT_SYMBOL(scst_assert_activity_suspended);
+#endif
+
 /**
  * scst_suspend_activity() - globally suspend any activity
  *
@@ -700,7 +711,7 @@ int scst_suspend_activity(bool interruptible)
 
 	TRACE_ENTRY();
 
-	lock_acquire(&scst_suspend_dep_map, 0/*subclass*/, true/*try*/,
+	lock_acquire(&scst_suspend_activity_dep_map, 0/*subclass*/, true/*try*/,
 		     0/*exclusive*/, 2/*full validation*/, NULL/*nest_lock*/,
 		     _RET_IP_);
 
@@ -759,7 +770,7 @@ int scst_suspend_activity(bool interruptible)
 	TRACE_MGMT_DBG("Waiting for %d active commands finally to complete",
 		atomic_read(&scst_cmd_count));
 
-	lock_contended(&scst_suspend_dep_map, _RET_IP_);
+	lock_contended(&scst_suspend_activity_dep_map, _RET_IP_);
 
 	res = scst_susp_wait(interruptible);
 	if (res != 0)
@@ -773,7 +784,7 @@ out_up:
 
 out:
 	if (res == 0)
-		lock_acquired(&scst_suspend_dep_map, _RET_IP_);
+		lock_acquired(&scst_suspend_activity_dep_map, _RET_IP_);
 
 	TRACE_EXIT_RES(res);
 	return res;
@@ -792,7 +803,7 @@ static void __scst_resume_activity(void)
 
 	TRACE_ENTRY();
 
-	lock_release(&scst_suspend_dep_map, false/*nested*/, _RET_IP_);
+	lock_release(&scst_suspend_activity_dep_map, false/*nested*/, _RET_IP_);
 
 	suspend_count--;
 	TRACE_MGMT_DBG("suspend_count %d left", suspend_count);

@@ -2699,6 +2699,9 @@ int scst_acg_add_lun(struct scst_acg *acg, struct kobject *parent,
 
 	TRACE_ENTRY();
 
+	scst_assert_activity_suspended();
+	lockdep_assert_held(&scst_mutex);
+
 	INIT_LIST_HEAD(&tmp_tgt_dev_list);
 
 	acg_dev = scst_alloc_acg_dev(acg, dev, lun);
@@ -2762,6 +2765,9 @@ int scst_acg_del_lun(struct scst_acg *acg, uint64_t lun,
 	struct scst_tgt_dev *tgt_dev, *tt;
 
 	TRACE_ENTRY();
+
+	scst_assert_activity_suspended();
+	lockdep_assert_held(&scst_mutex);
 
 	list_for_each_entry(a, &acg->acg_dev_list, acg_dev_list_entry) {
 		if (a->lun == lun) {
@@ -3622,7 +3628,8 @@ void scst_del_free_acn(struct scst_acn *acn, bool reassign)
 
 	list_del(&acn->acn_list_entry);
 
-	scst_acn_sysfs_del_async(acn);
+	if (scst_acn_sysfs_del_async(acn))
+		PRINT_ERROR("Removing acn %s from sysfs failed", acn->name);
 
 	kfree(acn->name);
 	kfree(acn);
