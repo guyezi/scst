@@ -572,14 +572,12 @@ kfree:
 	goto out;
 }
 
-/* Must not be called under scst_mutex because that might cause a deadlock. */
+/* Sysfs callback functions that invoke this function may hold scst_mutex. */
 int scst_tgtt_sysfs_create(struct scst_tgt_template *tgtt)
 {
 	int res;
 
 	TRACE_ENTRY();
-
-	lockdep_assert_not_held(&scst_mutex);
 
 	res = -EEXIST;
 	tgtt->tgtt_kobj = kobject_create_and_add_kt(&tgtt_ktype,
@@ -891,15 +889,13 @@ static struct kobj_attribute tgt_enable_attr =
 	__ATTR(enabled, S_IRUGO | S_IWUSR,
 	       scst_tgt_enable_show, scst_tgt_enable_store);
 
-/* Must not be called under scst_mutex because that might cause a deadlock. */
+/* Sysfs callback functions that invoke this function may hold scst_mutex. */
 int scst_tgt_sysfs_create(struct scst_tgt *tgt)
 {
 	int res;
 	struct scst_tgt_kobj *tgt_kobj;
 
 	TRACE_ENTRY();
-
-	lockdep_assert_not_held(&scst_mutex);
 
 	tgt_kobj = scst_create_tgt_kobj(tgt->tgtt->name);
 	if (!tgt_kobj)
@@ -1339,14 +1335,12 @@ static void scst_sysfs_dev_release(struct kobject *kobj)
 	TRACE_EXIT();
 }
 
-/* Must not be called under scst_mutex because that might cause a deadlock. */
+/* Sysfs callback functions that invoke this function may hold scst_mutex. */
 int scst_devt_dev_sysfs_create(struct scst_device *dev)
 {
 	int res = 0;
 
 	TRACE_ENTRY();
-
-	lockdep_assert_not_held(&scst_mutex);
 
 	if (dev->handler == &scst_null_devtype)
 		goto out;
@@ -1495,14 +1489,12 @@ static struct kobj_type scst_dev_ktype = {
 	.default_attrs = scst_dev_attrs,
 };
 
-/* Must not be called under scst_mutex because that might cause a deadlock. */
+/* Sysfs callback functions that invoke this function may hold scst_mutex. */
 int scst_dev_sysfs_create(struct scst_device *dev)
 {
 	int res = 0;
 
 	TRACE_ENTRY();
-
-	lockdep_assert_not_held(&scst_mutex);
 
 	dev->dev_kobj = kobject_create_and_add_kt(&scst_dev_ktype,
 				      scst_devices_kobj, dev->virt_name);
@@ -1817,6 +1809,7 @@ static struct kobj_type scst_tgt_dev_ktype = {
 	.default_attrs = scst_tgt_dev_attrs,
 };
 
+/* Sysfs callback functions that invoke this function may hold scst_mutex. */
 int scst_tgt_dev_sysfs_create(struct scst_tgt_dev *tgt_dev)
 {
 	struct scst_tgt_dev_kobj *tgt_dev_kobj;
@@ -2347,7 +2340,7 @@ int scst_recreate_sess_luns_link(struct scst_session *sess)
 	return scst_create_sess_luns_link(sess);
 }
 
-/* Must not be called under scst_mutex because that might cause a deadlock. */
+/* Sysfs callback functions that invoke this function may hold scst_mutex. */
 int scst_sess_sysfs_create(struct scst_session *sess)
 {
 	int res = 0;
@@ -2357,8 +2350,6 @@ int scst_sess_sysfs_create(struct scst_session *sess)
 	TRACE_ENTRY();
 
 	TRACE_DBG("Adding session %s to sysfs", name);
-
-	lockdep_assert_not_held(&scst_mutex);
 
 	sess_kobj = scst_create_sess_kobj(sess->tgt->tgtt->name,
 					  sess->tgt->tgt_name);
@@ -2671,6 +2662,7 @@ out_free:
 	goto out;
 }
 
+/* Sysfs callback functions that invoke this function may hold scst_mutex. */
 int scst_acg_dev_sysfs_create(struct scst_acg_dev *acg_dev,
 	struct kobject *parent)
 {
@@ -3570,15 +3562,13 @@ static struct kobj_type acg_ktype = {
 	.release = scst_release_acg_kobj,
 };
 
-/* Must not be called under scst_mutex because that might cause a deadlock. */
+/* Sysfs callback functions that invoke this function may hold scst_mutex. */
 int scst_acg_sysfs_create(struct scst_tgt *tgt, struct scst_acg *acg)
 {
 	int res = 0;
 	struct scst_acg_kobj *acg_kobj;
 
 	TRACE_ENTRY();
-
-	lockdep_assert_not_held(&scst_mutex);
 
 	res = -ENOMEM;
 	acg_kobj = scst_create_acg_kobj(tgt->tgtt->name, tgt->tgt_name);
@@ -3991,7 +3981,7 @@ out:
 	return res;
 }
 
-/* Must not be called under scst_mutex because that might cause a deadlock. */
+/* Sysfs callback functions that invoke this function may hold scst_mutex. */
 int scst_acn_sysfs_create(struct scst_acn *acn)
 {
 	int res = 0;
@@ -4004,8 +3994,6 @@ int scst_acn_sysfs_create(struct scst_acn *acn)
 #endif
 
 	TRACE_ENTRY();
-
-	lockdep_assert_not_held(&scst_mutex);
 
 	acn->acn_attr = NULL;
 
@@ -4366,6 +4354,7 @@ static struct kobj_type sgv_pool_ktype = {
 	.default_attrs = sgv_attrs,
 };
 
+/* Sysfs callback functions that invoke this function may hold scst_mutex. */
 int scst_sgv_sysfs_create(struct sgv_pool *pool)
 {
 	int res;
@@ -5275,6 +5264,7 @@ static struct kobj_attribute scst_devt_pass_through_mgmt =
 	__ATTR(mgmt, S_IRUGO | S_IWUSR, scst_devt_pass_through_mgmt_show,
 	       scst_devt_pass_through_mgmt_store);
 
+/* Sysfs callback functions that invoke this function may hold scst_mutex. */
 int scst_devt_sysfs_create(struct scst_dev_type *devt)
 {
 	int res;
