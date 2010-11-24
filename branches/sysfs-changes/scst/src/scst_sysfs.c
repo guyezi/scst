@@ -1419,7 +1419,7 @@ out:
 static void scst_do_devt_dev_sysfs_del(struct work_struct *work_struct)
 {
 	struct scst_sysfs_work_struct *w;
-	struct kobject *dev_kobj, *dev_devt_kobj;
+	struct kobject *dev_kobj, *devt_kobj;
 	char *virt_name;
 	const struct attribute **attr;
 
@@ -1427,19 +1427,22 @@ static void scst_do_devt_dev_sysfs_del(struct work_struct *work_struct)
 
 	w = container_of(work_struct, struct scst_sysfs_work_struct,
 			 work_struct);
-	dev_kobj      = w->param[0];
-	dev_devt_kobj = w->param[1];
-	virt_name     = w->param[2];
-	attr          = w->param[3];
+	devt_kobj = w->param[0];
+	dev_kobj  = w->param[1];
+	virt_name = w->param[2];
+	attr      = w->param[3];
 
 	scst_sysfs_free_work(w);
 
-	sysfs_remove_files(dev_kobj, attr);
+	if (attr)
+		sysfs_remove_files(dev_kobj, attr);
 	sysfs_remove_file(dev_kobj, &dev_threads_pool_type_attr.attr);
 	sysfs_remove_file(dev_kobj, &dev_threads_num_attr.attr);
-	sysfs_remove_link(dev_devt_kobj, virt_name);
+	sysfs_remove_link(devt_kobj, virt_name);
 	sysfs_remove_link(dev_kobj, "handler");
 
+	kobject_put(dev_kobj);
+	kobject_put(devt_kobj);
 	kfree(virt_name);
 
 	TRACE_EXIT();
@@ -1448,6 +1451,7 @@ static void scst_do_devt_dev_sysfs_del(struct work_struct *work_struct)
 int scst_devt_dev_sysfs_del_async(struct scst_device *dev)
 {
 	char *virt_name;
+	struct kobject *dev_kobj, *devt_kobj;
 	struct scst_sysfs_work_struct *w;
 	int res;
 
@@ -1460,13 +1464,17 @@ int scst_devt_dev_sysfs_del_async(struct scst_device *dev)
 	virt_name = kstrdup(dev->virt_name, GFP_KERNEL);
 	if (!virt_name)
 		goto out;
+	dev_kobj = dev->dev_kobj;
+	devt_kobj = dev->handler->devt_kobj;
 	w = scst_sysfs_alloc_work(scst_do_devt_dev_sysfs_del,
-				  dev->dev_kobj,
-				  dev->handler->devt_kobj,
+				  devt_kobj,
+				  dev_kobj,
 				  virt_name,
 				  dev->handler->dev_attrs);
 	if (!w)
 		goto out_free;
+	kobject_get(devt_kobj);
+	kobject_get(dev_kobj);
 	scst_sysfs_queue_work(w);
 out_noerr:
 	res = 0;
