@@ -3994,13 +3994,14 @@ int scst_wait_info_completion(struct scst_sysfs_user_info *info,
 unsigned int scst_get_setup_id(void);
 
 /*
- * Necessary to avoid locking inversion between activity suspending,
- * scst_mutex and internal sysfs locking (s_active). Any sysfs .store()
- * callback that has to manipulate the sysfs tree must push this work to
- * another thread. The .store() callback itself returns -EAGAIN if the sysfs
- * tree update takes too long. The user space program that triggered the
- * .store() callback function should poll the sysfs variable
- * last_sysfs_mgmt_res until reading it gives another result than EAGAIN.
+ * Needed to avoid potential circular locking dependency between scst_mutex
+ * and internal sysfs locking (s_active). It could be since most sysfs entries
+ * are created and deleted under scst_mutex AND scst_mutex is taken inside
+ * sysfs functions. So, we push from the sysfs functions all the processing
+ * taking scst_mutex. To avoid deadlock, we return from them with EAGAIN
+ * if processing is taking too long. User space then should poll
+ * last_sysfs_mgmt_res until it returns the result of the processing
+ * (something other than EAGAIN).
  */
 struct scst_sysfs_work_item {
 	/*

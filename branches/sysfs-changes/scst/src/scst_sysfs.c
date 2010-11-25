@@ -15,13 +15,6 @@
  *  but WITHOUT ANY WARRANTY; without even the implied warranty of
  *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
  *  GNU General Public License for more details.
- *
- *
- *  Locking strategy: both scst_suspend_activity() and
- *  mutex_lock(&scst_mutex) may be invoked from inside a sysfs .show() or
- *  .store() callback. However, none of the ..._sysfs_create() or
- * ..._sysfs_del() functions must be invoked while activity has been
- * suspended or while scst_mutex is held. 
  */
 
 #include <linux/kobject.h>
