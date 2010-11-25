@@ -480,6 +480,12 @@ static struct scst_dev_type *scst_lookup_devt(const char *name)
 	return dt;
 }
 
+struct scst_dev_type *scst_kobj_to_devt(struct kobject *kobj)
+{
+	return scst_lookup_devt(kobject_name(kobj));
+}
+EXPORT_SYMBOL(scst_kobj_to_devt);
+
 /**
  ** Regular SCST sysfs ops
  **/
@@ -1292,16 +1298,19 @@ EXPORT_SYMBOL(scst_kobj_to_dev);
 static ssize_t scst_dev_sysfs_type_show(struct kobject *kobj,
 			    struct kobj_attribute *attr, char *buf)
 {
-	int pos = 0;
-
+	int pos;
 	struct scst_device *dev;
 
+	pos = -ENOENT;
 	dev = scst_kobj_to_dev(kobj);
+	if (!dev)
+		goto out;
 
 	pos = sprintf(buf, "%d - %s\n", dev->type,
 		(unsigned)dev->type > ARRAY_SIZE(scst_dev_handler_types) ?
 		      "unknown" : scst_dev_handler_types[dev->type]);
 
+out:
 	return pos;
 }
 
@@ -1313,16 +1322,21 @@ static struct kobj_attribute dev_type_attr =
 static ssize_t scst_dev_sysfs_dump_prs(struct kobject *kobj,
 	struct kobj_attribute *attr, const char *buf, size_t count)
 {
+	ssize_t res;
 	struct scst_device *dev;
 
 	TRACE_ENTRY();
 
+	res = -ENOENT;
 	dev = scst_kobj_to_dev(kobj);
+	if (!dev)
+		goto out;
 
 	scst_pr_dump_prs(dev, true);
-
-	TRACE_EXIT_RES(count);
-	return count;
+	res = count;
+out:
+	TRACE_EXIT_RES(res);
+	return res;
 }
 
 static struct kobj_attribute dev_dump_prs_attr =
@@ -1413,17 +1427,21 @@ out:
 static ssize_t scst_dev_sysfs_threads_num_show(struct kobject *kobj,
 	struct kobj_attribute *attr, char *buf)
 {
-	int pos = 0;
+	int pos;
 	struct scst_device *dev;
 
 	TRACE_ENTRY();
 
+	pos = -ENOENT;
 	dev = scst_kobj_to_dev(kobj);
+	if (!dev)
+		goto out;
 
 	pos = sprintf(buf, "%d\n%s", dev->threads_num,
 		(dev->threads_num != dev->handler->threads_num) ?
 			SCST_SYSFS_KEY_MARK "\n" : "");
 
+out:
 	TRACE_EXIT_RES(pos);
 	return pos;
 }
@@ -1439,7 +1457,10 @@ static ssize_t scst_dev_sysfs_threads_num_store(struct kobject *kobj,
 
 	TRACE_ENTRY();
 
+	res = -ENOENT;
 	dev = scst_kobj_to_dev(kobj);
+	if (!dev)
+		goto out;
 
 	res = strict_strtol(buf, 0, &newtn);
 	if (res != 0) {
@@ -1483,12 +1504,15 @@ static struct kobj_attribute dev_threads_num_attr =
 static ssize_t scst_dev_sysfs_threads_pool_type_show(struct kobject *kobj,
 	struct kobj_attribute *attr, char *buf)
 {
-	int pos = 0;
+	int pos;
 	struct scst_device *dev;
 
 	TRACE_ENTRY();
 
+	pos = -ENOENT;
 	dev = scst_kobj_to_dev(kobj);
+	if (!dev)
+		goto out;
 
 	if (dev->threads_num == 0) {
 		pos = sprintf(buf, "Async\n");
@@ -1530,7 +1554,10 @@ static ssize_t scst_dev_sysfs_threads_pool_type_store(struct kobject *kobj,
 
 	TRACE_ENTRY();
 
+	res = -ENOENT;
 	dev = scst_kobj_to_dev(kobj);
+	if (!dev)
+		goto out;
 
 	newtpt = scst_parse_threads_pool_type(buf, count);
 	if (newtpt == SCST_THREADS_POOL_TYPE_INVALID) {
@@ -1852,12 +1879,13 @@ static char *scst_io_size_names[] = {
 static ssize_t scst_tgt_dev_latency_show(struct kobject *kobj,
 	struct kobj_attribute *attr, char *buffer)
 {
-	int res = -ENOENT, i;
+	int res, i;
 	char buf[50];
 	struct scst_tgt_dev *tgt_dev;
 
 	TRACE_ENTRY();
 
+	res = -ENOENT;
 	tgt_dev = scst_kobj_to_tgt_dev(kobj);
 	if (!tgt_dev)
 		goto out;
@@ -1961,15 +1989,17 @@ static struct kobj_attribute tgt_dev_latency_attr =
 static ssize_t scst_tgt_dev_active_commands_show(struct kobject *kobj,
 			    struct kobj_attribute *attr, char *buf)
 {
-	int pos = 0;
+	int pos;
 	struct scst_tgt_dev *tgt_dev;
 
+	pos = -ENOENT;
 	tgt_dev = scst_kobj_to_tgt_dev(kobj);
 	if (!tgt_dev)
-		return -ENOENT;
+		goto out;
 
 	pos = sprintf(buf, "%d\n", atomic_read(&tgt_dev->tgt_dev_cmd_count));
 
+out:
 	return pos;
 }
 
@@ -2126,7 +2156,7 @@ EXPORT_SYMBOL(scst_kobj_to_sess);
 static ssize_t scst_sess_latency_show(struct kobject *kobj,
 	struct kobj_attribute *attr, char *buffer)
 {
-	ssize_t res = 0;
+	ssize_t res;
 	struct scst_session *sess;
 	int i;
 	char buf[50];
@@ -2135,8 +2165,12 @@ static ssize_t scst_sess_latency_show(struct kobject *kobj,
 
 	TRACE_ENTRY();
 
+	res = -ENOENT;
 	sess = scst_kobj_to_sess(kobj);
+	if (!sess)
+		goto out;
 
+	res = 0;
 	res += scnprintf(&buffer[res], SCST_SYSFS_BLOCK_SIZE - res,
 		"%-15s %-15s %-46s %-46s %-46s\n",
 		"T-L names", "Total commands", "SCST latency",
@@ -2371,6 +2405,8 @@ static ssize_t scst_sess_sysfs_commands_show(struct kobject *kobj,
 	struct scst_session *sess;
 
 	sess = scst_kobj_to_sess(kobj);
+	if (!sess)
+		return -ENOENT;
 
 	return sprintf(buf, "%i\n", atomic_read(&sess->sess_cmd_count));
 }
@@ -2421,7 +2457,10 @@ static ssize_t scst_sess_sysfs_active_commands_show(struct kobject *kobj,
 	struct scst_session *sess;
 	struct scst_sysfs_work_item *work;
 
+	res = -ENOENT;
 	sess = scst_kobj_to_sess(kobj);
+	if (!sess)
+		goto out;
 
 	res = scst_alloc_sysfs_work(scst_sysfs_sess_get_active_commands_work_fn,
 			true, &work);
@@ -2450,6 +2489,8 @@ static ssize_t scst_sess_sysfs_initiator_name_show(struct kobject *kobj,
 	struct scst_session *sess;
 
 	sess = scst_kobj_to_sess(kobj);
+	if (!sess)
+		return -ENOENT;
 
 	return scnprintf(buf, SCST_SYSFS_BLOCK_SIZE, "%s\n",
 		sess->initiator_name);
@@ -2697,6 +2738,8 @@ static ssize_t scst_lun_rd_only_show(struct kobject *kobj,
 	struct scst_acg_dev *acg_dev;
 
 	acg_dev = scst_kobj_to_acg_dev(kobj);
+	if (!acg_dev)
+		return -ENOENT;
 
 	if (acg_dev->rd_only || acg_dev->dev->rd_only)
 		return sprintf(buf, "%d\n%s\n", 1, SCST_SYSFS_KEY_MARK);
@@ -5015,7 +5058,7 @@ static ssize_t scst_devt_trace_level_show(struct kobject *kobj,
 {
 	struct scst_dev_type *devt;
 
-	devt = scst_lookup_devt(kobject_name(kobj));
+	devt = scst_kobj_to_devt(kobj);
 	if (!devt)
 		return -ENOENT;
 
@@ -5032,7 +5075,7 @@ static ssize_t scst_devt_trace_level_store(struct kobject *kobj,
 
 	TRACE_ENTRY();
 
-	devt = scst_lookup_devt(kobject_name(kobj));
+	devt = scst_kobj_to_devt(kobj);
 	if (!devt)
 		return -ENOENT;
 
@@ -5063,7 +5106,7 @@ static ssize_t scst_devt_type_show(struct kobject *kobj,
 	int pos;
 	struct scst_dev_type *devt;
 
-	devt = scst_lookup_devt(kobject_name(kobj));
+	devt = scst_kobj_to_devt(kobj);
 	if (!devt)
 		return -ENOENT;
 
@@ -5102,7 +5145,7 @@ static ssize_t scst_devt_mgmt_show(struct kobject *kobj,
 		"%s%s%s%s%s%s%s%s\n";
 	struct scst_dev_type *devt;
 
-	devt = scst_lookup_devt(kobject_name(kobj));
+	devt = scst_kobj_to_devt(kobj);
 	if (!devt)
 		return -ENOENT;
 
@@ -5203,7 +5246,7 @@ static ssize_t __scst_devt_mgmt_store(struct kobject *kobj,
 	TRACE_ENTRY();
 
 	res = -ENOENT;
-	devt = scst_lookup_devt(kobject_name(kobj));
+	devt = scst_kobj_to_devt(kobj);
 	if (!devt)
 		goto out;
 
