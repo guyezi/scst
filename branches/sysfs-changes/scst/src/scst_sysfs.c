@@ -692,22 +692,6 @@ out_syntax_err:
 	goto out;
 }
 
-/**
- * zero_terminate() - Duplicates and zero-terminates a fixed size string.
- */
-static char *zero_terminate(const char *buf, size_t count)
-{
-	char *buffer;
-
-	buffer = kmalloc(count + 1, GFP_KERNEL);
-	if (!buffer)
-		goto out;
-	memcpy(buffer, buf, count);
-	buffer[count] = '\0';
-out:
-	return buffer;
-}
-
 static int scst_tgtt_mgmt_store_work_fn(struct scst_sysfs_work_item *work)
 {
 	return scst_process_tgtt_mgmt_store(work->buf, work->tgtt);
@@ -728,10 +712,13 @@ static ssize_t scst_tgtt_mgmt_store(struct kobject *kobj,
 	if (!tgtt)
 		goto out;
 
-	res = -ENOMEM;
-	buffer = zero_terminate(buf, count);
-	if (!buffer)
+	buffer = kzalloc(count+1, GFP_KERNEL);
+	if (buffer == NULL) {
+		res = -ENOMEM;
 		goto out;
+	}
+	memcpy(buffer, buf, count);
+	buffer[count] = '\0';
 
 	res = scst_alloc_sysfs_work(scst_tgtt_mgmt_store_work_fn, false, &work);
 	if (res != 0)
@@ -4010,10 +3997,13 @@ static ssize_t scst_ini_group_mgmt_store(struct kobject *kobj,
 	if (!tgt)
 		goto out;
 
-	res = -ENOMEM;
-	buffer = zero_terminate(buf, count);
-	if (!buffer)
+	buffer = kzalloc(count+1, GFP_KERNEL);
+	if (buffer == NULL) {
+		res = -ENOMEM;
 		goto out;
+	}
+	memcpy(buffer, buf, count);
+	buffer[count] = '\0';
 
 	res = scst_alloc_sysfs_work(scst_ini_group_mgmt_store_work_fn, false,
 					&work);
@@ -5250,10 +5240,13 @@ static ssize_t __scst_devt_mgmt_store(struct kobject *kobj,
 	if (!devt)
 		goto out;
 
-	res = -ENOMEM;
-	buffer = zero_terminate(buf, count);
-	if (!buffer)
+	buffer = kzalloc(count+1, GFP_KERNEL);
+	if (buffer == NULL) {
+		res = -ENOMEM;
 		goto out;
+	}
+	memcpy(buffer, buf, count);
+	buffer[count] = '\0';
 
 	res = scst_alloc_sysfs_work(sysfs_work_fn, false, &work);
 	if (res != 0)
