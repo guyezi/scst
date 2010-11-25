@@ -3780,6 +3780,8 @@ static void vdev_del_device_by_id(const int id)
 
 	TRACE_ENTRY();
 
+	lockdep_assert_not_held(&scst_vdisk_mutex);
+
 	mutex_lock(&scst_vdisk_mutex);
 	list_for_each_entry(virt_dev, &vdev_list, vdev_list_entry) {
 		if (virt_dev->virt_id == id) {
@@ -3794,7 +3796,7 @@ unlock:
 	if (!virt_dev)
 		goto out;
 
-	scst_unregister_virtual_device(id);
+	scst_unregister_virtual_device(id, false);
 
 	PRINT_INFO("Virtual device %s unregistered", virt_dev->name);
 	TRACE_DBG("virt_id %d unregistered", id);

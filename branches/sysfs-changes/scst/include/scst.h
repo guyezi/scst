@@ -2741,7 +2741,7 @@ static inline bool scst_is_ua_command(struct scst_cmd *cmd)
 
 int scst_register_virtual_device(struct scst_dev_type *dev_handler,
 	const char *dev_name);
-void scst_unregister_virtual_device(int id);
+void scst_unregister_virtual_device(int id, bool synchr_sysfs_update);
 
 /*
  * Get/Set functions for tgt's sg_tablesize
@@ -3661,10 +3661,21 @@ static inline int cancel_delayed_work_sync(struct work_struct *work)
 }
 #endif
 
+
+#ifndef lockdep_assert_not_held
+#ifdef CONFIG_LOCKDEP
+#define lockdep_assert_not_held(l) WARN_ON(debug_locks && lockdep_is_held(l))
+#else
+#define lockdep_assert_not_held(l) do { } while(0)
+#endif
+#endif
+
 #ifdef CONFIG_DEBUG_LOCK_ALLOC
 extern void scst_assert_activity_suspended(void);
+extern void scst_assert_activity_not_suspended(void);
 #else
 #define scst_assert_activity_suspended() do { } while(0)
+#define scst_assert_activity_not_suspended() do { } while(0)
 #endif
 int scst_suspend_activity(bool interruptible);
 void scst_resume_activity(void);
@@ -3983,14 +3994,13 @@ int scst_wait_info_completion(struct scst_sysfs_user_info *info,
 unsigned int scst_get_setup_id(void);
 
 /*
- * Needed to avoid potential circular locking dependency between scst_mutex
- * and internal sysfs locking (s_active). It could be since most sysfs entries
- * are created and deleted under scst_mutex AND scst_mutex is taken inside
- * sysfs functions. So, we push from the sysfs functions all the processing
- * taking scst_mutex. To avoid deadlock, we return from them with EAGAIN
- * if processing is taking too long. User space then should poll
- * last_sysfs_mgmt_res until it returns the result of the processing
- * (something other than EAGAIN).
+ * Necessary to avoid locking inversion between activity suspending,
+ * scst_mutex and internal sysfs locking (s_active). Any sysfs .store()
+ * callback that has to manipulate the sysfs tree must push this work to
+ * another thread. The .store() callback itself returns -EAGAIN if the sysfs
+ * tree update takes too long. The user space program that triggered the
+ * .store() callback function should poll the sysfs variable
+ * last_sysfs_mgmt_res until reading it gives another result than EAGAIN.
  */
 struct scst_sysfs_work_item {
 	/*
@@ -4001,7 +4011,7 @@ struct scst_sysfs_work_item {
 	 * Otherwise a monitoring action can overwrite value of simultaneous
 	 * management action's last_sysfs_mgmt_res.
 	 */
-	bool read_only_action;
+	bool do_not_update_res;
 
 	struct list_head sysfs_work_list_entry;
 	struct kref sysfs_work_kref;
@@ -4032,13 +4042,41 @@ struct scst_sysfs_work_item {
 			struct scst_tgt *tgt;
 			unsigned long l;
 		};
+		struct {
+			struct kobject *devt_kobj;
+		} del_devt;
+		struct {
+			struct kobject *devt_kobj;
+			struct kobject *dev_kobj;
+			char *virt_name;
+			const struct attribute **attr;
+		} del_devt_dev;
+		struct {
+			struct kobject *tgt_dev_kobj;
+		} del_tgt_dev;
+		struct {
+			struct kobject *acg_kobj;
+			struct kobject *acg_initiators_kobj;
+			struct kobject *acg_luns_kobj;
+		} del_acg;
+		struct {
+			struct kobject *acg_dev_kobj;
+			struct kobject *dev_kobj;
+			struct kobject *dev_exp_kobj;
+			char *link_name;
+		} del_acg_dev;
+		struct {
+			struct kobject *initiators_kobj;
+			const struct kobj_attribute *acn_attr;
+		} del_acn;
 	};
 	int work_res;
 	char *res_buf;
 };
 
 int scst_alloc_sysfs_work(int (*sysfs_work_fn)(struct scst_sysfs_work_item *),
-	bool read_only_action, struct scst_sysfs_work_item **res_work);
+			  bool do_not_update_res,
+			  struct scst_sysfs_work_item **res_work);
 int scst_sysfs_queue_wait_work(struct scst_sysfs_work_item *work);
 void scst_sysfs_work_get(struct scst_sysfs_work_item *work);
 void scst_sysfs_work_put(struct scst_sysfs_work_item *work);

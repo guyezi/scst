@@ -627,11 +627,11 @@ again:
 #ifdef CONFIG_SCST_PROC
 	scst_cleanup_proc_target_entries(tgt);
 #else
-	scst_del_free_acg(tgt->default_acg);
+	scst_del_free_acg(tgt->default_acg, false);
 
 	list_for_each_entry_safe(acg, acg_tmp, &tgt->tgt_acg_list,
 					acg_list_entry) {
-		scst_del_free_acg(acg);
+		scst_del_free_acg(acg, false);
 	}
 #endif
 
@@ -689,6 +689,15 @@ void scst_assert_activity_suspended(void)
 	WARN_ON(!lock_is_held(&scst_suspend_activity_dep_map));
 }
 EXPORT_SYMBOL(scst_assert_activity_suspended);
+
+/**
+ * scst_assert_activity_not_suspended() - Warn if activity has been suspended.
+ */
+void scst_assert_activity_not_suspended(void)
+{
+	WARN_ON(lock_is_held(&scst_suspend_activity_dep_map));
+}
+EXPORT_SYMBOL(scst_assert_activity_not_suspended);
 #endif
 
 /**
@@ -916,7 +925,7 @@ static int scst_register_device(struct scsi_device *scsidp)
 	 */
 	list_for_each_entry(dt, &scst_dev_type_list, dev_type_list_entry) {
 		if (dt->type == scsidp->type) {
-			res = scst_assign_dev_handler(dev, dt);
+			res = scst_assign_dev_handler(dev, dt, true);
 			if (res != 0)
 				goto out_del;
 			break;
@@ -956,7 +965,7 @@ out_resume:
 	goto out;
 }
 
-static void scst_unregister_device(struct scsi_device *scsidp)
+static void scst_unregister_device(struct scsi_device *scsidp, bool synchr_sysfs_update)
 {
 	struct scst_device *d, *dev = NULL;
 	struct scst_acg_dev *acg_dev, *aa;
@@ -982,11 +991,11 @@ static void scst_unregister_device(struct scsi_device *scsidp)
 
 	list_del(&dev->dev_list_entry);
 
-	scst_assign_dev_handler(dev, &scst_null_devtype);
+	scst_assign_dev_handler(dev, &scst_null_devtype, synchr_sysfs_update);
 
 	list_for_each_entry_safe(acg_dev, aa, &dev->dev_acg_dev_list,
 				 dev_acg_dev_list_entry) {
-		scst_acg_del_lun(acg_dev->acg, acg_dev->lun, true);
+		scst_acg_del_lun(acg_dev->acg, acg_dev->lun, true, synchr_sysfs_update);
 	}
 
 	mutex_unlock(&scst_mutex);
@@ -1068,6 +1077,12 @@ static int scst_check_device_name(const char *dev_name)
  *
  * Registers a virtual device and returns ID assigned to the device on
  * success, or negative value otherwise
+#ifndef CONFIG_SCST_PROC
+ *
+ * Note: Must be called from inside a sysfs .store() callback function in order
+ * to avoid triggering locking inversion between the sysfs s_active locking
+ * object and scst_mutex.
+#endif
  */
 int scst_register_virtual_device(struct scst_dev_type *dev_handler,
 	const char *dev_name)
@@ -1160,7 +1175,7 @@ int scst_register_virtual_device(struct scst_dev_type *dev_handler,
 		}
 	}
 
-	rc = scst_assign_dev_handler(dev, dev_handler);
+	rc = scst_assign_dev_handler(dev, dev_handler, true);
 	if (rc != 0) {
 		res = rc;
 		sysfs_del = true;
@@ -1209,12 +1224,15 @@ EXPORT_SYMBOL_GPL(scst_register_virtual_device);
  * scst_unregister_virtual_device() - unegister a virtual device.
  * @id:		the device's ID, returned by the registration function
  */
-void scst_unregister_virtual_device(int id)
+void scst_unregister_virtual_device(int id, bool synchr_sysfs_update)
 {
 	struct scst_device *d, *dev = NULL;
 	struct scst_acg_dev *acg_dev, *aa;
 
 	TRACE_ENTRY();
+
+	scst_assert_activity_not_suspended();
+	lockdep_assert_not_held(&scst_mutex);
 
 	scst_suspend_activity(false);
 	mutex_lock(&scst_mutex);
@@ -1235,11 +1253,11 @@ void scst_unregister_virtual_device(int id)
 
 	scst_pr_clear_dev(dev);
 
-	scst_assign_dev_handler(dev, &scst_null_devtype);
+	scst_assign_dev_handler(dev, &scst_null_devtype, synchr_sysfs_update);
 
 	list_for_each_entry_safe(acg_dev, aa, &dev->dev_acg_dev_list,
 				 dev_acg_dev_list_entry) {
-		scst_acg_del_lun(acg_dev->acg, acg_dev->lun, true);
+		scst_acg_del_lun(acg_dev->acg, acg_dev->lun, true, synchr_sysfs_update);
 	}
 
 	mutex_unlock(&scst_mutex);
@@ -1361,7 +1379,7 @@ int __scst_register_dev_driver(struct scst_dev_type *dev_type,
 		if (dev->scsi_dev == NULL || dev->handler != &scst_null_devtype)
 			continue;
 		if (dev->scsi_dev->type == dev_type->type)
-			scst_assign_dev_handler(dev, dev_type);
+			scst_assign_dev_handler(dev, dev_type, true);
 	}
 
 	mutex_unlock(&scst_mutex);
@@ -1425,7 +1443,7 @@ void scst_unregister_dev_driver(struct scst_dev_type *dev_type)
 
 	list_for_each_entry(dev, &scst_dev_list, dev_list_entry) {
 		if (dev->handler == dev_type) {
-			scst_assign_dev_handler(dev, &scst_null_devtype);
+			scst_assign_dev_handler(dev, &scst_null_devtype, false);
 			TRACE_DBG("Dev handler removed from device %p", dev);
 		}
 	}
@@ -1525,7 +1543,9 @@ void scst_unregister_virtual_dev_driver(struct scst_dev_type *dev_type)
 	if (!dev_type->no_proc)
 		scst_cleanup_proc_dev_handler_dir_entries(dev_type);
 #else
-	scst_devt_sysfs_del(dev_type);
+	if (scst_devt_sysfs_del_async(dev_type))
+		PRINT_ERROR("Removing virtual dev driver %s from sysfs failed",
+			    dev_type->name);
 #endif
 
 	mutex_lock(&scst_mutex);
@@ -1746,9 +1766,22 @@ out_err:
 	goto out;
 }
 
-/* The activity supposed to be suspended and scst_mutex held */
+/**
+ * scst_assign_dev_handler() - Assign a device handler to a device.
+ * @dev: SCST device to be updated.
+ * @handler: New handler to be assigned.
+ * @synchr_sysfs_update: Whether to perform sysfs modifications synchronously
+ *   or asynchronously. Only use synchronous updates when invoking this
+ *   function from inside a sysfs .store() callback function. Otherwise
+ *   locking inversion between the sysfs s_active lock and scst_mutex will
+ *   be triggered.
+ *
+ * Notes:
+ * - It is supposed that activity is suspended and that scst_mutex is held.
+ * - For asynchronous sysfs updates the only valid handler is scst_null_devtype.
+ */
 int scst_assign_dev_handler(struct scst_device *dev,
-	struct scst_dev_type *handler)
+			struct scst_dev_type *handler, bool synchr_sysfs_update)
 {
 	int res = 0;
 	struct scst_tgt_dev *tgt_dev;
@@ -1779,7 +1812,13 @@ int scst_assign_dev_handler(struct scst_device *dev,
 	 * detach() to avoid calls from sysfs for not yet ready or already dead
 	 * objects.
 	 */
-	scst_devt_dev_sysfs_del(dev);
+	if (synchr_sysfs_update)
+		scst_devt_dev_sysfs_del(dev);
+	else {
+		if (scst_devt_dev_sysfs_del_async(dev))
+			PRINT_ERROR("Asynchronous removal of devt %s failed",
+				    dev->virt_name);
+	}
 
 	if (dev->handler->detach) {
 		TRACE_DBG("%s", "Calling dev handler's detach()");
@@ -1809,7 +1848,20 @@ assign:
 		}
 	}
 
-	res = scst_devt_dev_sysfs_create(dev);
+	if (synchr_sysfs_update)
+		res = scst_devt_dev_sysfs_create(dev);
+	else {
+		if (dev->handler == &scst_null_devtype)
+			res = 0;
+		else {
+			/*
+			 * Can't create sysfs objects asynchronously without
+			 * triggering a race condition - give up.
+			 */
+			WARN("%s: bad arguments", __func__);
+			res = -EINVAL;
+		}
+	}
 	if (res != 0)
 		goto out_detach;
 
@@ -2059,7 +2111,7 @@ static void scst_remove(struct device *cdev, struct class_interface *intf)
 
 	if ((scsidp->host->hostt->name == NULL) ||
 	    (strcmp(scsidp->host->hostt->name, SCST_LOCAL_NAME) != 0))
-		scst_unregister_device(scsidp);
+		scst_unregister_device(scsidp, false);
 
 	TRACE_EXIT();
 	return;
@@ -2361,7 +2413,7 @@ out_thread_free:
 
 #ifdef CONFIG_SCST_PROC
 out_free_acg:
-	scst_del_free_acg(scst_default_acg);
+	scst_del_free_acg(scst_default_acg, true);
 #endif
 
 out_destroy_sgv_pool:
@@ -2436,7 +2488,7 @@ static void __exit exit_scst(void)
 
 	scsi_unregister_interface(&scst_interface);
 #ifdef CONFIG_SCST_PROC
-	scst_del_free_acg(scst_default_acg);
+	scst_del_free_acg(scst_default_acg, true);
 #endif
 
 	scst_sgv_pools_deinit();
