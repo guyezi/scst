@@ -6131,14 +6131,14 @@ static bool scst_generate_unique_name(struct scst_session *sess)
 	TRACE_ENTRY();
 
 	BUG_ON(!name);
-	BUG_ON(sess->unique_initiator_name);
+	BUG_ON(sess->unique_session_name);
 
 restart:
 	list_for_each_entry(s, &sess->tgt->sess_list, sess_list_entry) {
 		if (WARN_ON(s == sess))
 			continue;
-		if (s->unique_initiator_name &&
-		    strcmp(unique_name, s->unique_initiator_name) != 0)
+		if (s->unique_session_name &&
+		    strcmp(unique_name, s->unique_session_name) != 0)
 			continue;
 		TRACE_DBG("Found duplicate session name %s", unique_name);
 		if (unique_name != name)
@@ -6153,7 +6153,7 @@ restart:
 		n++;
 		goto restart;
 	}
-	sess->unique_initiator_name = unique_name;
+	sess->unique_session_name = unique_name;
 	res = true;
 out:
 	return res;

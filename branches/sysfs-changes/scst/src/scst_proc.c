@@ -978,7 +978,7 @@ static int scst_proc_del_free_acg(struct scst_acg *acg, int remove_proc)
 		}
 		if (remove_proc)
 			scst_proc_del_acg_tree(acg_proc_root, acg->acg_name);
-		scst_del_free_acg(acg, true);
+		scst_del_free_acg(acg);
 	}
 out:
 	TRACE_EXIT_RES(res);
@@ -1326,6 +1326,7 @@ void scst_cleanup_proc_target_dir_entries(struct scst_tgt_template *vtt)
 	return;
 }
 
+/* Called under scst_mutex */
 int scst_build_proc_target_entries(struct scst_tgt *vtt)
 {
 	int res = 0;
@@ -1882,7 +1883,7 @@ static int scst_proc_assign_handler(char *buf)
 		goto out;
 	}
 
-	res = scst_assign_dev_handler(dev, handler, true);
+	res = scst_assign_dev_handler(dev, handler);
 
 out:
 	TRACE_EXIT_RES(res);
@@ -2049,7 +2050,7 @@ static ssize_t scst_proc_groups_devices_write(struct file *file,
 			} else {
 				/* Replace */
 				rc = scst_acg_del_lun(acg, acg_dev->lun,
-						      false, true);
+						false);
 				if (rc) {
 					res = rc;
 					goto out_free_up;
@@ -2059,7 +2060,7 @@ static ssize_t scst_proc_groups_devices_write(struct file *file,
 		}
 
 		rc = scst_acg_add_lun(acg, NULL, dev, virt_lun, read_only,
-				      false, NULL, true);
+				false, NULL);
 		if (rc) {
 			res = rc;
 			goto out_free_up;
@@ -2095,7 +2096,7 @@ static ssize_t scst_proc_groups_devices_write(struct file *file,
 		struct scst_acg_dev *a;
 		list_for_each_entry(a, &acg->acg_dev_list, acg_dev_list_entry) {
 			if (a->dev == dev) {
-				rc = scst_acg_del_lun(acg, a->lun, true, true);
+				rc = scst_acg_del_lun(acg, a->lun, true);
 				if (rc) {
 					res = rc;
 					goto out_free_up;
@@ -2112,8 +2113,7 @@ static ssize_t scst_proc_groups_devices_write(struct file *file,
 					 acg_dev_list_entry) {
 			rc = scst_acg_del_lun(acg, acg_dev->lun,
 				list_is_last(&acg_dev->acg_dev_list_entry,
-					     &acg->acg_dev_list),
-					      true);
+					     &acg->acg_dev_list));
 			if (rc) {
 				res = rc;
 				goto out_free_up;

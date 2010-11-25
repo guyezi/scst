@@ -2662,20 +2662,11 @@ out:
 	return res;
 }
 
-/**
- * scst_del_free_acg_dev() - Remove an acg_dev.
- * @acg_dev: acg_dev information.
- * @del_sysfs: Whether to remove the sysfs node too.
- * @synchr_sysfs_update: Whether to remove the sysfs node synchronously or
- *   asynchronously. Only use synchronous removal when invoking this function
- *   directly or indirectly from a sysfs .store() callback or locking inversion
- *   between the sysfs s_active lock object and scst_mutex will be triggered.
- *
- * The caller must either have supended activity and must hold scst_mutex or
- * the corresponding target must have been stopped.
+/*
+ * The activity supposed to be suspended and scst_mutex held or the
+ * corresponding target supposed to be stopped.
  */
-static void scst_del_free_acg_dev(struct scst_acg_dev *acg_dev, bool del_sysfs,
-				  bool synchr_sysfs_update)
+static void scst_del_free_acg_dev(struct scst_acg_dev *acg_dev, bool del_sysfs)
 {
 	TRACE_ENTRY();
 
@@ -2684,16 +2675,8 @@ static void scst_del_free_acg_dev(struct scst_acg_dev *acg_dev, bool del_sysfs,
 	list_del(&acg_dev->acg_dev_list_entry);
 	list_del(&acg_dev->dev_acg_dev_list_entry);
 
-	if (del_sysfs) {
-		if (synchr_sysfs_update)
-			scst_acg_dev_sysfs_del(acg_dev);
-		else {
-			if (scst_acg_dev_sysfs_del_async(acg_dev)) {
-				PRINT_ERROR("Removing acg_dev %llu from sysfs"
-					    " failed", acg_dev->lun);
-			}
-		}
-	}
+	if (del_sysfs)
+		scst_acg_dev_sysfs_del(acg_dev);
 
 	kmem_cache_free(scst_acgd_cachep, acg_dev);
 
@@ -2704,8 +2687,7 @@ static void scst_del_free_acg_dev(struct scst_acg_dev *acg_dev, bool del_sysfs,
 /* The activity supposed to be suspended and scst_mutex held */
 int scst_acg_add_lun(struct scst_acg *acg, struct kobject *parent,
 	struct scst_device *dev, uint64_t lun, int read_only,
-	bool gen_scst_report_luns_changed, struct scst_acg_dev **out_acg_dev,
-	bool synchr_sysfs_update)
+	bool gen_scst_report_luns_changed, struct scst_acg_dev **out_acg_dev)
 {
 	int res = 0;
 	struct scst_acg_dev *acg_dev;
@@ -2766,13 +2748,13 @@ out_free:
 			 extra_tgt_dev_list_entry) {
 		scst_free_tgt_dev(tgt_dev);
 	}
-	scst_del_free_acg_dev(acg_dev, del_sysfs, synchr_sysfs_update);
+	scst_del_free_acg_dev(acg_dev, del_sysfs);
 	goto out;
 }
 
 /* The activity supposed to be suspended and scst_mutex held */
 int scst_acg_del_lun(struct scst_acg *acg, uint64_t lun,
-	bool gen_scst_report_luns_changed, bool synchr_sysfs_update)
+	bool gen_scst_report_luns_changed)
 {
 	int res = 0;
 	struct scst_acg_dev *acg_dev = NULL, *a;
@@ -2798,7 +2780,7 @@ int scst_acg_del_lun(struct scst_acg *acg, uint64_t lun,
 			scst_free_tgt_dev(tgt_dev);
 	}
 
-	scst_del_free_acg_dev(acg_dev, true, synchr_sysfs_update);
+	scst_del_free_acg_dev(acg_dev, true);
 
 	if (gen_scst_report_luns_changed)
 		scst_report_luns_changed(acg);
@@ -2877,7 +2859,7 @@ out_free:
 }
 
 /* The activity supposed to be suspended and scst_mutex held */
-void scst_del_free_acg(struct scst_acg *acg, bool synchr_sysfs_update)
+void scst_del_free_acg(struct scst_acg *acg)
 {
 	struct scst_acn *acn, *acnt;
 	struct scst_acg_dev *acg_dev, *acg_dev_tmp;
@@ -2898,7 +2880,7 @@ void scst_del_free_acg(struct scst_acg *acg, bool synchr_sysfs_update)
 			if (tgt_dev->acg_dev == acg_dev)
 				scst_free_tgt_dev(tgt_dev);
 		}
-		scst_del_free_acg_dev(acg_dev, true, synchr_sysfs_update);
+		scst_del_free_acg_dev(acg_dev, true);
 	}
 
 	/* Freeing names */
@@ -2915,9 +2897,7 @@ void scst_del_free_acg(struct scst_acg *acg, bool synchr_sysfs_update)
 		TRACE_DBG("Removing acg %s from list", acg->acg_name);
 		list_del(&acg->acg_list_entry);
 
-		if (scst_acg_sysfs_del_async(acg))
-			PRINT_ERROR("Removing acg %s from sysfs failed",
-				    kobject_name(acg->acg_kobj));
+		scst_acg_sysfs_del(acg);
 	} else
 		acg->tgt->default_acg = NULL;
 #endif
@@ -3490,9 +3470,7 @@ static void scst_free_tgt_dev(struct scst_tgt_dev *tgt_dev)
 
 	list_del(&tgt_dev->sess_tgt_dev_list_entry);
 
-	if (scst_tgt_dev_sysfs_del_async(tgt_dev))
-		PRINT_ERROR("Removing tgt_dev %s from sysfs failed",
-			    tgt_dev->dev->virt_name);
+	scst_tgt_dev_sysfs_del(tgt_dev);
 
 	if (tgt_dev->sess->tgt->tgtt->get_initiator_port_transport_id == NULL)
 		dev->not_pr_supporting_tgt_devs_num--;
@@ -3639,8 +3617,7 @@ void scst_del_free_acn(struct scst_acn *acn, bool reassign)
 
 	list_del(&acn->acn_list_entry);
 
-	if (scst_acn_sysfs_del_async(acn))
-		PRINT_ERROR("Removing acn %s from sysfs failed", acn->name);
+	scst_acn_sysfs_del(acn);
 
 	kfree(acn->name);
 	kfree(acn);
@@ -4005,6 +3982,8 @@ void scst_free_session(struct scst_session *sess)
 
 	mutex_unlock(&scst_mutex);
 
+	if (sess->unique_session_name != sess->initiator_name)
+		kfree(sess->unique_session_name);
 	kfree(sess->transport_id);
 	kfree(sess->initiator_name);
 
