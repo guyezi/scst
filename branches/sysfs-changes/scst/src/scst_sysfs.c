@@ -435,7 +435,10 @@ struct scst_kobj {
 	void		*scst_obj;
 };
 
-static struct scst_kobj *create_scst_kobj(void *scst_obj)
+/**
+ * scst_create_kobj() - Allocate and initialize a struct scst_kobj.
+ */
+struct scst_kobj *scst_create_kobj(void *scst_obj)
 {
 	struct scst_kobj *scst_kobj;
 
@@ -447,14 +450,20 @@ out:
 	return scst_kobj;
 }
 
-static void release_scst_kobj(struct kobject *kobj)
+/**
+ * scst_release_kobj() - struct scst_kobj kernel object release method.
+ */
+void scst_release_kobj(struct kobject *kobj)
 {
 	TRACE_ENTRY();
 	kfree(kobj);
 	TRACE_EXIT();
 }
 
-static void *scst_kobj_to_scst_obj(struct kobject *kobj)
+/**
+ * scst_kobj_to_scst_obj() - Convert a kobject pointer into an SCST obj pointer.
+ */
+void *scst_kobj_to_scst_obj(struct kobject *kobj)
 {
 	struct scst_kobj *scst_kobj;
 
@@ -467,9 +476,9 @@ static void *scst_kobj_to_scst_obj(struct kobject *kobj)
 }
 
 /**
- * unlink_scst_kobj() - Remove the association to the SCST object.
+ * scst_unlink_kobj() - Remove the association to the SCST object.
  */
-static void unlink_scst_kobj(struct kobject *kobj)
+void scst_unlink_kobj(struct kobject *kobj)
 {
 	struct scst_kobj *scst_kobj;
 
@@ -539,7 +548,7 @@ EXPORT_SYMBOL(scst_kobj_to_tgtt);
 
 static struct kobj_type tgtt_ktype = {
 	.sysfs_ops = &scst_sysfs_ops,
-	.release = release_scst_kobj,
+	.release = scst_release_kobj,
 };
 
 #if defined(CONFIG_SCST_DEBUG) || defined(CONFIG_SCST_TRACING)
@@ -772,7 +781,7 @@ int scst_tgtt_sysfs_create(struct scst_tgt_template *tgtt)
 	TRACE_ENTRY();
 
 	res = -ENOMEM;
-	tgtt_kobj = create_scst_kobj(tgtt);
+	tgtt_kobj = scst_create_kobj(tgtt);
 	if (!tgtt_kobj)
 		goto out;
 
@@ -781,7 +790,7 @@ int scst_tgtt_sysfs_create(struct scst_tgt_template *tgtt)
 			scst_targets_kobj, tgtt->name);
 	if (res) {
 		PRINT_ERROR("Can't add tgtt %s to sysfs", tgtt->name);
-		release_scst_kobj(&tgtt_kobj->kobj);
+		scst_release_kobj(&tgtt_kobj->kobj);
 		goto out;
 	}
 
@@ -830,7 +839,7 @@ void scst_tgtt_sysfs_del(struct scst_tgt_template *tgtt)
 {
 	TRACE_ENTRY();
 
-	unlink_scst_kobj(tgtt->tgtt_kobj);
+	scst_unlink_kobj(tgtt->tgtt_kobj);
 	kobject_del(tgtt->tgtt_kobj);
 	kobject_put(tgtt->tgtt_kobj);
 	tgtt->tgtt_kobj = NULL;
@@ -845,7 +854,7 @@ void scst_tgtt_sysfs_del(struct scst_tgt_template *tgtt)
 
 static struct kobj_type tgt_ktype = {
 	.sysfs_ops = &scst_sysfs_ops,
-	.release = release_scst_kobj,
+	.release = scst_release_kobj,
 };
 
 static struct kobj_attribute scst_luns_mgmt =
@@ -1034,7 +1043,7 @@ int scst_tgt_sysfs_create(struct scst_tgt *tgt)
 
 	TRACE_ENTRY();
 
-	tgt_kobj = create_scst_kobj(tgt);
+	tgt_kobj = scst_create_kobj(tgt);
 	if (!tgt_kobj)
 		goto out_nomem;
 	tgt->tgt_kobj = &tgt_kobj->kobj;
@@ -1042,7 +1051,7 @@ int scst_tgt_sysfs_create(struct scst_tgt *tgt)
 				   tgt->tgtt->tgtt_kobj, tgt->tgt_name);
 	if (res != 0) {
 		PRINT_ERROR("Can't add tgt %s to sysfs", tgt->tgt_name);
-		release_scst_kobj(&tgt_kobj->kobj);
+		scst_release_kobj(&tgt_kobj->kobj);
 		goto out_err;
 	}
 
@@ -1157,7 +1166,7 @@ void scst_tgt_sysfs_del(struct scst_tgt *tgt)
 	kobject_del(tgt->tgt_ini_grp_kobj);
 	kobject_put(tgt->tgt_ini_grp_kobj);
 
-	unlink_scst_kobj(tgt->tgt_kobj);
+	scst_unlink_kobj(tgt->tgt_kobj);
 	kobject_del(tgt->tgt_kobj);
 	kobject_put(tgt->tgt_kobj);
 
@@ -1569,7 +1578,7 @@ out:
 
 static struct kobj_type scst_dev_ktype = {
 	.sysfs_ops = &scst_sysfs_ops,
-	.release = release_scst_kobj,
+	.release = scst_release_kobj,
 	.default_attrs = scst_dev_attrs,
 };
 
@@ -1581,7 +1590,7 @@ int scst_dev_sysfs_create(struct scst_device *dev)
 	TRACE_ENTRY();
 
 	res = -ENOMEM;
-	dev_kobj = create_scst_kobj(dev);
+	dev_kobj = scst_create_kobj(dev);
 	if (!dev_kobj)
 		goto out;
 
@@ -1590,7 +1599,7 @@ int scst_dev_sysfs_create(struct scst_device *dev)
 				scst_devices_kobj, dev->virt_name);
 	if (res) {
 		PRINT_ERROR("Can't add device %s to sysfs", dev->virt_name);
-		release_scst_kobj(&dev_kobj->kobj);
+		scst_release_kobj(&dev_kobj->kobj);
 		goto out;
 	}
 
@@ -1641,7 +1650,7 @@ void scst_dev_sysfs_del(struct scst_device *dev)
 	kobject_del(dev->dev_exp_kobj);
 	kobject_put(dev->dev_exp_kobj);
 
-	unlink_scst_kobj(dev->dev_kobj);
+	scst_unlink_kobj(dev->dev_kobj);
 	kobject_del(dev->dev_kobj);
 	kobject_put(dev->dev_kobj);
 	dev->dev_kobj = NULL;
@@ -1817,7 +1826,7 @@ static struct attribute *scst_tgt_dev_attrs[] = {
 
 static struct kobj_type scst_tgt_dev_ktype = {
 	.sysfs_ops = &scst_sysfs_ops,
-	.release = release_scst_kobj,
+	.release = scst_release_kobj,
 	.default_attrs = scst_tgt_dev_attrs,
 };
 
@@ -1829,7 +1838,7 @@ int scst_tgt_dev_sysfs_create(struct scst_tgt_dev *tgt_dev)
 	TRACE_ENTRY();
 
 	res = -ENOMEM;
-	tgt_dev_kobj = create_scst_kobj(tgt_dev);
+	tgt_dev_kobj = scst_create_kobj(tgt_dev);
 	if (!tgt_dev_kobj)
 		goto out;
 	tgt_dev->tgt_dev_kobj = &tgt_dev_kobj->kobj;
@@ -1841,7 +1850,7 @@ int scst_tgt_dev_sysfs_create(struct scst_tgt_dev *tgt_dev)
 	if (res != 0) {
 		PRINT_ERROR("Can't add tgt_dev %lld to sysfs",
 			(unsigned long long)tgt_dev->lun);
-		release_scst_kobj(&tgt_dev_kobj->kobj);
+		scst_release_kobj(&tgt_dev_kobj->kobj);
 		goto out;
 	}
 
@@ -1854,7 +1863,7 @@ void scst_tgt_dev_sysfs_del(struct scst_tgt_dev *tgt_dev)
 {
 	TRACE_ENTRY();
 
-	unlink_scst_kobj(tgt_dev->tgt_dev_kobj);
+	scst_unlink_kobj(tgt_dev->tgt_dev_kobj);
 	kobject_del(tgt_dev->tgt_dev_kobj);
 	kobject_put(tgt_dev->tgt_dev_kobj);
 	tgt_dev->tgt_dev_kobj = NULL;
@@ -2232,7 +2241,7 @@ static struct attribute *scst_session_attrs[] = {
 
 static struct kobj_type scst_session_ktype = {
 	.sysfs_ops = &scst_sysfs_ops,
-	.release = release_scst_kobj,
+	.release = scst_release_kobj,
 	.default_attrs = scst_session_attrs,
 };
 
@@ -2275,7 +2284,7 @@ int scst_sess_sysfs_create(struct scst_session *sess)
 
 	TRACE_DBG("Adding session %s to sysfs", name);
 
-	sess_kobj = create_scst_kobj(sess);
+	sess_kobj = scst_create_kobj(sess);
 	if (!sess_kobj) {
 		res = -ENOMEM;
 		goto out_free;
@@ -2286,7 +2295,7 @@ int scst_sess_sysfs_create(struct scst_session *sess)
 				   sess->tgt->tgt_sess_kobj, name);
 	if (res != 0) {
 		PRINT_ERROR("Can't add session %s to sysfs", name);
-		release_scst_kobj(&sess_kobj->kobj);
+		scst_release_kobj(&sess_kobj->kobj);
 		goto out_free;
 	}
 
@@ -2319,7 +2328,7 @@ void scst_sess_sysfs_del(struct scst_session *sess)
 	TRACE_DBG("Deleting session %s from sysfs",
 		kobject_name(sess->sess_kobj));
 
-	unlink_scst_kobj(sess->sess_kobj);
+	scst_unlink_kobj(sess->sess_kobj);
 	kobject_del(sess->sess_kobj);
 	kobject_put(sess->sess_kobj);
 	sess->sess_kobj = NULL;
@@ -2370,7 +2379,7 @@ static struct attribute *lun_attrs[] = {
 
 static struct kobj_type acg_dev_ktype = {
 	.sysfs_ops = &scst_sysfs_ops,
-	.release = release_scst_kobj,
+	.release = scst_release_kobj,
 	.default_attrs = lun_attrs,
 };
 
@@ -2384,7 +2393,7 @@ void scst_acg_dev_sysfs_del(struct scst_acg_dev *acg_dev)
 		kobject_put(acg_dev->dev->dev_kobj);
 	}
 
-	unlink_scst_kobj(acg_dev->acg_dev_kobj);
+	scst_unlink_kobj(acg_dev->acg_dev_kobj);
 	kobject_del(acg_dev->acg_dev_kobj);
 	kobject_put(acg_dev->acg_dev_kobj);
 	acg_dev->acg_dev_kobj = NULL;
@@ -2402,7 +2411,7 @@ int scst_acg_dev_sysfs_create(struct scst_acg_dev *acg_dev,
 	TRACE_ENTRY();
 
 	res = -ENOMEM;
-	acg_dev_kobj = create_scst_kobj(acg_dev);
+	acg_dev_kobj = scst_create_kobj(acg_dev);
 	if (!acg_dev_kobj)
 		goto out;
 
@@ -2414,7 +2423,7 @@ int scst_acg_dev_sysfs_create(struct scst_acg_dev *acg_dev,
 			    acg_dev->acg->tgt->tgtt->name,
 			    acg_dev->acg->tgt->tgt_name,
 			    acg_dev->acg->acg_name, acg_dev->lun);
-		release_scst_kobj(&acg_dev_kobj->kobj);
+		scst_release_kobj(&acg_dev_kobj->kobj);
 		goto out;
 	}
 
@@ -3210,7 +3219,7 @@ void scst_acg_sysfs_del(struct scst_acg *acg)
 	kobject_del(acg->initiators_kobj);
 	kobject_put(acg->initiators_kobj);
 
-	unlink_scst_kobj(acg->acg_kobj);
+	scst_unlink_kobj(acg->acg_kobj);
 	kobject_del(acg->acg_kobj);
 	kobject_put(acg->acg_kobj);
 	acg->acg_kobj = NULL;
@@ -3220,7 +3229,7 @@ void scst_acg_sysfs_del(struct scst_acg *acg)
 
 static struct kobj_type acg_ktype = {
 	.sysfs_ops = &scst_sysfs_ops,
-	.release = release_scst_kobj,
+	.release = scst_release_kobj,
 };
 
 int scst_acg_sysfs_create(struct scst_tgt *tgt, struct scst_acg *acg)
@@ -3231,7 +3240,7 @@ int scst_acg_sysfs_create(struct scst_tgt *tgt, struct scst_acg *acg)
 	TRACE_ENTRY();
 
 	res = -ENOMEM;
-	acg_kobj = create_scst_kobj(acg);
+	acg_kobj = scst_create_kobj(acg);
 	if (!acg_kobj)
 		goto out;
 
@@ -3241,7 +3250,7 @@ int scst_acg_sysfs_create(struct scst_tgt *tgt, struct scst_acg *acg)
 		tgt->tgt_ini_grp_kobj, acg->acg_name);
 	if (res != 0) {
 		PRINT_ERROR("Can't add acg '%s' to sysfs", acg->acg_name);
-		release_scst_kobj(&acg_kobj->kobj);
+		scst_release_kobj(&acg_kobj->kobj);
 		goto out;
 	}
 
@@ -4013,30 +4022,30 @@ static struct attribute *sgv_attrs[] = {
 	NULL,
 };
 
-static void sgv_kobj_release(struct kobject *kobj)
-{
-	TRACE_ENTRY();
-	kfree(kobj);
-	TRACE_EXIT();
-}
-
 static struct kobj_type sgv_pool_ktype = {
 	.sysfs_ops = &scst_sysfs_ops,
-	.release = sgv_kobj_release,
+	.release = scst_release_kobj,
 	.default_attrs = sgv_attrs,
 };
 
 int scst_sgv_sysfs_create(struct sgv_pool *pool)
 {
+	struct scst_kobj *sgv_kobj;
 	int res;
 
 	TRACE_ENTRY();
 
 	res = -ENOMEM;
-	pool->sgv_kobj = kobject_create_and_add_kt(&sgv_pool_ktype,
+	sgv_kobj = scst_create_kobj(pool);
+	if (!sgv_kobj)
+		goto out;
+
+	pool->sgv_kobj = &sgv_kobj->kobj;
+	res = kobject_init_and_add(pool->sgv_kobj, &sgv_pool_ktype,
 			scst_sgv_kobj, pool->name);
-	if (!pool->sgv_kobj) {
+	if (res) {
 		PRINT_ERROR("Can't add sgv pool %s to sysfs", pool->name);
+		scst_release_kobj(&sgv_kobj->kobj);
 		goto out;
 	}
 
@@ -4051,6 +4060,7 @@ void scst_sgv_sysfs_del(struct sgv_pool *pool)
 {
 	TRACE_ENTRY();
 
+	scst_unlink_kobj(pool->sgv_kobj);
 	kobject_del(pool->sgv_kobj);
 	kobject_put(pool->sgv_kobj);
 	pool->sgv_kobj = NULL;
@@ -4653,7 +4663,7 @@ static struct attribute *scst_devt_default_attrs[] = {
 
 static struct kobj_type scst_devt_ktype = {
 	.sysfs_ops = &scst_sysfs_ops,
-	.release = release_scst_kobj,
+	.release = scst_release_kobj,
 	.default_attrs = scst_devt_default_attrs,
 };
 
@@ -4970,7 +4980,7 @@ int scst_devt_sysfs_create(struct scst_dev_type *devt)
 		parent = scst_handlers_kobj;
 
 	res = -ENOMEM;
-	devt_kobj = create_scst_kobj(devt);
+	devt_kobj = scst_create_kobj(devt);
 	if (!devt_kobj)
 		goto out;
 
@@ -4979,7 +4989,7 @@ int scst_devt_sysfs_create(struct scst_dev_type *devt)
 				   parent, devt->name);
 	if (res) {
 		PRINT_ERROR("Can't add devt %s to sysfs", devt->name);
-		release_scst_kobj(&devt_kobj->kobj);
+		scst_release_kobj(&devt_kobj->kobj);
 		goto out;
 	}
 
@@ -5030,7 +5040,7 @@ void scst_devt_sysfs_del(struct scst_dev_type *devt)
 {
 	TRACE_ENTRY();
 
-	unlink_scst_kobj(devt->devt_kobj);
+	scst_unlink_kobj(devt->devt_kobj);
 	kobject_del(devt->devt_kobj);
 	kobject_put(devt->devt_kobj);
 	devt->devt_kobj = NULL;

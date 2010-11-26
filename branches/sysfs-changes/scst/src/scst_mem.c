@@ -1594,27 +1594,11 @@ EXPORT_SYMBOL_GPL(sgv_pool_set_allocator);
  * sgv_kobj_to_pool() - Look up an sgv pool by name.
  *
  * Must be called from inside an sgv pool sysfs .show() or .store() callback
- * function only. Since scst_pool_destroy() indirectly invokes kobject_del()
- * on the sgv pool object and since kobject_del() waits until all active
- * .show() and .store() callback functions have finished, no further
- * locking is necessary by the caller.
+ * function only.
  */
-static struct sgv_pool *sgv_kobj_to_pool(const struct kobject *kobj)
+static struct sgv_pool *sgv_kobj_to_pool(struct kobject *kobj)
 {
-	struct sgv_pool *pool;
-
-	mutex_lock(&sgv_pools_mutex);
-
-	list_for_each_entry(pool, &sgv_pools_list, sgv_pools_list_entry)
-		if (strcmp(pool->name, kobject_name(kobj)) == 0)
-			goto out_unlock;
-
-	pool = NULL;
-
-out_unlock:
-	mutex_unlock(&sgv_pools_mutex);
-
-	return pool;
+	return scst_kobj_to_scst_obj(kobj);
 }
 #endif /* !defined(CONFIG_SCST_PROC) */
 

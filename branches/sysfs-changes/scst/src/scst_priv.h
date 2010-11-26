@@ -463,6 +463,10 @@ static inline void scst_sgv_sysfs_del(struct sgv_pool *pool) { }
 
 #else /* CONFIG_SCST_PROC */
 
+struct scst_kobj *scst_create_kobj(void *scst_obj);
+void scst_release_kobj(struct kobject *kobj);
+void *scst_kobj_to_scst_obj(struct kobject *kobj);
+void scst_unlink_kobj(struct kobject *kobj);
 int scst_sysfs_init(void);
 void scst_sysfs_cleanup(void);
 int scst_tgtt_sysfs_create(struct scst_tgt_template *tgtt);
