@@ -2741,7 +2741,7 @@ static inline bool scst_is_ua_command(struct scst_cmd *cmd)
 
 int scst_register_virtual_device(struct scst_dev_type *dev_handler,
 	const char *dev_name);
-void scst_unregister_virtual_device(int id, bool synchr_sysfs_update);
+void scst_unregister_virtual_device(int id);
 
 /*
  * Get/Set functions for tgt's sg_tablesize
@@ -4012,7 +4012,7 @@ struct scst_sysfs_work_item {
 	 * Otherwise a monitoring action can overwrite value of simultaneous
 	 * management action's last_sysfs_mgmt_res.
 	 */
-	bool do_not_update_res;
+	bool read_only_action;
 
 	struct list_head sysfs_work_list_entry;
 	struct kref sysfs_work_kref;
@@ -4043,41 +4043,13 @@ struct scst_sysfs_work_item {
 			struct scst_tgt *tgt;
 			unsigned long l;
 		};
-		struct {
-			struct kobject *devt_kobj;
-		} del_devt;
-		struct {
-			struct kobject *devt_kobj;
-			struct kobject *dev_kobj;
-			char *virt_name;
-			const struct attribute **attr;
-		} del_devt_dev;
-		struct {
-			struct kobject *tgt_dev_kobj;
-		} del_tgt_dev;
-		struct {
-			struct kobject *acg_kobj;
-			struct kobject *acg_initiators_kobj;
-			struct kobject *acg_luns_kobj;
-		} del_acg;
-		struct {
-			struct kobject *acg_dev_kobj;
-			struct kobject *dev_kobj;
-			struct kobject *dev_exp_kobj;
-			char *link_name;
-		} del_acg_dev;
-		struct {
-			struct kobject *initiators_kobj;
-			const struct kobj_attribute *acn_attr;
-		} del_acn;
 	};
 	int work_res;
 	char *res_buf;
 };
 
 int scst_alloc_sysfs_work(int (*sysfs_work_fn)(struct scst_sysfs_work_item *),
-			  bool do_not_update_res,
-			  struct scst_sysfs_work_item **res_work);
+	bool read_only_action, struct scst_sysfs_work_item **res_work);
 int scst_sysfs_queue_wait_work(struct scst_sysfs_work_item *work);
 void scst_sysfs_work_get(struct scst_sysfs_work_item *work);
 void scst_sysfs_work_put(struct scst_sysfs_work_item *work);

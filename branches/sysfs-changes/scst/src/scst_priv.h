@@ -308,34 +308,28 @@ void scst_free_device(struct scst_device *dev);
 
 struct scst_acg *scst_alloc_add_acg(struct scst_tgt *tgt,
 	const char *acg_name, bool tgt_acg);
-void scst_del_free_acg(struct scst_acg *acg, bool synchr_sysfs_update);
+void scst_del_free_acg(struct scst_acg *acg);
 
 struct scst_acg *scst_tgt_find_acg(struct scst_tgt *tgt, const char *name);
 struct scst_acg *scst_find_acg(const struct scst_session *sess);
 
-void scst_check_reassign_sessions(bool synchr_sysfs_update);
+void scst_check_reassign_sessions(void);
 
-int scst_sess_alloc_tgt_devs(struct scst_session *sess,
-			     bool synchr_sysfs_update);
-void scst_sess_free_tgt_devs(struct scst_session *sess,
-			     bool synchr_sysfs_update);
+int scst_sess_alloc_tgt_devs(struct scst_session *sess);
+void scst_sess_free_tgt_devs(struct scst_session *sess);
 void scst_nexus_loss(struct scst_tgt_dev *tgt_dev, bool queue_UA);
 
 int scst_acg_add_lun(struct scst_acg *acg, struct kobject *parent,
 	struct scst_device *dev, uint64_t lun, int read_only,
-	bool gen_scst_report_luns_changed, struct scst_acg_dev **out_acg_dev,
-	bool synchr_sysfs_update);
+	bool gen_scst_report_luns_changed, struct scst_acg_dev **out_acg_dev);
 int scst_acg_del_lun(struct scst_acg *acg, uint64_t lun,
-		     bool gen_scst_report_luns_changed,
-		     bool synchr_sysfs_update);
+	bool gen_scst_report_luns_changed);
 
-int scst_acg_add_acn(struct scst_acg *acg, const char *name,
-		     bool synchr_sysfs_update);
+int scst_acg_add_acn(struct scst_acg *acg, const char *name);
 #ifdef CONFIG_SCST_PROC
 int scst_acg_remove_name(struct scst_acg *acg, const char *name, bool reassign);
 #endif
-void scst_del_free_acn(struct scst_acn *acn, bool reassign,
-		       bool synchr_sysfs_update);
+void scst_del_free_acn(struct scst_acn *acn, bool reassign);
 struct scst_acn *scst_find_acn(struct scst_acg *acg, const char *name);
 
 /* The activity supposed to be suspended and scst_mutex held */
@@ -350,8 +344,7 @@ int scst_finish_internal_cmd(struct scst_cmd *cmd);
 void scst_store_sense(struct scst_cmd *cmd);
 
 int scst_assign_dev_handler(struct scst_device *dev,
-			    struct scst_dev_type *handler,
-			    bool synchr_sysfs_update);
+	struct scst_dev_type *handler);
 
 struct scst_session *scst_alloc_session(struct scst_tgt *tgt, gfp_t gfp_mask,
 	const char *initiator_name);
@@ -435,41 +428,15 @@ static inline int scst_devt_dev_sysfs_create(struct scst_device *dev)
 }
 static inline void scst_devt_dev_sysfs_del(struct scst_device *dev) { }
 
-static inline int __must_check scst_devt_dev_sysfs_del_async(
-						struct scst_device *dev)
-{
-	return 0;
-}
-
 static inline void scst_dev_sysfs_del(struct scst_device *dev) { }
 
 static inline int scst_tgt_dev_sysfs_create(struct scst_tgt_dev *tgt_dev)
 {
 	return 0;
 }
-
 static inline void scst_tgt_dev_sysfs_del(struct scst_tgt_dev *tgt_dev) { }
 
-static inline int __must_check scst_tgt_dev_sysfs_del_async(
-						struct scst_tgt_dev *tgt_dev)
-{
-	return 0;
-}
-
 static inline int scst_sess_sysfs_create(struct scst_session *sess)
-{
-	return 0;
-}
-
-static inline int scst_acg_sysfs_create(struct scst_tgt *tgt,
-					struct scst_acg *acg)
-{
-	return 0;
-}
-
-static inline void scst_acg_sysfs_del(struct scst_acg *acg) { }
-
-static inline int __must_check scst_acg_sysfs_del_async(struct scst_acg *acg)
 {
 	return 0;
 }
@@ -482,22 +449,11 @@ static inline int scst_acg_dev_sysfs_create(struct scst_acg_dev *acg_dev,
 
 static inline void scst_acg_dev_sysfs_del(struct scst_acg_dev *acg_dev) { }
 
-static inline int __must_check scst_acg_dev_sysfs_del_async(
-						struct scst_acg_dev *acg_dev)
-{
-	return 0;
-}
-
 static inline int scst_acn_sysfs_create(struct scst_acn *acn)
 {
 	return 0;
 }
 static inline void scst_acn_sysfs_del(struct scst_acn *acn) { }
-
-static inline int __must_check scst_acn_sysfs_del_async(struct scst_acn *acn)
-{
-	return 0;
-}
 
 static inline int scst_sgv_sysfs_create(struct sgv_pool *pool)
 {
@@ -521,26 +477,20 @@ int scst_sgv_sysfs_create(struct sgv_pool *pool);
 void scst_sgv_sysfs_del(struct sgv_pool *pool);
 int scst_devt_sysfs_create(struct scst_dev_type *devt);
 void scst_devt_sysfs_del(struct scst_dev_type *devt);
-int __must_check scst_devt_sysfs_del_async(struct scst_dev_type *devt);
 int scst_dev_sysfs_create(struct scst_device *dev);
 void scst_dev_sysfs_del(struct scst_device *dev);
 int scst_tgt_dev_sysfs_create(struct scst_tgt_dev *tgt_dev);
 void scst_tgt_dev_sysfs_del(struct scst_tgt_dev *tgt_dev);
-int __must_check scst_tgt_dev_sysfs_del_async(struct scst_tgt_dev *tgt_dev);
 int scst_devt_dev_sysfs_create(struct scst_device *dev);
 void scst_devt_dev_sysfs_del(struct scst_device *dev);
-int __must_check scst_devt_dev_sysfs_del_async(struct scst_device *dev);
 int scst_acg_sysfs_create(struct scst_tgt *tgt,
 	struct scst_acg *acg);
 void scst_acg_sysfs_del(struct scst_acg *acg);
-int __must_check scst_acg_sysfs_del_async(struct scst_acg *acg);
 int scst_acg_dev_sysfs_create(struct scst_acg_dev *acg_dev,
 	struct kobject *parent);
 void scst_acg_dev_sysfs_del(struct scst_acg_dev *acg_dev);
-int __must_check scst_acg_dev_sysfs_del_async(struct scst_acg_dev *acg_dev);
 int scst_acn_sysfs_create(struct scst_acn *acn);
 void scst_acn_sysfs_del(struct scst_acn *acn);
-int __must_check scst_acn_sysfs_del_async(struct scst_acn *acn);
 
 #endif /* CONFIG_SCST_PROC */
 

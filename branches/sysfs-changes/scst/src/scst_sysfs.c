@@ -187,8 +187,7 @@ static struct task_struct *sysfs_work_thread;
  * scst_alloc_sysfs_work() - allocates a sysfs work
  */
 int scst_alloc_sysfs_work(int (*sysfs_work_fn)(struct scst_sysfs_work_item *),
-			  bool do_not_update_res,
-			  struct scst_sysfs_work_item **res_work)
+	bool read_only_action, struct scst_sysfs_work_item **res_work)
 {
 	int res = 0;
 	struct scst_sysfs_work_item *work;
@@ -211,7 +210,7 @@ int scst_alloc_sysfs_work(int (*sysfs_work_fn)(struct scst_sysfs_work_item *),
 		goto out;
 	}
 
-	work->do_not_update_res = do_not_update_res;
+	work->read_only_action = read_only_action;
 	kref_init(&work->sysfs_work_kref);
 	init_completion(&work->sysfs_work_done);
 	work->sysfs_work_fn = sysfs_work_fn;
@@ -261,17 +260,6 @@ void scst_sysfs_work_put(struct scst_sysfs_work_item *work)
 }
 EXPORT_SYMBOL(scst_sysfs_work_put);
 
-static void scst_sysfs_queue_work(struct scst_sysfs_work_item *work)
-{
-	spin_lock(&sysfs_work_lock);
-	TRACE_DBG("Adding sysfs work %p to the list", work);
-	list_add_tail(&work->sysfs_work_list_entry, &sysfs_work_list);
-	active_sysfs_works++;
-	spin_unlock(&sysfs_work_lock);
-
-	wake_up(&sysfs_work_waitQ);
-}
-
 /**
  * scst_sysfs_queue_wait_work() - waits for the work to complete
  *
@@ -286,9 +274,18 @@ int scst_sysfs_queue_wait_work(struct scst_sysfs_work_item *work)
 
 	TRACE_ENTRY();
 
+	spin_lock(&sysfs_work_lock);
+
+	TRACE_DBG("Adding sysfs work %p to the list", work);
+	list_add_tail(&work->sysfs_work_list_entry, &sysfs_work_list);
+
+	active_sysfs_works++;
+
+	spin_unlock(&sysfs_work_lock);
+
 	kref_get(&work->sysfs_work_kref);
 
-	scst_sysfs_queue_work(work);
+	wake_up(&sysfs_work_waitQ);
 
 	while (1) {
 		rc = wait_for_completion_interruptible_timeout(
@@ -341,7 +338,7 @@ static void scst_process_sysfs_works(void)
 		work->work_res = work->sysfs_work_fn(work);
 
 		spin_lock(&sysfs_work_lock);
-		if (!work->do_not_update_res)
+		if (!work->read_only_action)
 			last_sysfs_work_res = work->work_res;
 		active_sysfs_works--;
 		spin_unlock(&sysfs_work_lock);
@@ -1673,76 +1670,6 @@ out:
 	TRACE_EXIT();
 }
 
-static int scst_do_devt_dev_sysfs_del(struct scst_sysfs_work_item *work)
-{
-	struct kobject *dev_kobj, *devt_kobj;
-	char *virt_name;
-	const struct attribute **attr;
-
-	TRACE_ENTRY();
-
-	devt_kobj = work->del_devt_dev.devt_kobj;
-	dev_kobj  = work->del_devt_dev.dev_kobj;
-	virt_name = work->del_devt_dev.virt_name;
-	attr      = work->del_devt_dev.attr;
-
-	if (attr)
-		sysfs_remove_files(dev_kobj, attr);
-	sysfs_remove_file(dev_kobj, &dev_threads_pool_type_attr.attr);
-	sysfs_remove_file(dev_kobj, &dev_threads_num_attr.attr);
-	sysfs_remove_link(devt_kobj, virt_name);
-	sysfs_remove_link(dev_kobj, "handler");
-
-	kobject_put(dev_kobj);
-	kobject_put(devt_kobj);
-	kfree(virt_name);
-
-	TRACE_EXIT();
-	return 0;
-}
-
-/*
- * Note: it is assumed that dev->handler->dev_attrs has been allocated
- * statically.
- */
-int scst_devt_dev_sysfs_del_async(struct scst_device *dev)
-{
-	char *virt_name;
-	struct kobject *dev_kobj, *devt_kobj;
-	struct scst_sysfs_work_item *work;
-	int res;
-
-	TRACE_ENTRY();
-
-	if (dev->handler == &scst_null_devtype)
-		goto out_noerr;
-
-	res = -ENOMEM;
-	virt_name = kstrdup(dev->virt_name, GFP_KERNEL);
-	if (!virt_name)
-		goto out;
-	res = scst_alloc_sysfs_work(scst_do_devt_dev_sysfs_del, true, &work);
-	if (res)
-		goto out_free;
-	dev_kobj = dev->dev_kobj;
-	devt_kobj = dev->handler->devt_kobj;
-	work->del_devt_dev.devt_kobj = devt_kobj;
-	work->del_devt_dev.dev_kobj = dev_kobj;
-	work->del_devt_dev.virt_name = virt_name;
-	work->del_devt_dev.attr = dev->handler->dev_attrs;
-	kobject_get(devt_kobj);
-	kobject_get(dev_kobj);
-	scst_sysfs_queue_work(work);
-out_noerr:
-	res = 0;
-out:
-	TRACE_EXIT_RES(res);
-	return res;
-out_free:
-	kfree(virt_name);
-	goto out;
-}
-
 static struct kobj_type scst_dev_ktype = {
 	.sysfs_ops = &scst_sysfs_ops,
 	.release = scst_sysfs_dev_release,
@@ -2114,46 +2041,6 @@ void scst_tgt_dev_sysfs_del(struct scst_tgt_dev *tgt_dev)
 	tgt_dev->tgt_dev_kobj = NULL;
 
 	TRACE_EXIT();
-}
-
-static int scst_do_tgt_dev_sysfs_del(struct scst_sysfs_work_item *work)
-{
-	struct kobject *tgt_dev_kobj;
-
-	TRACE_ENTRY();
-
-	tgt_dev_kobj = work->del_tgt_dev.tgt_dev_kobj;
-
-	TRACE_DBG("%s: kobj %s", __func__, kobject_name(tgt_dev_kobj));
-
-	kobject_del(tgt_dev_kobj);
-	kobject_put(tgt_dev_kobj);
-
-	TRACE_EXIT();
-	return 0;
-}
-
-int scst_tgt_dev_sysfs_del_async(struct scst_tgt_dev *tgt_dev)
-{
-	struct scst_tgt_dev_kobj *tgt_dev_kobj;
-	struct scst_sysfs_work_item *work;
-	int res;
-
-	TRACE_ENTRY();
-
-	TRACE_DBG("%s: kobj %s", __func__, kobject_name(tgt_dev->tgt_dev_kobj));
-	tgt_dev_kobj = container_of(tgt_dev->tgt_dev_kobj,
-				    struct scst_tgt_dev_kobj, kobj);
-	res = scst_alloc_sysfs_work(scst_do_tgt_dev_sysfs_del, true, &work);
-	if (res)
-		goto out;
-	work->del_tgt_dev.tgt_dev_kobj = tgt_dev->tgt_dev_kobj;
-	tgt_dev_kobj->deleted = true;
-	scst_sysfs_queue_work(work);
-	res = 0;
-out:
-	TRACE_EXIT_RES(res);
-	return res;
 }
 
 /**
@@ -2867,79 +2754,6 @@ void scst_acg_dev_sysfs_del(struct scst_acg_dev *acg_dev)
 	return;
 }
 
-static int scst_do_acg_dev_sysfs_del(struct scst_sysfs_work_item *work)
-{
-	struct kobject *acg_dev_kobj;
-	struct kobject *dev_kobj;
-	struct kobject *dev_exp_kobj;
-	char *link_name;
-
-	TRACE_ENTRY();
-
-	acg_dev_kobj      = work->del_acg_dev.acg_dev_kobj;
-	dev_kobj          = work->del_acg_dev.dev_kobj;
-	dev_exp_kobj      = work->del_acg_dev.dev_exp_kobj;
-	link_name = work->del_acg_dev.link_name;
-
-	BUG_ON(!acg_dev_kobj);
-
-	TRACE_DBG("%s: kobj %s dev %s link %s", __func__,
-		  kobject_name(acg_dev_kobj),
-		  dev_kobj ? kobject_name(dev_kobj) : "(null)",
-		  link_name ? link_name : "(null)");
-
-	if (dev_kobj) {
-		sysfs_remove_link(dev_exp_kobj, link_name);
-		kobject_put(dev_kobj);
-	}
-	kobject_del(acg_dev_kobj);
-	kobject_put(acg_dev_kobj);
-
-	kfree(link_name);
-
-	TRACE_EXIT();
-	return 0;
-}
-
-int scst_acg_dev_sysfs_del_async(struct scst_acg_dev *acg_dev)
-{
-	struct scst_acg_dev_kobj *acg_dev_kobj;
-	char *link_name = NULL;
-	struct scst_sysfs_work_item *work;
-	int res;
-
-	TRACE_ENTRY();
-
-	TRACE_DBG("%s: kobj %s", __func__, kobject_name(acg_dev->acg_dev_kobj));
-
-	acg_dev_kobj = container_of(acg_dev->acg_dev_kobj,
-				    struct scst_acg_dev_kobj, kobj);
-	res = -ENOMEM;
-	if (acg_dev->dev) {
-		link_name = kstrdup(acg_dev->acg_dev_link_name, GFP_KERNEL);
-		if (!link_name)
-			goto out;
-	}
-	res = scst_alloc_sysfs_work(scst_do_acg_dev_sysfs_del, true, &work);
-	if (res)
-		goto out_free;
-	work->del_acg_dev.acg_dev_kobj = acg_dev->acg_dev_kobj;
-	if (acg_dev->dev) {
-		work->del_acg_dev.dev_kobj = acg_dev->dev->dev_kobj;
-		work->del_acg_dev.dev_exp_kobj = acg_dev->dev->dev_exp_kobj;
-	}
-	work->del_acg_dev.link_name = link_name;
-	acg_dev_kobj->deleted = true;
-	scst_sysfs_queue_work(work);
-	res = 0;
-out:
-	TRACE_EXIT_RES(res);
-	return res;
-out_free:
-	kfree(link_name);
-	goto out;
-}
-
 int scst_acg_dev_sysfs_create(struct scst_acg_dev *acg_dev,
 	struct kobject *parent)
 {
@@ -3243,7 +3057,7 @@ static int __scst_process_luns_mgmt_store(char *buffer,
 			} else {
 				/* Replace */
 				res = scst_acg_del_lun(acg, acg_dev->lun,
-						       false, true);
+						false);
 				if (res != 0)
 					goto out_unlock;
 
@@ -3253,7 +3067,7 @@ static int __scst_process_luns_mgmt_store(char *buffer,
 
 		res = scst_acg_add_lun(acg,
 			tgt_kobj ? tgt->tgt_luns_kobj : acg->luns_kobj,
-			dev, virt_lun, read_only, !dev_replaced, NULL, true);
+			dev, virt_lun, read_only, !dev_replaced, NULL);
 		if (res != 0)
 			goto out_unlock;
 
@@ -3279,7 +3093,7 @@ static int __scst_process_luns_mgmt_store(char *buffer,
 			p++;
 		virt_lun = simple_strtoul(p, &p, 0);
 
-		res = scst_acg_del_lun(acg, virt_lun, true, true);
+		res = scst_acg_del_lun(acg, virt_lun, true);
 		if (res != 0)
 			goto out_unlock;
 		break;
@@ -3291,7 +3105,7 @@ static int __scst_process_luns_mgmt_store(char *buffer,
 					 acg_dev_list_entry) {
 			res = scst_acg_del_lun(acg, acg_dev->lun,
 				list_is_last(&acg_dev->acg_dev_list_entry,
-					     &acg->acg_dev_list), true);
+					     &acg->acg_dev_list));
 			if (res)
 				goto out_unlock;
 		}
@@ -3838,56 +3652,6 @@ void scst_acg_sysfs_del(struct scst_acg *acg)
 	TRACE_EXIT();
 }
 
-static int scst_do_acg_sysfs_del(struct scst_sysfs_work_item *work)
-{
-	struct kobject *acg_kobj, *acg_initiators_kobj, *acg_luns_kobj;
-
-	TRACE_ENTRY();
-
-	acg_kobj            = work->del_acg.acg_kobj;
-	acg_initiators_kobj = work->del_acg.acg_initiators_kobj;
-	acg_luns_kobj       = work->del_acg.acg_luns_kobj;
-
-	TRACE_DBG("%s: kobj %s", __func__, kobject_name(acg_kobj));
-
-	kobject_del(acg_luns_kobj);
-	kobject_put(acg_luns_kobj);
-
-	kobject_del(acg_initiators_kobj);
-	kobject_put(acg_initiators_kobj);
-
-	kobject_del(acg_kobj);
-	kobject_put(acg_kobj);
-
-	TRACE_EXIT();
-	return 0;
-}
-
-int scst_acg_sysfs_del_async(struct scst_acg *acg)
-{
-	struct scst_acg_kobj *acg_kobj;
-	struct scst_sysfs_work_item *work;
-	int res;
-
-	TRACE_ENTRY();
-
-	TRACE_DBG("%s: kobj %s", __func__, kobject_name(acg->acg_kobj));
-	acg_kobj = container_of(acg->acg_kobj, struct scst_acg_kobj, kobj);
-	res = scst_alloc_sysfs_work(scst_do_acg_sysfs_del, true, &work);
-	if (!res)
-		goto out;
-	work->del_acg.acg_kobj            = acg->acg_kobj;
-	work->del_acg.acg_initiators_kobj = acg->initiators_kobj;
-	work->del_acg.acg_luns_kobj       = acg->luns_kobj;
-	acg_kobj->deleted = true;
-	scst_sysfs_queue_work(work);
-	res = 0;
-
-out:
-	TRACE_EXIT_RES(res);
-	return res;
-}
-
 static struct kobj_type acg_ktype = {
 	.sysfs_ops = &scst_sysfs_ops,
 	.release = scst_release_acg_kobj,
@@ -4169,7 +3933,7 @@ static int scst_process_ini_group_mgmt_store(char *buffer,
 			res = -EBUSY;
 			goto out_unlock;
 		}
-		scst_del_free_acg(acg, true);
+		scst_del_free_acg(acg);
 		break;
 	}
 
@@ -4425,50 +4189,6 @@ void scst_acn_sysfs_del(struct scst_acn *acn)
 	return;
 }
 
-static int scst_do_acn_sysfs_del(struct scst_sysfs_work_item *work)
-{
-	struct kobject *initiators_kobj;
-	const struct kobj_attribute *acn_attr;
-
-	TRACE_ENTRY();
-
-	initiators_kobj = work->del_acn.initiators_kobj;
-	acn_attr        = work->del_acn.acn_attr;
-
-	sysfs_remove_file(initiators_kobj, &acn_attr->attr);
-	kobject_put(initiators_kobj);
-
-	kfree(acn_attr->attr.name);
-	kfree(acn_attr);
-
-	TRACE_EXIT();
-	return 0;
-}
-
-int scst_acn_sysfs_del_async(struct scst_acn *acn)
-{
-	struct scst_sysfs_work_item *work;
-	int res;
-
-	TRACE_ENTRY();
-
-	if (!acn->acn_attr)
-		goto out_noerr;
-
-	res = scst_alloc_sysfs_work(scst_do_acn_sysfs_del, true, &work);
-	if (res)
-		goto out;
-	work->del_acn.initiators_kobj = acn->acg->initiators_kobj;
-	work->del_acn.acn_attr = acn->acn_attr;
-	kobject_get(acn->acg->initiators_kobj);
-	scst_sysfs_queue_work(work);
-out_noerr:
-	res = 0;
-out:
-	TRACE_EXIT_RES(res);
-	return res;
-}
-
 static ssize_t scst_acn_file_show(struct kobject *kobj,
 	struct kobj_attribute *attr, char *buf)
 {
@@ -4581,7 +4301,7 @@ static int scst_process_acg_ini_mgmt_store(char *buffer,
 			goto out_unlock;
 		}
 
-		res = scst_acg_add_acn(acg, name, true);
+		res = scst_acg_add_acn(acg, name);
 		if (res != 0)
 			goto out_unlock;
 		break;
@@ -4606,14 +4326,14 @@ static int scst_process_acg_ini_mgmt_store(char *buffer,
 			res = -EINVAL;
 			goto out_unlock;
 		}
-		scst_del_free_acn(acn, true, true);
+		scst_del_free_acn(acn, true);
 		break;
 	case SCST_ACG_ACTION_INI_CLEAR:
 		list_for_each_entry_safe(acn, acn_tmp, &acg->acn_list,
 				acn_list_entry) {
-			scst_del_free_acn(acn, false, true);
+			scst_del_free_acn(acn, false);
 		}
-		scst_check_reassign_sessions(true);
+		scst_check_reassign_sessions();
 		break;
 	case SCST_ACG_ACTION_INI_MOVE:
 		e = p;
@@ -4670,9 +4390,9 @@ static int scst_process_acg_ini_mgmt_store(char *buffer,
 			res = -EEXIST;
 			goto out_unlock;
 		}
-		scst_del_free_acn(acn, false, true);
+		scst_del_free_acn(acn, false);
 
-		res = scst_acg_add_acn(acg_dest, name, true);
+		res = scst_acg_add_acn(acg_dest, name);
 		if (res != 0)
 			goto out_unlock;
 		break;
@@ -5621,7 +5341,7 @@ static int scst_process_devt_pass_through_mgmt_store(char *buffer,
 	}
 
 	if (strcasecmp("add_device", action) == 0) {
-		res = scst_assign_dev_handler(dev, devt, true);
+		res = scst_assign_dev_handler(dev, devt);
 		if (res == 0)
 			PRINT_INFO("Device %s assigned to dev handler %s",
 				dev->virt_name, devt->name);
@@ -5632,7 +5352,7 @@ static int scst_process_devt_pass_through_mgmt_store(char *buffer,
 			res = -EINVAL;
 			goto out_unlock;
 		}
-		res = scst_assign_dev_handler(dev, &scst_null_devtype, true);
+		res = scst_assign_dev_handler(dev, &scst_null_devtype);
 		if (res == 0)
 			PRINT_INFO("Device %s unassigned from dev handler %s",
 				dev->virt_name, devt->name);
@@ -5739,51 +5459,11 @@ void scst_devt_sysfs_del(struct scst_dev_type *devt)
 {
 	TRACE_ENTRY();
 
-	lockdep_assert_not_held(&scst_mutex);
-
 	kobject_del(devt->devt_kobj);
 	kobject_put(devt->devt_kobj);
 	devt->devt_kobj = NULL;
 
 	TRACE_EXIT();
-}
-
-static int scst_do_devt_sysfs_del(struct scst_sysfs_work_item *work)
-{
-	struct kobject *devt_kobj;
-
-	TRACE_ENTRY();
-
-	lockdep_assert_not_held(&scst_mutex);
-
-	devt_kobj = work->del_devt.devt_kobj;
-
-	kobject_del(devt_kobj);
-	kobject_put(devt_kobj);
-
-	TRACE_EXIT();
-	return 0;
-}
-
-int scst_devt_sysfs_del_async(struct scst_dev_type *devt)
-{
-	struct kobject *devt_kobj;
-	struct scst_sysfs_work_item *work;
-	int res;
-
-	TRACE_ENTRY();
-
-	TRACE_DBG("%s: kobj %s", __func__, kobject_name(devt->devt_kobj));
-	devt_kobj = devt->devt_kobj;
-	res = scst_alloc_sysfs_work(scst_do_devt_sysfs_del, true, &work);
-	if (res)
-		goto out;
-	work->del_devt.devt_kobj = devt->devt_kobj;
-	scst_sysfs_queue_work(work);
-	res = 0;
-out:
-	TRACE_EXIT_RES(res);
-	return res;
 }
 
 /**

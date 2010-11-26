@@ -6205,7 +6205,7 @@ failed:
 	if (res != 0)
 		goto failed;
 
-	res = scst_sess_alloc_tgt_devs(sess, false);
+	res = scst_sess_alloc_tgt_devs(sess);
 #endif
 
 	if (sess->init_result_fn) {
