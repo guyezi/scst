@@ -15,6 +15,14 @@
  *  but WITHOUT ANY WARRANTY; without even the implied warranty of
  *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
  *  GNU General Public License for more details.
+ *
+ *  Locking strategy:
+ *  - Inside a sysfs .show() or .store() callback function, do not suspend
+ *    activity nor lock scst_mutex.
+ *  - Dynamic kobject creation may happen while activity is suspended and/or
+ *    scst_mutex is locked.
+ *  The above scheme avoids locking inversion between the s_active locking
+ *  object associated with each kobject and activity suspending / scst_mutex.
  */
 
 #include <linux/kobject.h>
@@ -405,85 +413,70 @@ static int sysfs_work_thread_fn(void *arg)
 	return 0;
 }
 
-static struct scst_tgt_template *__scst_lookup_tgtt(const char *name)
-{
-	struct scst_tgt_template *tt;
-
-	lockdep_assert_held(&scst_mutex);
-
-	BUG_ON(!name);
-	list_for_each_entry(tt, &scst_template_list, scst_template_list_entry)
-		if (strcmp(tt->name, name) == 0)
-			return tt;
-
-	return NULL;
-}
+/**
+ ** Kernel object that points to an SCST object.
+ **/
 
 /**
- * scst_kobj_to_tgtt() - Look up target template pointer.
+ * struct scst_kobj - Reference to an SCST object.
+ * @kobj:     Kernel object.
+ * @scst_obj: Pointer to the associated SCST object.
  *
- * Must be called from inside a tgtt sysfs .show() or .store() callback
- * function only. Since scst_unregister_template() indirectly invokes
- * kobject_del() on the tgtt kernel object and since kobject_del() waits until
- * all active .show() and .store() callback functions have finished, no
- * further locking is necessary by the caller.
+ * A struct scst_kobj exists at least as long as the SCST object it points
+ * at. Before the SCST object is destroyed, the scst_obj pointer is set to
+ * NULL and kobject_del() is invoked. Since kobject_del() must wait until any
+ * active sysfs .show() or .store() callback functions have finished, it is
+ * guaranteed that the corresponding SCST object will only be freed after any
+ * active sysfs .show() or .store() callback functions have returned. So SCST
+ * objects will not disappear while a .show() or .store() callback is running.
  */
-struct scst_tgt_template *scst_kobj_to_tgtt(struct kobject *kobj)
+struct scst_kobj {
+	struct kobject	 kobj;
+	void		*scst_obj;
+};
+
+static struct scst_kobj *create_scst_kobj(void *scst_obj)
 {
-	struct scst_tgt_template *tt;
+	struct scst_kobj *scst_kobj;
 
-	mutex_lock(&scst_mutex);
-	tt = __scst_lookup_tgtt(kobject_name(kobj));
-	mutex_unlock(&scst_mutex);
-
-	return tt;
-}
-EXPORT_SYMBOL(scst_kobj_to_tgtt);
-
-static struct scst_dev_type *__scst_lookup_devt(const char *name)
-{
-	struct scst_dev_type *dt;
-
-	lockdep_assert_held(&scst_mutex);
-
-	list_for_each_entry(dt, &scst_virtual_dev_type_list,
-			    dev_type_list_entry)
-		if (strcmp(dt->name, name) == 0)
-			return dt;
-
-	TRACE_DBG("Devt %s not found", name);
-
-	return NULL;
+	scst_kobj = kzalloc(sizeof(*scst_kobj), GFP_KERNEL);
+	if (!scst_kobj)
+		goto out;
+	scst_kobj->scst_obj = scst_obj;
+out:
+	return scst_kobj;
 }
 
-/**
- * scst_lookup_devt() - Look up virtual device handler pointer.
- *
- * Must be called from inside a devt sysfs .show() or .store() callback
- * function only. Since scst_unregister_dev_driver() indirectly invokes
- * kobject_del() on the devt kernel object and since kobject_del() waits until
- * all active .show() and .store() callback functions have finished, no
- * further locking is necessary by the caller.
- */
-static struct scst_dev_type *scst_lookup_devt(const char *name)
+static void release_scst_kobj(struct kobject *kobj)
 {
-	struct scst_dev_type *dt;
+	TRACE_ENTRY();
+	kfree(kobj);
+	TRACE_EXIT();
+}
+
+static void *scst_kobj_to_scst_obj(struct kobject *kobj)
+{
+	struct scst_kobj *scst_kobj;
 
 	TRACE_ENTRY();
 
-	mutex_lock(&scst_mutex);
-	dt = __scst_lookup_devt(name);
-	mutex_unlock(&scst_mutex);
+	scst_kobj = container_of(kobj, struct scst_kobj, kobj);
 
-	TRACE_EXIT_RES(dt);
-	return dt;
+	TRACE_EXIT_RES(scst_kobj->scst_obj);
+	return scst_kobj->scst_obj;
 }
 
-struct scst_dev_type *scst_kobj_to_devt(struct kobject *kobj)
+/**
+ * unlink_scst_kobj() - Remove the association to the SCST object.
+ */
+static void unlink_scst_kobj(struct kobject *kobj)
 {
-	return scst_lookup_devt(kobject_name(kobj));
+	struct scst_kobj *scst_kobj;
+
+	scst_kobj = container_of(kobj, struct scst_kobj, kobj);
+	scst_kobj->scst_obj = NULL;
 }
-EXPORT_SYMBOL(scst_kobj_to_devt);
+
 
 /**
  ** Regular SCST sysfs ops
@@ -532,16 +525,21 @@ EXPORT_SYMBOL_GPL(scst_sysfs_get_sysfs_ops);
  ** Target Template
  **/
 
-static void scst_release_tgtt_kobj(struct kobject *kobj)
+/**
+ * scst_kobj_to_tgtt() - Look up target template pointer.
+ *
+ * Must be called from inside a tgtt sysfs .show() or .store() callback
+ * function only.
+ */
+struct scst_tgt_template *scst_kobj_to_tgtt(struct kobject *kobj)
 {
-	TRACE_ENTRY();
-	kfree(kobj);
-	TRACE_EXIT();
+	return scst_kobj_to_scst_obj(kobj);
 }
+EXPORT_SYMBOL(scst_kobj_to_tgtt);
 
 static struct kobj_type tgtt_ktype = {
 	.sysfs_ops = &scst_sysfs_ops,
-	.release = scst_release_tgtt_kobj,
+	.release = release_scst_kobj,
 };
 
 #if defined(CONFIG_SCST_DEBUG) || defined(CONFIG_SCST_TRACING)
@@ -769,14 +767,21 @@ kfree:
 int scst_tgtt_sysfs_create(struct scst_tgt_template *tgtt)
 {
 	int res;
+	struct scst_kobj *tgtt_kobj;
 
 	TRACE_ENTRY();
 
-	res = -EEXIST;
-	tgtt->tgtt_kobj = kobject_create_and_add_kt(&tgtt_ktype,
+	res = -ENOMEM;
+	tgtt_kobj = create_scst_kobj(tgtt);
+	if (!tgtt_kobj)
+		goto out;
+
+	tgtt->tgtt_kobj = &tgtt_kobj->kobj;
+	res = kobject_init_and_add(tgtt->tgtt_kobj, &tgtt_ktype,
 			scst_targets_kobj, tgtt->name);
-	if (!tgtt->tgtt_kobj) {
+	if (res) {
 		PRINT_ERROR("Can't add tgtt %s to sysfs", tgtt->name);
+		release_scst_kobj(&tgtt_kobj->kobj);
 		goto out;
 	}
 
@@ -825,6 +830,7 @@ void scst_tgtt_sysfs_del(struct scst_tgt_template *tgtt)
 {
 	TRACE_ENTRY();
 
+	unlink_scst_kobj(tgtt->tgtt_kobj);
 	kobject_del(tgtt->tgtt_kobj);
 	kobject_put(tgtt->tgtt_kobj);
 	tgtt->tgtt_kobj = NULL;
@@ -837,48 +843,9 @@ void scst_tgtt_sysfs_del(struct scst_tgt_template *tgtt)
  ** Target directory implementation
  **/
 
-/**
- * struct scst_tgt_kobj - Reference to a struct scst_tgt object.
- * @kobj: Kernel object where kobj.name == scst_tgt.tgt_name.
- * @template_name: Target template name: template_name == scst_tgt.tgtt->name.
- */
-struct scst_tgt_kobj {
-	struct kobject	 kobj;
-	char		*template_name;
-};
-
-static struct scst_tgt_kobj *scst_create_tgt_kobj(const char *template_name)
-{
-	struct scst_tgt_kobj *tgt_kobj;
-
-	tgt_kobj = kzalloc(sizeof(*tgt_kobj), GFP_KERNEL);
-	if (!tgt_kobj)
-		goto out;
-	tgt_kobj->template_name = kstrdup(template_name, GFP_KERNEL);
-	if (!tgt_kobj->template_name)
-		goto out_free;
-out:
-	return tgt_kobj;
-out_free:
-	kfree(tgt_kobj);
-	tgt_kobj = NULL;
-	goto out;
-}
-
-static void scst_release_tgt_kobj(struct kobject *kobj)
-{
-	struct scst_tgt_kobj *tgt_kobj;
-
-	TRACE_ENTRY();
-	tgt_kobj = container_of(kobj, struct scst_tgt_kobj, kobj);
-	kfree(tgt_kobj->template_name);
-	kfree(tgt_kobj);
-	TRACE_EXIT();
-}
-
 static struct kobj_type tgt_ktype = {
 	.sysfs_ops = &scst_sysfs_ops,
-	.release = scst_release_tgt_kobj,
+	.release = release_scst_kobj,
 };
 
 static struct kobj_attribute scst_luns_mgmt =
@@ -929,55 +896,15 @@ static struct kobj_attribute scst_acg_cpu_mask =
 	       scst_acg_cpu_mask_show,
 	       scst_acg_cpu_mask_store);
 
-static struct scst_tgt *__scst_lookup_tgt(struct scst_tgt_template *tgtt,
-					  const char *target_name)
-{
-	struct scst_tgt *tgt;
-
-	lockdep_assert_held(&scst_mutex);
-
-	list_for_each_entry(tgt, &tgtt->tgt_list, tgt_list_entry)
-		if (strcmp(tgt->tgt_name, target_name) == 0)
-			return tgt;
-
-	TRACE_DBG("Tgt %s not found", target_name);
-
-	return NULL;
-}
-
 /**
  * scst_kobj_to_tgt() - Look up target pointer.
  *
  * Must be called from inside a tgt sysfs .show() or .store() callback
- * function only. Since scst_unregister_target() indirectly invokes
- * kobject_del() on the tgt kernel object, since kobject_del() waits until
- * all active .show() and .store() callback functions have finished and since
- * target template objects are only deallocated after all target objects have
- * been deallocated, no further locking is necessary by the caller.
+ * function only.
  */
 struct scst_tgt *scst_kobj_to_tgt(struct kobject *kobj)
 {
-	struct scst_tgt_kobj *tgt_kobj;
-	struct scst_tgt_template *tgtt;
-	struct scst_tgt *tgt = NULL;
-
-	TRACE_ENTRY();
-
-	tgt_kobj = container_of(kobj, struct scst_tgt_kobj, kobj);
-
-	mutex_lock(&scst_mutex);
-
-	tgtt = __scst_lookup_tgtt(tgt_kobj->template_name);
-	if (!tgtt)
-		goto out_unlock;
-
-	tgt = __scst_lookup_tgt(tgtt, tgt_kobj->kobj.name);
-
-out_unlock:
-	mutex_unlock(&scst_mutex);
-
-	TRACE_EXIT_RES(tgt);
-	return tgt;
+	return scst_kobj_to_scst_obj(kobj);
 }
 EXPORT_SYMBOL(scst_kobj_to_tgt);
 
@@ -1103,11 +1030,11 @@ static struct kobj_attribute tgt_enable_attr =
 int scst_tgt_sysfs_create(struct scst_tgt *tgt)
 {
 	int res;
-	struct scst_tgt_kobj *tgt_kobj;
+	struct scst_kobj *tgt_kobj;
 
 	TRACE_ENTRY();
 
-	tgt_kobj = scst_create_tgt_kobj(tgt->tgtt->name);
+	tgt_kobj = create_scst_kobj(tgt);
 	if (!tgt_kobj)
 		goto out_nomem;
 	tgt->tgt_kobj = &tgt_kobj->kobj;
@@ -1115,7 +1042,7 @@ int scst_tgt_sysfs_create(struct scst_tgt *tgt)
 				   tgt->tgtt->tgtt_kobj, tgt->tgt_name);
 	if (res != 0) {
 		PRINT_ERROR("Can't add tgt %s to sysfs", tgt->tgt_name);
-		scst_release_tgt_kobj(&tgt_kobj->kobj);
+		release_scst_kobj(&tgt_kobj->kobj);
 		goto out_err;
 	}
 
@@ -1230,6 +1157,7 @@ void scst_tgt_sysfs_del(struct scst_tgt *tgt)
 	kobject_del(tgt->tgt_ini_grp_kobj);
 	kobject_put(tgt->tgt_ini_grp_kobj);
 
+	unlink_scst_kobj(tgt->tgt_kobj);
 	kobject_del(tgt->tgt_kobj);
 	kobject_put(tgt->tgt_kobj);
 
@@ -1241,39 +1169,15 @@ void scst_tgt_sysfs_del(struct scst_tgt *tgt)
  ** Devices directory implementation
  **/
 
-static struct scst_device *__scst_lookup_dev(const char *name)
-{
-	struct scst_device *dev;
-
-	lockdep_assert_held(&scst_mutex);
-
-	list_for_each_entry(dev, &scst_dev_list, dev_list_entry)
-		if (strcmp(dev->virt_name, name) == 0)
-			return dev;
-
-	TRACE_DBG("Dev %s not found", name);
-
-	return NULL;
-}
-
 /**
  * scst_kobj_to_dev() - Look up virtual device pointer.
  *
  * Must be called from inside a dev sysfs .show() or .store() callback
- * function only. Since scst_unregister_virtual_device() indirectly invokes
- * kobject_del() on the dev kernel object and since kobject_del() waits until
- * all active .show() and .store() callback functions have finished, no
- * further locking is necessary by the caller.
+ * function only.
  */
 struct scst_device *scst_kobj_to_dev(struct kobject *kobj)
 {
-	struct scst_device *dev;
-
-	mutex_lock(&scst_mutex);
-	dev = __scst_lookup_dev(kobject_name(kobj));
-	mutex_unlock(&scst_mutex);
-
-	return dev;
+	return scst_kobj_to_scst_obj(kobj);
 }
 EXPORT_SYMBOL(scst_kobj_to_dev);
 
@@ -1583,13 +1487,6 @@ static struct attribute *scst_dev_attrs[] = {
 	NULL,
 };
 
-static void scst_sysfs_dev_release(struct kobject *kobj)
-{
-	TRACE_ENTRY();
-	kfree(kobj);
-	TRACE_EXIT();
-}
-
 int scst_devt_dev_sysfs_create(struct scst_device *dev)
 {
 	int res = 0;
@@ -1672,21 +1569,28 @@ out:
 
 static struct kobj_type scst_dev_ktype = {
 	.sysfs_ops = &scst_sysfs_ops,
-	.release = scst_sysfs_dev_release,
+	.release = release_scst_kobj,
 	.default_attrs = scst_dev_attrs,
 };
 
 int scst_dev_sysfs_create(struct scst_device *dev)
 {
 	int res = 0;
+	struct scst_kobj *dev_kobj;
 
 	TRACE_ENTRY();
 
-	dev->dev_kobj = kobject_create_and_add_kt(&scst_dev_ktype,
-				      scst_devices_kobj, dev->virt_name);
-	if (!dev->dev_kobj) {
-		res = -ENOMEM;
+	res = -ENOMEM;
+	dev_kobj = create_scst_kobj(dev);
+	if (!dev_kobj)
+		goto out;
+
+	dev->dev_kobj = &dev_kobj->kobj;
+	res = kobject_init_and_add(dev->dev_kobj, &scst_dev_ktype,
+				scst_devices_kobj, dev->virt_name);
+	if (res) {
 		PRINT_ERROR("Can't add device %s to sysfs", dev->virt_name);
+		release_scst_kobj(&dev_kobj->kobj);
 		goto out;
 	}
 
@@ -1737,6 +1641,7 @@ void scst_dev_sysfs_del(struct scst_device *dev)
 	kobject_del(dev->dev_exp_kobj);
 	kobject_put(dev->dev_exp_kobj);
 
+	unlink_scst_kobj(dev->dev_kobj);
 	kobject_del(dev->dev_kobj);
 	kobject_put(dev->dev_kobj);
 	dev->dev_kobj = NULL;
@@ -1749,95 +1654,15 @@ void scst_dev_sysfs_del(struct scst_device *dev)
  ** Tgt_dev implementation
  **/
 
-struct scst_tgt_dev_kobj {
-	struct kobject	 kobj;
-	char		*device_name;
-	uint64_t	 lun;
-	bool		 deleted;
-};
-
-static struct scst_tgt_dev_kobj *scst_create_tgt_dev_kobj(
-				const char *device_name, uint64_t lun)
-{
-	struct scst_tgt_dev_kobj *tgt_dev_kobj;
-
-	tgt_dev_kobj = kzalloc(sizeof(*tgt_dev_kobj), GFP_KERNEL);
-	if (!tgt_dev_kobj)
-		goto out;
-	tgt_dev_kobj->device_name = kstrdup(device_name, GFP_KERNEL);
-	if (!tgt_dev_kobj->device_name)
-		goto out_free;
-	tgt_dev_kobj->lun = lun;
-out:
-	return tgt_dev_kobj;
-out_free:
-	kfree(tgt_dev_kobj);
-	tgt_dev_kobj = NULL;
-	goto out;
-}
-
-static void scst_sysfs_tgt_dev_release(struct kobject *kobj)
-{
-	struct scst_tgt_dev_kobj *tgt_dev_kobj;
-
-	TRACE_ENTRY();
-
-	tgt_dev_kobj = container_of(kobj, struct scst_tgt_dev_kobj, kobj);
-
-	kfree(tgt_dev_kobj->device_name);
-	kfree(tgt_dev_kobj);
-
-	TRACE_EXIT();
-}
-
-static struct scst_tgt_dev *__scst_lookup_tgt_dev(struct scst_device *dev,
-						  uint64_t lun)
-{
-	struct scst_tgt_dev *tgt_dev;
-
-	lockdep_assert_held(&scst_mutex);
-
-	list_for_each_entry(tgt_dev, &dev->dev_tgt_dev_list,
-			    dev_tgt_dev_list_entry)
-		if (tgt_dev->lun == lun)
-			return tgt_dev;
-
-	TRACE_DBG("Target device with LUN %lld not found", lun);
-
-	return NULL;
-}
-
 /**
  * scst_kobj_to_tgt_dev() - Look up target device pointer.
  *
  * Must be called from inside a dev sysfs .show() or .store() callback
- * function only. Since scst_acg_del_lun() indirectly invokes kobject_del()
- * on the dev kernel object and since kobject_del() waits until all active
- * .show() and .store() callback functions have finished, no further
- * locking is necessary by the caller.
+ * function only.
  */
 struct scst_tgt_dev *scst_kobj_to_tgt_dev(struct kobject *kobj)
 {
-	struct scst_tgt_dev_kobj *tgt_dev_kobj;
-	struct scst_device *dev;
-	struct scst_tgt_dev *tgt_dev = NULL;
-
-	tgt_dev_kobj = container_of(kobj, struct scst_tgt_dev_kobj, kobj);
-	if (unlikely(tgt_dev_kobj->deleted))
-		goto out;
-
-	mutex_lock(&scst_mutex);
-
-	dev = __scst_lookup_dev(tgt_dev_kobj->device_name);
-	if (!dev)
-		goto out_unlock;
-
-	tgt_dev = __scst_lookup_tgt_dev(dev, tgt_dev_kobj->lun);
-
-out_unlock:
-	mutex_unlock(&scst_mutex);
-out:
-	return tgt_dev;
+	return scst_kobj_to_scst_obj(kobj);
 }
 EXPORT_SYMBOL(scst_kobj_to_tgt_dev);
 
@@ -1992,20 +1817,19 @@ static struct attribute *scst_tgt_dev_attrs[] = {
 
 static struct kobj_type scst_tgt_dev_ktype = {
 	.sysfs_ops = &scst_sysfs_ops,
-	.release = scst_sysfs_tgt_dev_release,
+	.release = release_scst_kobj,
 	.default_attrs = scst_tgt_dev_attrs,
 };
 
 int scst_tgt_dev_sysfs_create(struct scst_tgt_dev *tgt_dev)
 {
-	struct scst_tgt_dev_kobj *tgt_dev_kobj;
+	struct scst_kobj *tgt_dev_kobj;
 	int res = 0;
 
 	TRACE_ENTRY();
 
 	res = -ENOMEM;
-	tgt_dev_kobj = scst_create_tgt_dev_kobj(tgt_dev->dev->virt_name,
-						tgt_dev->lun);
+	tgt_dev_kobj = create_scst_kobj(tgt_dev);
 	if (!tgt_dev_kobj)
 		goto out;
 	tgt_dev->tgt_dev_kobj = &tgt_dev_kobj->kobj;
@@ -2017,7 +1841,7 @@ int scst_tgt_dev_sysfs_create(struct scst_tgt_dev *tgt_dev)
 	if (res != 0) {
 		PRINT_ERROR("Can't add tgt_dev %lld to sysfs",
 			(unsigned long long)tgt_dev->lun);
-		scst_sysfs_tgt_dev_release(&tgt_dev_kobj->kobj);
+		release_scst_kobj(&tgt_dev_kobj->kobj);
 		goto out;
 	}
 
@@ -2028,14 +1852,9 @@ out:
 
 void scst_tgt_dev_sysfs_del(struct scst_tgt_dev *tgt_dev)
 {
-	struct scst_tgt_dev_kobj *tgt_dev_kobj;
-
 	TRACE_ENTRY();
 
-	tgt_dev_kobj = container_of(tgt_dev->tgt_dev_kobj,
-				    struct scst_tgt_dev_kobj, kobj);
-	tgt_dev_kobj->deleted = true;
-
+	unlink_scst_kobj(tgt_dev->tgt_dev_kobj);
 	kobject_del(tgt_dev->tgt_dev_kobj);
 	kobject_put(tgt_dev->tgt_dev_kobj);
 	tgt_dev->tgt_dev_kobj = NULL;
@@ -2047,78 +1866,9 @@ void scst_tgt_dev_sysfs_del(struct scst_tgt_dev *tgt_dev)
  ** Sessions subdirectory implementation
  **/
 
-struct scst_sess_kobj {
-	struct kobject	 kobj;
-	char		*template_name;
-	char		*target_name;
-};
-
-static struct scst_sess_kobj *scst_create_sess_kobj(const char *template_name,
-						    const char *target_name)
-{
-	struct scst_sess_kobj *sess_kobj;
-
-	sess_kobj = kzalloc(sizeof(*sess_kobj), GFP_KERNEL);
-	if (!sess_kobj)
-		goto out;
-	sess_kobj->template_name = kstrdup(template_name, GFP_KERNEL);
-	if (!sess_kobj->template_name)
-		goto out_free;
-	sess_kobj->target_name = kstrdup(target_name, GFP_KERNEL);
-	if (!sess_kobj->target_name)
-		goto out_free;
-out:
-	return sess_kobj;
-out_free:
-	kfree(sess_kobj->template_name);
-	kfree(sess_kobj);
-	sess_kobj = NULL;
-	goto out;
-}
-
-static void scst_release_sess_kobj(struct kobject *kobj)
-{
-	struct scst_sess_kobj *sess_kobj;
-
-	TRACE_ENTRY();
-	sess_kobj = container_of(kobj, struct scst_sess_kobj, kobj);
-	kfree(sess_kobj->target_name);
-	kfree(sess_kobj->template_name);
-	kfree(sess_kobj);
-	TRACE_EXIT();
-	return;
-}
-
 struct scst_session *scst_kobj_to_sess(struct kobject *kobj)
 {
-	struct scst_sess_kobj *sess_kobj;
-	struct scst_tgt_template *tgtt;
-	struct scst_tgt *tgt;
-	struct scst_session *s = NULL;
-
-	sess_kobj = container_of(kobj, struct scst_sess_kobj, kobj);
-
-	mutex_lock(&scst_mutex);
-
-	tgtt = __scst_lookup_tgtt(sess_kobj->template_name);
-	if (!tgtt)
-		goto out_unlock;
-
-	tgt = __scst_lookup_tgt(tgtt, sess_kobj->target_name);
-	if (!tgt)
-		goto out_unlock;
-
-	list_for_each_entry(s, &tgt->sess_list, sess_list_entry)
-		if (strcmp(s->initiator_name, kobject_name(kobj)) == 0)
-			goto out_unlock;
-
-	TRACE_DBG("Session %s not found", kobject_name(kobj));
-
-	s = NULL;
-
-out_unlock:
-	mutex_unlock(&scst_mutex);
-	return s;
+	return scst_kobj_to_scst_obj(kobj);
 }
 EXPORT_SYMBOL(scst_kobj_to_sess);
 
@@ -2482,7 +2232,7 @@ static struct attribute *scst_session_attrs[] = {
 
 static struct kobj_type scst_session_ktype = {
 	.sysfs_ops = &scst_sysfs_ops,
-	.release = scst_release_sess_kobj,
+	.release = release_scst_kobj,
 	.default_attrs = scst_session_attrs,
 };
 
@@ -2519,14 +2269,13 @@ int scst_sess_sysfs_create(struct scst_session *sess)
 {
 	int res = 0;
 	const char *name = sess->unique_session_name;
-	struct scst_sess_kobj *sess_kobj;
+	struct scst_kobj *sess_kobj;
 
 	TRACE_ENTRY();
 
 	TRACE_DBG("Adding session %s to sysfs", name);
 
-	sess_kobj = scst_create_sess_kobj(sess->tgt->tgtt->name,
-					  sess->tgt->tgt_name);
+	sess_kobj = create_scst_kobj(sess);
 	if (!sess_kobj) {
 		res = -ENOMEM;
 		goto out_free;
@@ -2537,7 +2286,7 @@ int scst_sess_sysfs_create(struct scst_session *sess)
 				   sess->tgt->tgt_sess_kobj, name);
 	if (res != 0) {
 		PRINT_ERROR("Can't add session %s to sysfs", name);
-		scst_release_sess_kobj(&sess_kobj->kobj);
+		release_scst_kobj(&sess_kobj->kobj);
 		goto out_free;
 	}
 
@@ -2570,6 +2319,7 @@ void scst_sess_sysfs_del(struct scst_session *sess)
 	TRACE_DBG("Deleting session %s from sysfs",
 		kobject_name(sess->sess_kobj));
 
+	unlink_scst_kobj(sess->sess_kobj);
 	kobject_del(sess->sess_kobj);
 	kobject_put(sess->sess_kobj);
 	sess->sess_kobj = NULL;
@@ -2582,123 +2332,17 @@ void scst_sess_sysfs_del(struct scst_session *sess)
  ** Target luns directory implementation
  **/
 
-struct scst_acg_dev_kobj {
-	struct kobject	 kobj;
-	char		*template_name;
-	char		*target_name;
-	char		*acg_name;
-	uint64_t	 lun;
-	bool		 deleted;
-};
-
-static struct scst_acg_dev_kobj *scst_create_acg_dev_kobj(
-					const char *template_name,
-					const char *target_name,
-					const char *acg_name,
-					const uint64_t lun)
-{
-	struct scst_acg_dev_kobj *acg_dev_kobj;
-
-	acg_dev_kobj = kzalloc(sizeof(*acg_dev_kobj), GFP_KERNEL);
-	if (!acg_dev_kobj)
-		goto out;
-	acg_dev_kobj->template_name = kstrdup(template_name, GFP_KERNEL);
-	if (!acg_dev_kobj->template_name)
-		goto out_free;
-	acg_dev_kobj->target_name = kstrdup(target_name, GFP_KERNEL);
-	if (!acg_dev_kobj->target_name)
-		goto out_free;
-	acg_dev_kobj->acg_name = kstrdup(acg_name, GFP_KERNEL);
-	if (!acg_dev_kobj->acg_name)
-		goto out_free;
-	acg_dev_kobj->lun = lun;
-out:
-	return acg_dev_kobj;
-out_free:
-	kfree(acg_dev_kobj->acg_name);
-	kfree(acg_dev_kobj->template_name);
-	kfree(acg_dev_kobj);
-	acg_dev_kobj = NULL;
-	goto out;
-}
-
-static void scst_release_acg_dev_kobj(struct kobject *kobj)
-{
-	struct scst_acg_dev_kobj *acg_dev_kobj;
-
-	TRACE_ENTRY();
-
-	acg_dev_kobj = container_of(kobj, struct scst_acg_dev_kobj, kobj);
-	kfree(acg_dev_kobj->acg_name);
-	kfree(acg_dev_kobj->target_name);
-	kfree(acg_dev_kobj->template_name);
-	kfree(acg_dev_kobj);
-
-	TRACE_EXIT();
-}
-
-static struct scst_acg *__scst_lookup_acg(const struct scst_tgt *tgt,
-					  const char *acg_name)
-{
-	struct scst_acg *acg;
-
-	lockdep_assert_held(&scst_mutex);
-
-	acg = tgt->default_acg;
-	if (acg && strcmp(acg->acg_name, acg_name) == 0)
-		return acg;
-
-	list_for_each_entry(acg, &tgt->tgt_acg_list, acg_list_entry)
-		if (strcmp(acg->acg_name, acg_name) == 0)
-			return acg;
-
-	return NULL;
-}
-
+/**
+ * scst_kobj_to_acg_dev() - Look up an acg_dev pointer.
+ *
+ * Must be called from inside a sysfs .show() or .store() callback function
+ * only.
+ */
 struct scst_acg_dev *scst_kobj_to_acg_dev(struct kobject *kobj)
 {
-	struct scst_acg_dev_kobj *acg_dev_kobj;
-	struct scst_tgt_template *tgtt;
-	struct scst_tgt *tgt;
-	struct scst_acg *acg;
-	struct scst_acg_dev *acg_dev = NULL;
-
-	acg_dev_kobj = container_of(kobj, struct scst_acg_dev_kobj, kobj);
-
-	mutex_lock(&scst_mutex);
-
-	tgtt = __scst_lookup_tgtt(acg_dev_kobj->template_name);
-	if (!tgtt)
-		goto out_unlock;
-
-	tgt = __scst_lookup_tgt(tgtt, acg_dev_kobj->target_name);
-	if (!tgt)
-		goto out_unlock;
-
-	acg = __scst_lookup_acg(tgt, acg_dev_kobj->acg_name);
-	if (!acg)
-		goto out_unlock;
-
-	list_for_each_entry(acg_dev, &acg->acg_dev_list, acg_dev_list_entry)
-		if (acg_dev->lun == acg_dev_kobj->lun)
-			goto out_unlock;
-
-	TRACE_DBG("acg_dev %s not found", kobject_name(kobj));
-
-	acg_dev = NULL;
-
-out_unlock:
-	mutex_unlock(&scst_mutex);
-	return acg_dev;
+	return scst_kobj_to_scst_obj(kobj);
 }
 EXPORT_SYMBOL(scst_kobj_to_acg_dev);
-
-static void scst_acg_dev_release(struct kobject *kobj)
-{
-	TRACE_ENTRY();
-	scst_release_acg_dev_kobj(kobj);
-	TRACE_EXIT();
-}
 
 static ssize_t scst_lun_rd_only_show(struct kobject *kobj,
 				   struct kobj_attribute *attr,
@@ -2726,19 +2370,13 @@ static struct attribute *lun_attrs[] = {
 
 static struct kobj_type acg_dev_ktype = {
 	.sysfs_ops = &scst_sysfs_ops,
-	.release = scst_acg_dev_release,
+	.release = release_scst_kobj,
 	.default_attrs = lun_attrs,
 };
 
 void scst_acg_dev_sysfs_del(struct scst_acg_dev *acg_dev)
 {
-	struct scst_acg_dev_kobj *acg_dev_kobj;
-
 	TRACE_ENTRY();
-
-	acg_dev_kobj = container_of(acg_dev->acg_dev_kobj,
-				    struct scst_acg_dev_kobj, kobj);
-	acg_dev_kobj->deleted = true;
 
 	if (acg_dev->dev != NULL) {
 		sysfs_remove_link(acg_dev->dev->dev_exp_kobj,
@@ -2746,6 +2384,7 @@ void scst_acg_dev_sysfs_del(struct scst_acg_dev *acg_dev)
 		kobject_put(acg_dev->dev->dev_kobj);
 	}
 
+	unlink_scst_kobj(acg_dev->acg_dev_kobj);
 	kobject_del(acg_dev->acg_dev_kobj);
 	kobject_put(acg_dev->acg_dev_kobj);
 	acg_dev->acg_dev_kobj = NULL;
@@ -2757,16 +2396,13 @@ void scst_acg_dev_sysfs_del(struct scst_acg_dev *acg_dev)
 int scst_acg_dev_sysfs_create(struct scst_acg_dev *acg_dev,
 	struct kobject *parent)
 {
-	struct scst_acg_dev_kobj *acg_dev_kobj;
+	struct scst_kobj *acg_dev_kobj;
 	int res;
 
 	TRACE_ENTRY();
 
 	res = -ENOMEM;
-	acg_dev_kobj = scst_create_acg_dev_kobj(acg_dev->acg->tgt->tgtt->name,
-						acg_dev->acg->tgt->tgt_name,
-						acg_dev->acg->acg_name,
-						acg_dev->lun);
+	acg_dev_kobj = create_scst_kobj(acg_dev);
 	if (!acg_dev_kobj)
 		goto out;
 
@@ -2778,7 +2414,7 @@ int scst_acg_dev_sysfs_create(struct scst_acg_dev *acg_dev,
 			    acg_dev->acg->tgt->tgtt->name,
 			    acg_dev->acg->tgt->tgt_name,
 			    acg_dev->acg->acg_name, acg_dev->lun);
-		scst_release_acg_dev_kobj(&acg_dev_kobj->kobj);
+		release_scst_kobj(&acg_dev_kobj->kobj);
 		goto out;
 	}
 
@@ -2815,81 +2451,15 @@ out_del:
  ** ini_groups directory implementation.
  **/
 
-struct scst_acg_kobj {
-	struct kobject	 kobj;
-	char		*template_name;
-	char		*target_name;
-	bool		 deleted;
-};
-
-static struct scst_acg_kobj *scst_create_acg_kobj(const char *template_name,
-						  const char *target_name)
-{
-	struct scst_acg_kobj *acg_kobj;
-
-	acg_kobj = kzalloc(sizeof(*acg_kobj), GFP_KERNEL);
-	if (!acg_kobj)
-		goto out;
-	acg_kobj->template_name = kstrdup(template_name, GFP_KERNEL);
-	if (!acg_kobj->template_name)
-		goto out_free;
-	acg_kobj->target_name = kstrdup(target_name, GFP_KERNEL);
-	if (!acg_kobj->target_name)
-		goto out_free;
-out:
-	return acg_kobj;
-out_free:
-	kfree(acg_kobj->template_name);
-	kfree(acg_kobj);
-	acg_kobj = NULL;
-	goto out;
-}
-
-static void scst_release_acg_kobj(struct kobject *kobj)
-{
-	struct scst_acg_kobj *acg_kobj;
-
-	TRACE_ENTRY();
-
-	acg_kobj = container_of(kobj, struct scst_acg_kobj, kobj);
-	kfree(acg_kobj->target_name);
-	kfree(acg_kobj->template_name);
-	kfree(acg_kobj);
-
-	TRACE_EXIT();
-}
-
+/**
+ * scst_kobj_to_acg_dev() - Look up an access control group pointer.
+ *
+ * Must be called from inside a sysfs .show() or .store() callback function
+ * only.
+ */
 struct scst_acg *scst_kobj_to_acg(struct kobject *kobj)
 {
-	struct scst_acg_kobj *acg_kobj;
-	struct scst_tgt_template *tgtt;
-	struct scst_tgt *tgt;
-	struct scst_acg *acg = NULL;
-
-	acg_kobj = container_of(kobj, struct scst_acg_kobj, kobj);
-
-	if (unlikely(acg_kobj->deleted))
-		goto out;
-
-	mutex_lock(&scst_mutex);
-
-	tgtt = __scst_lookup_tgtt(acg_kobj->template_name);
-	if (!tgtt)
-		goto out_unlock;
-
-	tgt = __scst_lookup_tgt(tgtt, acg_kobj->target_name);
-	if (!tgt)
-		goto out_unlock;
-
-	acg = __scst_lookup_acg(tgt, kobject_name(kobj));
-
-out_unlock:
-	mutex_unlock(&scst_mutex);
-
-	if (!acg)
-		TRACE_DBG("ACG %s not found", kobject_name(kobj));
-out:
-	return acg;
+	return scst_kobj_to_scst_obj(kobj);
 }
 EXPORT_SYMBOL(scst_kobj_to_acg);
 
@@ -3632,12 +3202,7 @@ out:
 
 void scst_acg_sysfs_del(struct scst_acg *acg)
 {
-	struct scst_acg_kobj *acg_kobj;
-
 	TRACE_ENTRY();
-
-	acg_kobj = container_of(acg->acg_kobj, struct scst_acg_kobj, kobj);
-	acg_kobj->deleted = true;
 
 	kobject_del(acg->luns_kobj);
 	kobject_put(acg->luns_kobj);
@@ -3645,6 +3210,7 @@ void scst_acg_sysfs_del(struct scst_acg *acg)
 	kobject_del(acg->initiators_kobj);
 	kobject_put(acg->initiators_kobj);
 
+	unlink_scst_kobj(acg->acg_kobj);
 	kobject_del(acg->acg_kobj);
 	kobject_put(acg->acg_kobj);
 	acg->acg_kobj = NULL;
@@ -3654,18 +3220,18 @@ void scst_acg_sysfs_del(struct scst_acg *acg)
 
 static struct kobj_type acg_ktype = {
 	.sysfs_ops = &scst_sysfs_ops,
-	.release = scst_release_acg_kobj,
+	.release = release_scst_kobj,
 };
 
 int scst_acg_sysfs_create(struct scst_tgt *tgt, struct scst_acg *acg)
 {
 	int res = 0;
-	struct scst_acg_kobj *acg_kobj;
+	struct scst_kobj *acg_kobj;
 
 	TRACE_ENTRY();
 
 	res = -ENOMEM;
-	acg_kobj = scst_create_acg_kobj(tgt->tgtt->name, tgt->tgt_name);
+	acg_kobj = create_scst_kobj(acg);
 	if (!acg_kobj)
 		goto out;
 
@@ -3675,7 +3241,7 @@ int scst_acg_sysfs_create(struct scst_tgt *tgt, struct scst_acg *acg)
 		tgt->tgt_ini_grp_kobj, acg->acg_name);
 	if (res != 0) {
 		PRINT_ERROR("Can't add acg '%s' to sysfs", acg->acg_name);
-		scst_release_acg_kobj(&acg_kobj->kobj);
+		release_scst_kobj(&acg_kobj->kobj);
 		goto out;
 	}
 
@@ -5005,13 +4571,11 @@ static struct kobj_type scst_sysfs_root_ktype = {
  ** Dev handlers
  **/
 
-static void scst_devt_release(struct kobject *kobj)
+struct scst_dev_type *scst_kobj_to_devt(struct kobject *kobj)
 {
-	TRACE_ENTRY();
-	kfree(kobj);
-	TRACE_EXIT();
-	return;
+	return scst_kobj_to_scst_obj(kobj);
 }
+EXPORT_SYMBOL(scst_kobj_to_devt);
 
 #if defined(CONFIG_SCST_DEBUG) || defined(CONFIG_SCST_TRACING)
 
@@ -5089,7 +4653,7 @@ static struct attribute *scst_devt_default_attrs[] = {
 
 static struct kobj_type scst_devt_ktype = {
 	.sysfs_ops = &scst_sysfs_ops,
-	.release = scst_devt_release,
+	.release = release_scst_kobj,
 	.default_attrs = scst_devt_default_attrs,
 };
 
@@ -5395,6 +4959,7 @@ static struct kobj_attribute scst_devt_pass_through_mgmt =
 int scst_devt_sysfs_create(struct scst_dev_type *devt)
 {
 	int res;
+	struct scst_kobj *devt_kobj;
 	struct kobject *parent;
 
 	TRACE_ENTRY();
@@ -5404,11 +4969,17 @@ int scst_devt_sysfs_create(struct scst_dev_type *devt)
 	else
 		parent = scst_handlers_kobj;
 
-	res = -EEXIST;
-	devt->devt_kobj = kobject_create_and_add_kt(&scst_devt_ktype,
-						    parent, devt->name);
-	if (!devt->devt_kobj) {
+	res = -ENOMEM;
+	devt_kobj = create_scst_kobj(devt);
+	if (!devt_kobj)
+		goto out;
+
+	devt->devt_kobj = &devt_kobj->kobj;
+	res = kobject_init_and_add(devt->devt_kobj, &scst_devt_ktype,
+				   parent, devt->name);
+	if (res) {
 		PRINT_ERROR("Can't add devt %s to sysfs", devt->name);
+		release_scst_kobj(&devt_kobj->kobj);
 		goto out;
 	}
 
@@ -5459,6 +5030,7 @@ void scst_devt_sysfs_del(struct scst_dev_type *devt)
 {
 	TRACE_ENTRY();
 
+	unlink_scst_kobj(devt->devt_kobj);
 	kobject_del(devt->devt_kobj);
 	kobject_put(devt->devt_kobj);
 	devt->devt_kobj = NULL;
