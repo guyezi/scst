@@ -688,7 +688,7 @@ static int scst_susp_wait(bool interruptible)
  */
 void scst_assert_activity_suspended(void)
 {
-	WARN_ON(!lock_is_held(&scst_suspend_activity_dep_map));
+	WARN_ON(!lock_is_held(&scst_suspend_dep_map));
 }
 EXPORT_SYMBOL(scst_assert_activity_suspended);
 
@@ -697,7 +697,7 @@ EXPORT_SYMBOL(scst_assert_activity_suspended);
  */
 void scst_assert_activity_not_suspended(void)
 {
-	WARN_ON(lock_is_held(&scst_suspend_activity_dep_map));
+	WARN_ON(lock_is_held(&scst_suspend_dep_map));
 }
 EXPORT_SYMBOL(scst_assert_activity_not_suspended);
 #endif
