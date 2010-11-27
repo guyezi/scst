@@ -3986,8 +3986,10 @@ void scst_free_session(struct scst_session *sess)
 	 */
 	mutex_unlock(&scst_mutex);
 
+#ifndef CONFIG_SCST_PROC
 	if (sess->unique_session_name != sess->initiator_name)
 		kfree(sess->unique_session_name);
+#endif
 	kfree(sess->transport_id);
 	kfree(sess->initiator_name);
 
