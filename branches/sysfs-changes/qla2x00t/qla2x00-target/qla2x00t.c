@@ -6115,7 +6115,7 @@ static ssize_t q2t_show_expl_conf_enabled(struct kobject *kobj,
 	ssize_t size;
 
 	scst_tgt = scst_kobj_to_tgt(kobj);
-	tgt = scst_tgt_get_tgt_priv(scst_tgt);
+	tgt = (struct q2t_tgt *)scst_tgt_get_tgt_priv(scst_tgt);
 	ha = tgt->ha;
 
 	size = scnprintf(buffer, PAGE_SIZE, "%d\n%s", ha->enable_explicit_conf,
@@ -6133,7 +6133,7 @@ static ssize_t q2t_store_expl_conf_enabled(struct kobject *kobj,
 	unsigned long flags;
 
 	scst_tgt = scst_kobj_to_tgt(kobj);
-	tgt = scst_tgt_get_tgt_priv(scst_tgt);
+	tgt = (struct q2t_tgt *)scst_tgt_get_tgt_priv(scst_tgt);
 	ha = tgt->ha;
 	pha = to_qla_parent(ha);
 
@@ -6169,7 +6169,7 @@ static ssize_t q2t_abort_isp_store(struct kobject *kobj,
 	scsi_qla_host_t *ha;
 
 	scst_tgt = scst_kobj_to_tgt(kobj);
-	tgt = scst_tgt_get_tgt_priv(scst_tgt);
+	tgt = (struct q2t_tgt *)scst_tgt_get_tgt_priv(scst_tgt);
 	ha = tgt->ha;
 
 	PRINT_INFO("qla2x00t(%ld): Aborting ISP", ha->instance);
@@ -6222,7 +6222,7 @@ static ssize_t q2t_node_name_show(struct kobject *kobj,
 	uint8_t *node_name;
 
 	scst_tgt = scst_kobj_to_tgt(kobj);
-	tgt = scst_tgt_get_tgt_priv(scst_tgt);
+	tgt = (struct q2t_tgt *)scst_tgt_get_tgt_priv(scst_tgt);
 	ha = tgt->ha;
 
 	if (ha->parent == NULL) {
@@ -6259,7 +6259,7 @@ static ssize_t q2t_node_name_store(struct kobject *kobj,
 	TRACE_ENTRY();
 
 	scst_tgt = scst_kobj_to_tgt(kobj);
-	tgt = scst_tgt_get_tgt_priv(scst_tgt);
+	tgt = (struct q2t_tgt *)scst_tgt_get_tgt_priv(scst_tgt);
 	ha = tgt->ha;
 
 	sBUG_ON(ha->parent != NULL);
@@ -6310,7 +6310,7 @@ static ssize_t q2t_vp_parent_host_show(struct kobject *kobj,
 	char *wwn;
 
 	scst_tgt = scst_kobj_to_tgt(kobj);
-	tgt = scst_tgt_get_tgt_priv(scst_tgt);
+	tgt = (struct q2t_tgt *)scst_tgt_get_tgt_priv(scst_tgt);
 	ha = to_qla_parent(tgt->ha);
 
 	res = q2t_get_target_name(ha->port_name, &wwn);
