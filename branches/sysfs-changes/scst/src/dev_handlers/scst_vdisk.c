@@ -4094,10 +4094,7 @@ static ssize_t vcdrom_sysfs_filename_store(struct kobject *kobj,
 
 	TRACE_ENTRY();
 
-	res = -ENOENT;
 	dev = scst_kobj_to_dev(kobj);
-	if (!dev)
-		goto out;
 
 	i_buf = kmalloc(count+1, GFP_KERNEL);
 	if (i_buf == NULL) {
@@ -4141,16 +4138,12 @@ static ssize_t vdev_sysfs_size_show(struct kobject *kobj,
 
 	TRACE_ENTRY();
 
-	pos = -ENOENT;
 	dev = scst_kobj_to_dev(kobj);
-	if (!dev)
-		goto out;
 
 	virt_dev = dev->dh_priv;
 
 	pos = sprintf(buf, "%lld\n", virt_dev->file_size / 1024 / 1024);
 
-out:
 	TRACE_EXIT_RES(pos);
 	return pos;
 }
@@ -4164,10 +4157,7 @@ static ssize_t vdisk_sysfs_blocksize_show(struct kobject *kobj,
 
 	TRACE_ENTRY();
 
-	pos = -ENOENT;
 	dev = scst_kobj_to_dev(kobj);
-	if (!dev)
-		goto out;
 
 	virt_dev = dev->dh_priv;
 
@@ -4175,7 +4165,6 @@ static ssize_t vdisk_sysfs_blocksize_show(struct kobject *kobj,
 		(virt_dev->block_size == DEF_DISK_BLOCKSIZE) ? "" :
 			SCST_SYSFS_KEY_MARK "\n");
 
-out:
 	TRACE_EXIT_RES(pos);
 	return pos;
 }
@@ -4189,10 +4178,7 @@ static ssize_t vdisk_sysfs_rd_only_show(struct kobject *kobj,
 
 	TRACE_ENTRY();
 
-	pos = -ENOENT;
 	dev = scst_kobj_to_dev(kobj);
-	if (!dev)
-		goto out;
 
 	virt_dev = (struct scst_vdisk_dev *)dev->dh_priv;
 
@@ -4200,7 +4186,6 @@ static ssize_t vdisk_sysfs_rd_only_show(struct kobject *kobj,
 		(virt_dev->rd_only == DEF_RD_ONLY) ? "" :
 			SCST_SYSFS_KEY_MARK "");
 
-out:
 	TRACE_EXIT_RES(pos);
 	return pos;
 }
@@ -4214,10 +4199,7 @@ static ssize_t vdisk_sysfs_wt_show(struct kobject *kobj,
 
 	TRACE_ENTRY();
 
-	pos = -ENOENT;
 	dev = scst_kobj_to_dev(kobj);
-	if (!dev)
-		goto out;
 
 	virt_dev = dev->dh_priv;
 
@@ -4225,7 +4207,6 @@ static ssize_t vdisk_sysfs_wt_show(struct kobject *kobj,
 		(virt_dev->wt_flag == DEF_WRITE_THROUGH) ? "" :
 			SCST_SYSFS_KEY_MARK "");
 
-out:
 	TRACE_EXIT_RES(pos);
 	return pos;
 }
@@ -4239,10 +4220,7 @@ static ssize_t vdisk_sysfs_tp_show(struct kobject *kobj,
 
 	TRACE_ENTRY();
 
-	pos = -ENOENT;
 	dev = scst_kobj_to_dev(kobj);
-	if (!dev)
-		goto out;
 
 	virt_dev = dev->dh_priv;
 
@@ -4250,7 +4228,6 @@ static ssize_t vdisk_sysfs_tp_show(struct kobject *kobj,
 		(virt_dev->thin_provisioned == DEF_THIN_PROVISIONED) ? "" :
 			SCST_SYSFS_KEY_MARK "");
 
-out:
 	TRACE_EXIT_RES(pos);
 	return pos;
 }
@@ -4264,10 +4241,7 @@ static ssize_t vdisk_sysfs_nv_cache_show(struct kobject *kobj,
 
 	TRACE_ENTRY();
 
-	pos = -ENOENT;
 	dev = scst_kobj_to_dev(kobj);
-	if (!dev)
-		goto out;
 
 	virt_dev = (struct scst_vdisk_dev *)dev->dh_priv;
 
@@ -4275,7 +4249,6 @@ static ssize_t vdisk_sysfs_nv_cache_show(struct kobject *kobj,
 		(virt_dev->nv_cache == DEF_NV_CACHE) ? "" :
 			SCST_SYSFS_KEY_MARK "");
 
-out:
 	TRACE_EXIT_RES(pos);
 	return pos;
 }
@@ -4289,10 +4262,7 @@ static ssize_t vdisk_sysfs_o_direct_show(struct kobject *kobj,
 
 	TRACE_ENTRY();
 
-	pos = -ENOENT;
 	dev = scst_kobj_to_dev(kobj);
-	if (!dev)
-		goto out;
 
 	virt_dev = (struct scst_vdisk_dev *)dev->dh_priv;
 
@@ -4300,7 +4270,6 @@ static ssize_t vdisk_sysfs_o_direct_show(struct kobject *kobj,
 		(virt_dev->o_direct_flag == DEF_O_DIRECT) ? "" :
 			SCST_SYSFS_KEY_MARK "");
 
-out:
 	TRACE_EXIT_RES(pos);
 	return pos;
 }
@@ -4314,10 +4283,7 @@ static ssize_t vdisk_sysfs_removable_show(struct kobject *kobj,
 
 	TRACE_ENTRY();
 
-	pos = -ENOENT;
 	dev = scst_kobj_to_dev(kobj);
-	if (!dev)
-		goto out;
 
 	virt_dev = (struct scst_vdisk_dev *)dev->dh_priv;
 
@@ -4327,7 +4293,6 @@ static ssize_t vdisk_sysfs_removable_show(struct kobject *kobj,
 	    (virt_dev->removable != DEF_REMOVABLE))
 		pos += sprintf(&buf[pos], "%s\n", SCST_SYSFS_KEY_MARK);
 
-out:
 	TRACE_EXIT_RES(pos);
 	return pos;
 }
@@ -4378,10 +4343,7 @@ static ssize_t vdev_sysfs_filename_show(struct kobject *kobj,
 
 	TRACE_ENTRY();
 
-	res = -ENOENT;
 	dev = scst_kobj_to_dev(kobj);
-	if (!dev)
-		goto out;
 
 	res = scst_alloc_sysfs_work(vdev_sysfs_process_get_filename,
 					true, &work);
@@ -4437,10 +4399,7 @@ static ssize_t vdisk_sysfs_resync_size_store(struct kobject *kobj,
 
 	TRACE_ENTRY();
 
-	res = -ENOENT;
 	dev = scst_kobj_to_dev(kobj);
-	if (!dev)
-		goto out;
 
 	res = scst_alloc_sysfs_work(vdisk_sysfs_process_resync_size_store,
 					false, &work);
@@ -4469,10 +4428,7 @@ static ssize_t vdev_sysfs_t10_dev_id_store(struct kobject *kobj,
 
 	TRACE_ENTRY();
 
-	res = -ENOENT;
 	dev = scst_kobj_to_dev(kobj);
-	if (!dev)
-		goto out;
 
 	virt_dev = (struct scst_vdisk_dev *)dev->dh_priv;
 
@@ -4508,7 +4464,7 @@ static ssize_t vdev_sysfs_t10_dev_id_store(struct kobject *kobj,
 
 out_unlock:
 	write_unlock_bh(&vdisk_t10_dev_id_rwlock);
-out:
+
 	TRACE_EXIT_RES(res);
 	return res;
 }
@@ -4522,10 +4478,7 @@ static ssize_t vdev_sysfs_t10_dev_id_show(struct kobject *kobj,
 
 	TRACE_ENTRY();
 
-	pos = -ENOENT;
 	dev = scst_kobj_to_dev(kobj);
-	if (!dev)
-		goto out;
 
 	virt_dev = (struct scst_vdisk_dev *)dev->dh_priv;
 
@@ -4534,7 +4487,6 @@ static ssize_t vdev_sysfs_t10_dev_id_show(struct kobject *kobj,
 		virt_dev->t10_dev_id_set ? SCST_SYSFS_KEY_MARK "\n" : "");
 	read_unlock_bh(&vdisk_t10_dev_id_rwlock);
 
-out:
 	TRACE_EXIT_RES(pos);
 	return pos;
 }
@@ -4548,16 +4500,12 @@ static ssize_t vdev_sysfs_usn_show(struct kobject *kobj,
 
 	TRACE_ENTRY();
 
-	pos = -ENOENT;
 	dev = scst_kobj_to_dev(kobj);
-	if (!dev)
-		goto out;
 
 	virt_dev = (struct scst_vdisk_dev *)dev->dh_priv;
 
 	pos = sprintf(buf, "%s\n", virt_dev->usn);
 
-out:
 	TRACE_EXIT_RES(pos);
 	return pos;
 }

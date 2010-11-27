@@ -5807,9 +5807,6 @@ static ssize_t q2t_show_expl_conf_enabled(struct kobject *kobj,
 	ssize_t size;
 
 	scst_tgt = scst_kobj_to_tgt(kobj);
-	if (!scst_tgt)
-		return -ENOENT;
-
 	tgt = scst_tgt_get_tgt_priv(scst_tgt);
 	ha = tgt->ha;
 
@@ -5828,9 +5825,6 @@ static ssize_t q2t_store_expl_conf_enabled(struct kobject *kobj,
 	unsigned long flags;
 
 	scst_tgt = scst_kobj_to_tgt(kobj);
-	if (!scst_tgt)
-		return -ENOENT;
-
 	tgt = scst_tgt_get_tgt_priv(scst_tgt);
 	ha = tgt->ha;
 	pha = to_qla_parent(ha);
@@ -5867,9 +5861,6 @@ static ssize_t q2t_abort_isp_store(struct kobject *kobj,
 	scsi_qla_host_t *ha;
 
 	scst_tgt = scst_kobj_to_tgt(kobj);
-	if (!scst_tgt)
-		return -ENOENT;
-
 	tgt = scst_tgt_get_tgt_priv(scst_tgt);
 	ha = tgt->ha;
 
@@ -5923,9 +5914,6 @@ static ssize_t q2t_node_name_show(struct kobject *kobj,
 	uint8_t *node_name;
 
 	scst_tgt = scst_kobj_to_tgt(kobj);
-	if (!scst_tgt)
-		return -ENOENT;
-
 	tgt = scst_tgt_get_tgt_priv(scst_tgt);
 	ha = tgt->ha;
 
@@ -5963,9 +5951,6 @@ static ssize_t q2t_node_name_store(struct kobject *kobj,
 	TRACE_ENTRY();
 
 	scst_tgt = scst_kobj_to_tgt(kobj);
-	if (!scst_tgt)
-		return -ENOENT;
-
 	tgt = scst_tgt_get_tgt_priv(scst_tgt);
 	ha = tgt->ha;
 
@@ -6017,9 +6002,6 @@ static ssize_t q2t_vp_parent_host_show(struct kobject *kobj,
 	char *wwn;
 
 	scst_tgt = scst_kobj_to_tgt(kobj);
-	if (!scst_tgt)
-		return -ENOENT;
-
 	tgt = scst_tgt_get_tgt_priv(scst_tgt);
 	ha = to_qla_parent(tgt->ha);
 

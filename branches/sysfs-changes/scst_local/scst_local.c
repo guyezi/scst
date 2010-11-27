@@ -397,8 +397,6 @@ static ssize_t scst_local_scsi_transport_version_show(struct kobject *kobj,
 	ssize_t res = -ENOENT;
 
 	scst_tgt = scst_kobj_to_tgt(kobj);
-	if (!scst_tgt)
-		goto out;
 
 	if (down_read_trylock(&scst_local_exit_rwsem) == 0)
 		goto out;
@@ -428,8 +426,6 @@ static ssize_t scst_local_scsi_transport_version_store(struct kobject *kobj,
 	unsigned long val;
 
 	scst_tgt = scst_kobj_to_tgt(kobj);
-	if (!scst_tgt)
-		goto out;
 
 	if (down_read_trylock(&scst_local_exit_rwsem) == 0)
 		goto out;
@@ -467,8 +463,6 @@ static ssize_t scst_local_phys_transport_version_show(struct kobject *kobj,
 	ssize_t res = -ENOENT;
 
 	scst_tgt = scst_kobj_to_tgt(kobj);
-	if (!scst_tgt)
-		goto out;
 
 	if (down_read_trylock(&scst_local_exit_rwsem) == 0)
 		goto out;
@@ -496,8 +490,6 @@ static ssize_t scst_local_phys_transport_version_store(struct kobject *kobj,
 	unsigned long val;
 
 	scst_tgt = scst_kobj_to_tgt(kobj);
-	if (!scst_tgt)
-		goto out;
 
 	if (down_read_trylock(&scst_local_exit_rwsem) == 0)
 		goto out;
@@ -547,8 +539,6 @@ static ssize_t scst_local_transport_id_show(struct kobject *kobj,
 	int tr_id_len, i;
 
 	scst_sess = scst_kobj_to_sess(kobj);
-	if (!scst_sess)
-		goto out;
 
 	if (down_read_trylock(&scst_local_exit_rwsem) == 0)
 		goto out;
@@ -588,8 +578,6 @@ static ssize_t scst_local_transport_id_store(struct kobject *kobj,
 	struct scst_local_sess *sess;
 
 	scst_sess = scst_kobj_to_sess(kobj);
-	if (!scst_sess)
-		goto out_err;
 
 	if (down_read_trylock(&scst_local_exit_rwsem) == 0)
 		goto out_err;

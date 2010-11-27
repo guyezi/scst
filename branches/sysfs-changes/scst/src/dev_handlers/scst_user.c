@@ -3536,10 +3536,7 @@ static ssize_t dev_user_sysfs_commands_show(struct kobject *kobj,
 
 	TRACE_ENTRY();
 
-	pos = -ENOENT;
 	dev = scst_kobj_to_dev(kobj);
-	if (!dev)
-		goto out;
 
 	udev = (struct scst_user_dev *)dev->dh_priv;
 
@@ -3569,7 +3566,6 @@ static ssize_t dev_user_sysfs_commands_show(struct kobject *kobj,
 	}
 	spin_unlock_irqrestore(&udev->udev_cmd_threads.cmd_list_lock, flags);
 
-out:
 	TRACE_EXIT_RES(pos);
 	return pos;
 }

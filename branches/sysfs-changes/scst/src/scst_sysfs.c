@@ -548,8 +548,6 @@ static ssize_t scst_tgtt_trace_level_show(struct kobject *kobj,
 	struct scst_tgt_template *tgtt;
 
 	tgtt = scst_kobj_to_tgtt(kobj);
-	if (!tgtt)
-		return -ENOENT;
 
 	return scst_trace_level_show(tgtt->trace_tbl,
 		tgtt->trace_flags ? *tgtt->trace_flags : 0, buf,
@@ -564,10 +562,7 @@ static ssize_t scst_tgtt_trace_level_store(struct kobject *kobj,
 
 	TRACE_ENTRY();
 
-	res = -ENOENT;
 	tgtt = scst_kobj_to_tgtt(kobj);
-	if (!tgtt)
-		goto out;
 
 	res = -EINTR;
 	if (mutex_lock_interruptible(&scst_log_mutex) != 0)
@@ -604,8 +599,6 @@ static ssize_t scst_tgtt_mgmt_show(struct kobject *kobj,
 	struct scst_tgt_template *tgtt;
 
 	tgtt = scst_kobj_to_tgtt(kobj);
-	if (!tgtt)
-		return -ENOENT;
 
 	return scnprintf(buf, SCST_SYSFS_BLOCK_SIZE, help,
 		(tgtt->tgtt_optional_attributes != NULL) ?
@@ -702,10 +695,7 @@ static ssize_t scst_tgtt_mgmt_store(struct kobject *kobj,
 
 	TRACE_ENTRY();
 
-	res = -ENOENT;
 	tgtt = scst_kobj_to_tgtt(kobj);
-	if (!tgtt)
-		goto out;
 
 	buffer = kzalloc(count+1, GFP_KERNEL);
 	if (buffer == NULL) {
@@ -913,16 +903,12 @@ static ssize_t scst_tgt_enable_show(struct kobject *kobj,
 
 	TRACE_ENTRY();
 
-	res = -ENOENT;
 	tgt = scst_kobj_to_tgt(kobj);
-	if (!tgt)
-		goto out;
 
 	enabled = tgt->tgtt->is_target_enabled(tgt);
 
 	res = sprintf(buf, "%d\n", enabled ? 1 : 0);
 
-out:
 	TRACE_EXIT_RES(res);
 	return res;
 }
@@ -981,10 +967,7 @@ static ssize_t scst_tgt_enable_store(struct kobject *kobj,
 
 	BUG_ON(!buf);
 
-	res = -ENOENT;
 	tgt = scst_kobj_to_tgt(kobj);
-	if (!tgt)
-		goto out;
 
 	switch (buf[0]) {
 	case '0':
@@ -1182,16 +1165,12 @@ static ssize_t scst_dev_sysfs_type_show(struct kobject *kobj,
 	int pos;
 	struct scst_device *dev;
 
-	pos = -ENOENT;
 	dev = scst_kobj_to_dev(kobj);
-	if (!dev)
-		goto out;
 
 	pos = sprintf(buf, "%d - %s\n", dev->type,
 		(unsigned)dev->type > ARRAY_SIZE(scst_dev_handler_types) ?
 		      "unknown" : scst_dev_handler_types[dev->type]);
 
-out:
 	return pos;
 }
 
@@ -1208,14 +1187,10 @@ static ssize_t scst_dev_sysfs_dump_prs(struct kobject *kobj,
 
 	TRACE_ENTRY();
 
-	res = -ENOENT;
 	dev = scst_kobj_to_dev(kobj);
-	if (!dev)
-		goto out;
-
 	scst_pr_dump_prs(dev, true);
 	res = count;
-out:
+
 	TRACE_EXIT_RES(res);
 	return res;
 }
@@ -1313,16 +1288,12 @@ static ssize_t scst_dev_sysfs_threads_num_show(struct kobject *kobj,
 
 	TRACE_ENTRY();
 
-	pos = -ENOENT;
 	dev = scst_kobj_to_dev(kobj);
-	if (!dev)
-		goto out;
 
 	pos = sprintf(buf, "%d\n%s", dev->threads_num,
 		(dev->threads_num != dev->handler->threads_num) ?
 			SCST_SYSFS_KEY_MARK "\n" : "");
 
-out:
 	TRACE_EXIT_RES(pos);
 	return pos;
 }
@@ -1338,11 +1309,7 @@ static ssize_t scst_dev_sysfs_threads_num_store(struct kobject *kobj,
 
 	TRACE_ENTRY();
 
-	res = -ENOENT;
 	dev = scst_kobj_to_dev(kobj);
-	if (!dev)
-		goto out;
-
 	res = strict_strtol(buf, 0, &newtn);
 	if (res != 0) {
 		PRINT_ERROR("strict_strtol() for %s failed: %d ", buf, res);
@@ -1390,10 +1357,7 @@ static ssize_t scst_dev_sysfs_threads_pool_type_show(struct kobject *kobj,
 
 	TRACE_ENTRY();
 
-	pos = -ENOENT;
 	dev = scst_kobj_to_dev(kobj);
-	if (!dev)
-		goto out;
 
 	if (dev->threads_num == 0) {
 		pos = sprintf(buf, "Async\n");
@@ -1435,10 +1399,7 @@ static ssize_t scst_dev_sysfs_threads_pool_type_store(struct kobject *kobj,
 
 	TRACE_ENTRY();
 
-	res = -ENOENT;
 	dev = scst_kobj_to_dev(kobj);
-	if (!dev)
-		goto out;
 
 	newtpt = scst_parse_threads_pool_type(buf, count);
 	if (newtpt == SCST_THREADS_POOL_TYPE_INVALID) {
@@ -1678,10 +1639,7 @@ static ssize_t scst_tgt_dev_latency_show(struct kobject *kobj,
 
 	TRACE_ENTRY();
 
-	res = -ENOENT;
 	tgt_dev = scst_kobj_to_tgt_dev(kobj);
-	if (!tgt_dev)
-		goto out;
 
 	res = 0;
 	for (i = 0; i < SCST_LATENCY_STATS_NUM; i++) {
@@ -1768,7 +1726,6 @@ static ssize_t scst_tgt_dev_latency_show(struct kobject *kobj,
 			"%-47s\n", buf);
 	}
 
-out:
 	TRACE_EXIT_RES(res);
 	return res;
 }
@@ -1785,14 +1742,10 @@ static ssize_t scst_tgt_dev_active_commands_show(struct kobject *kobj,
 	int pos;
 	struct scst_tgt_dev *tgt_dev;
 
-	pos = -ENOENT;
 	tgt_dev = scst_kobj_to_tgt_dev(kobj);
-	if (!tgt_dev)
-		goto out;
 
 	pos = sprintf(buf, "%d\n", atomic_read(&tgt_dev->tgt_dev_cmd_count));
 
-out:
 	return pos;
 }
 
@@ -1877,10 +1830,7 @@ static ssize_t scst_sess_latency_show(struct kobject *kobj,
 
 	TRACE_ENTRY();
 
-	res = -ENOENT;
 	sess = scst_kobj_to_sess(kobj);
-	if (!sess)
-		goto out;
 
 	res = 0;
 	res += scnprintf(&buffer[res], SCST_SYSFS_BLOCK_SIZE - res,
@@ -2016,7 +1966,6 @@ static ssize_t scst_sess_latency_show(struct kobject *kobj,
 
 	spin_unlock_bh(&sess->lat_lock);
 
-out:
 	TRACE_EXIT_RES(res);
 	return res;
 }
@@ -2084,10 +2033,7 @@ static ssize_t scst_sess_latency_store(struct kobject *kobj,
 
 	TRACE_ENTRY();
 
-	res = -ENOENT;
 	sess = scst_kobj_to_sess(kobj);
-	if (!sess)
-		goto out;
 
 	res = scst_alloc_sysfs_work(scst_sess_zero_latency, false, &work);
 	if (res != 0)
@@ -2118,8 +2064,6 @@ static ssize_t scst_sess_sysfs_commands_show(struct kobject *kobj,
 	struct scst_session *sess;
 
 	sess = scst_kobj_to_sess(kobj);
-	if (!sess)
-		return -ENOENT;
 
 	return sprintf(buf, "%i\n", atomic_read(&sess->sess_cmd_count));
 }
@@ -2170,10 +2114,7 @@ static ssize_t scst_sess_sysfs_active_commands_show(struct kobject *kobj,
 	struct scst_session *sess;
 	struct scst_sysfs_work_item *work;
 
-	res = -ENOENT;
 	sess = scst_kobj_to_sess(kobj);
-	if (!sess)
-		goto out;
 
 	res = scst_alloc_sysfs_work(scst_sysfs_sess_get_active_commands_work_fn,
 			true, &work);
@@ -2202,8 +2143,6 @@ static ssize_t scst_sess_sysfs_initiator_name_show(struct kobject *kobj,
 	struct scst_session *sess;
 
 	sess = scst_kobj_to_sess(kobj);
-	if (!sess)
-		return -ENOENT;
 
 	return scnprintf(buf, SCST_SYSFS_BLOCK_SIZE, "%s\n",
 		sess->initiator_name);
@@ -2341,8 +2280,6 @@ static ssize_t scst_lun_rd_only_show(struct kobject *kobj,
 	struct scst_acg_dev *acg_dev;
 
 	acg_dev = scst_kobj_to_acg_dev(kobj);
-	if (!acg_dev)
-		return -ENOENT;
 
 	if (acg_dev->rd_only || acg_dev->dev->rd_only)
 		return sprintf(buf, "%d\n%s\n", 1, SCST_SYSFS_KEY_MARK);
@@ -2768,16 +2705,12 @@ static ssize_t scst_luns_mgmt_store(struct kobject *kobj,
 	struct scst_acg *acg;
 	struct scst_tgt *tgt;
 
-	res = -ENOENT;
 	tgt = scst_kobj_to_tgt(kobj->parent);
-	if (!tgt)
-		goto out;
 
 	acg = tgt->default_acg;
 
 	res = __scst_luns_mgmt_store(acg, true, buf, count);
 
-out:
 	TRACE_EXIT_RES(res);
 	return res;
 }
@@ -2835,8 +2768,6 @@ static ssize_t scst_tgt_addr_method_show(struct kobject *kobj,
 	struct scst_tgt *tgt;
 
 	tgt = scst_kobj_to_tgt(kobj);
-	if (!tgt)
-		return -ENOENT;
 
 	acg = tgt->default_acg;
 
@@ -2850,16 +2781,12 @@ static ssize_t scst_tgt_addr_method_store(struct kobject *kobj,
 	struct scst_acg *acg;
 	struct scst_tgt *tgt;
 
-	res = -ENOENT;
 	tgt = scst_kobj_to_tgt(kobj);
-	if (!tgt)
-		goto out;
 
 	acg = tgt->default_acg;
 
 	res = __scst_acg_addr_method_store(acg, buf, count);
 
-out:
 	TRACE_EXIT_RES(res);
 	return res;
 }
@@ -2987,8 +2914,6 @@ static ssize_t scst_tgt_io_grouping_type_show(struct kobject *kobj,
 	struct scst_tgt *tgt;
 
 	tgt = scst_kobj_to_tgt(kobj);
-	if (!tgt)
-		return -ENOENT;
 
 	acg = tgt->default_acg;
 
@@ -3002,10 +2927,7 @@ static ssize_t scst_tgt_io_grouping_type_store(struct kobject *kobj,
 	struct scst_acg *acg;
 	struct scst_tgt *tgt;
 
-	res = -ENOENT;
 	tgt = scst_kobj_to_tgt(kobj);
-	if (!tgt)
-		goto out;
 
 	acg = tgt->default_acg;
 
@@ -3155,8 +3077,6 @@ static ssize_t scst_tgt_cpu_mask_show(struct kobject *kobj,
 	struct scst_tgt *tgt;
 
 	tgt = scst_kobj_to_tgt(kobj);
-	if (!tgt)
-		return -ENOENT;
 
 	acg = tgt->default_acg;
 
@@ -3170,10 +3090,7 @@ static ssize_t scst_tgt_cpu_mask_store(struct kobject *kobj,
 	struct scst_acg *acg;
 	struct scst_tgt *tgt;
 
-	res = -ENOENT;
 	tgt = scst_kobj_to_tgt(kobj);
-	if (!tgt)
-		goto out;
 
 	acg = tgt->default_acg;
 
@@ -3299,8 +3216,6 @@ static ssize_t scst_acg_addr_method_show(struct kobject *kobj,
 	struct scst_acg *acg;
 
 	acg = scst_kobj_to_acg(kobj);
-	if (!acg)
-		return -ENOENT;
 
 	return __scst_acg_addr_method_show(acg, buf);
 }
@@ -3311,14 +3226,10 @@ static ssize_t scst_acg_addr_method_store(struct kobject *kobj,
 	int res;
 	struct scst_acg *acg;
 
-	res = -ENOENT;
 	acg = scst_kobj_to_acg(kobj);
-	if (!acg)
-		goto out;
 
 	res = __scst_acg_addr_method_store(acg, buf, count);
 
-out:
 	TRACE_EXIT_RES(res);
 	return res;
 }
@@ -3329,8 +3240,6 @@ static ssize_t scst_acg_io_grouping_type_show(struct kobject *kobj,
 	struct scst_acg *acg;
 
 	acg = scst_kobj_to_acg(kobj);
-	if (!acg)
-		return -ENOENT;
 
 	return __scst_acg_io_grouping_type_show(acg, buf);
 }
@@ -3341,10 +3250,7 @@ static ssize_t scst_acg_io_grouping_type_store(struct kobject *kobj,
 	int res;
 	struct scst_acg *acg;
 
-	res = -ENOENT;
 	acg = scst_kobj_to_acg(kobj);
-	if (!acg)
-		goto out;
 
 	res = __scst_acg_io_grouping_type_store(acg, buf, count);
 	if (res != 0)
@@ -3363,8 +3269,6 @@ static ssize_t scst_acg_cpu_mask_show(struct kobject *kobj,
 	struct scst_acg *acg;
 
 	acg = scst_kobj_to_acg(kobj);
-	if (!acg)
-		return -ENOENT;
 
 	return __scst_acg_cpu_mask_show(acg, buf);
 }
@@ -3375,10 +3279,7 @@ static ssize_t scst_acg_cpu_mask_store(struct kobject *kobj,
 	int res;
 	struct scst_acg *acg;
 
-	res = -ENOENT;
 	acg = scst_kobj_to_acg(kobj);
-	if (!acg)
-		goto out;
 
 	res = __scst_acg_cpu_mask_store(acg, buf, count);
 	if (res != 0)
@@ -3520,10 +3421,7 @@ static ssize_t scst_ini_group_mgmt_store(struct kobject *kobj,
 
 	TRACE_ENTRY();
 
-	res = -ENOENT;
 	tgt = scst_kobj_to_tgt(kobj->parent);
-	if (!tgt)
-		goto out;
 
 	buffer = kzalloc(count+1, GFP_KERNEL);
 	if (buffer == NULL) {
@@ -3562,14 +3460,11 @@ static ssize_t scst_rel_tgt_id_show(struct kobject *kobj,
 
 	TRACE_ENTRY();
 
-	res = -ENOENT;
 	tgt = scst_kobj_to_tgt(kobj);
-	if (!tgt)
-		goto out;
 
 	res = sprintf(buf, "%d\n%s", tgt->rel_tgt_id,
 		(tgt->rel_tgt_id != 0) ? SCST_SYSFS_KEY_MARK "\n" : "");
-out:
+
 	TRACE_EXIT_RES(res);
 	return res;
 }
@@ -3630,10 +3525,7 @@ static ssize_t scst_rel_tgt_id_store(struct kobject *kobj,
 
 	BUG_ON(!buf);
 
-	res = -ENOENT;
 	tgt = scst_kobj_to_tgt(kobj);
-	if (!tgt)
-		goto out;
 
 	res = strict_strtoul(buf, 0, &rel_tgt_id);
 	if (res != 0) {
@@ -3755,14 +3647,10 @@ static ssize_t scst_acg_luns_mgmt_store(struct kobject *kobj,
 	int res;
 	struct scst_acg *acg;
 
-	res = -ENOENT;
 	acg = scst_kobj_to_acg(kobj->parent);
-	if (!acg)
-		goto out;
 
 	res = __scst_luns_mgmt_store(acg, false, buf, count);
 
-out:
 	TRACE_EXIT_RES(res);
 	return res;
 }
@@ -3979,8 +3867,6 @@ static ssize_t scst_acg_ini_mgmt_store(struct kobject *kobj,
 	struct scst_acg *acg;
 
 	acg = scst_kobj_to_acg(kobj->parent);
-	if (!acg)
-		return -ENOENT;
 
 	return __scst_acg_mgmt_store(acg, buf, count, false,
 		scst_acg_ini_mgmt_store_work_fn);
@@ -4570,8 +4456,6 @@ static ssize_t scst_devt_trace_level_show(struct kobject *kobj,
 	struct scst_dev_type *devt;
 
 	devt = scst_kobj_to_devt(kobj);
-	if (!devt)
-		return -ENOENT;
 
 	return scst_trace_level_show(devt->trace_tbl,
 		devt->trace_flags ? *devt->trace_flags : 0, buf,
@@ -4587,8 +4471,6 @@ static ssize_t scst_devt_trace_level_store(struct kobject *kobj,
 	TRACE_ENTRY();
 
 	devt = scst_kobj_to_devt(kobj);
-	if (!devt)
-		return -ENOENT;
 
 	if (mutex_lock_interruptible(&scst_log_mutex) != 0) {
 		res = -EINTR;
@@ -4618,8 +4500,6 @@ static ssize_t scst_devt_type_show(struct kobject *kobj,
 	struct scst_dev_type *devt;
 
 	devt = scst_kobj_to_devt(kobj);
-	if (!devt)
-		return -ENOENT;
 
 	pos = sprintf(buf, "%d - %s\n", devt->type,
 		(unsigned)devt->type > ARRAY_SIZE(scst_dev_handler_types) ?
@@ -4657,8 +4537,6 @@ static ssize_t scst_devt_mgmt_show(struct kobject *kobj,
 	struct scst_dev_type *devt;
 
 	devt = scst_kobj_to_devt(kobj);
-	if (!devt)
-		return -ENOENT;
 
 	return scnprintf(buf, SCST_SYSFS_BLOCK_SIZE, help,
 		(devt->devt_optional_attributes != NULL) ?
@@ -4756,10 +4634,7 @@ static ssize_t __scst_devt_mgmt_store(struct kobject *kobj,
 
 	TRACE_ENTRY();
 
-	res = -ENOENT;
 	devt = scst_kobj_to_devt(kobj);
-	if (!devt)
-		goto out;
 
 	buffer = kzalloc(count+1, GFP_KERNEL);
 	if (buffer == NULL) {
