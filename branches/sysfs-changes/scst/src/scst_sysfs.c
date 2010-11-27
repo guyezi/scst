@@ -475,17 +475,6 @@ void *scst_kobj_to_scst_obj(struct kobject *kobj)
 	return scst_kobj->scst_obj;
 }
 
-/**
- * scst_unlink_kobj() - Remove the association to the SCST object.
- */
-void scst_unlink_kobj(struct kobject *kobj)
-{
-	struct scst_kobj *scst_kobj;
-
-	scst_kobj = container_of(kobj, struct scst_kobj, kobj);
-	scst_kobj->scst_obj = NULL;
-}
-
 
 /**
  ** Regular SCST sysfs ops
@@ -839,10 +828,8 @@ void scst_tgtt_sysfs_del(struct scst_tgt_template *tgtt)
 {
 	TRACE_ENTRY();
 
-	scst_unlink_kobj(tgtt->tgtt_kobj);
 	kobject_del(tgtt->tgtt_kobj);
 	kobject_put(tgtt->tgtt_kobj);
-	tgtt->tgtt_kobj = NULL;
 
 	TRACE_EXIT();
 	return;
@@ -1166,7 +1153,6 @@ void scst_tgt_sysfs_del(struct scst_tgt *tgt)
 	kobject_del(tgt->tgt_ini_grp_kobj);
 	kobject_put(tgt->tgt_ini_grp_kobj);
 
-	scst_unlink_kobj(tgt->tgt_kobj);
 	kobject_del(tgt->tgt_kobj);
 	kobject_put(tgt->tgt_kobj);
 
@@ -1650,10 +1636,8 @@ void scst_dev_sysfs_del(struct scst_device *dev)
 	kobject_del(dev->dev_exp_kobj);
 	kobject_put(dev->dev_exp_kobj);
 
-	scst_unlink_kobj(dev->dev_kobj);
 	kobject_del(dev->dev_kobj);
 	kobject_put(dev->dev_kobj);
-	dev->dev_kobj = NULL;
 
 	TRACE_EXIT();
 	return;
@@ -1863,10 +1847,8 @@ void scst_tgt_dev_sysfs_del(struct scst_tgt_dev *tgt_dev)
 {
 	TRACE_ENTRY();
 
-	scst_unlink_kobj(tgt_dev->tgt_dev_kobj);
 	kobject_del(tgt_dev->tgt_dev_kobj);
 	kobject_put(tgt_dev->tgt_dev_kobj);
-	tgt_dev->tgt_dev_kobj = NULL;
 
 	TRACE_EXIT();
 }
@@ -2034,6 +2016,7 @@ static ssize_t scst_sess_latency_show(struct kobject *kobj,
 
 	spin_unlock_bh(&sess->lat_lock);
 
+out:
 	TRACE_EXIT_RES(res);
 	return res;
 }
@@ -2328,10 +2311,8 @@ void scst_sess_sysfs_del(struct scst_session *sess)
 	TRACE_DBG("Deleting session %s from sysfs",
 		kobject_name(sess->sess_kobj));
 
-	scst_unlink_kobj(sess->sess_kobj);
 	kobject_del(sess->sess_kobj);
 	kobject_put(sess->sess_kobj);
-	sess->sess_kobj = NULL;
 
 	TRACE_EXIT();
 	return;
@@ -2393,10 +2374,8 @@ void scst_acg_dev_sysfs_del(struct scst_acg_dev *acg_dev)
 		kobject_put(acg_dev->dev->dev_kobj);
 	}
 
-	scst_unlink_kobj(acg_dev->acg_dev_kobj);
 	kobject_del(acg_dev->acg_dev_kobj);
 	kobject_put(acg_dev->acg_dev_kobj);
-	acg_dev->acg_dev_kobj = NULL;
 
 	TRACE_EXIT();
 	return;
@@ -3219,10 +3198,8 @@ void scst_acg_sysfs_del(struct scst_acg *acg)
 	kobject_del(acg->initiators_kobj);
 	kobject_put(acg->initiators_kobj);
 
-	scst_unlink_kobj(acg->acg_kobj);
 	kobject_del(acg->acg_kobj);
 	kobject_put(acg->acg_kobj);
-	acg->acg_kobj = NULL;
 
 	TRACE_EXIT();
 }
@@ -4060,10 +4037,8 @@ void scst_sgv_sysfs_del(struct sgv_pool *pool)
 {
 	TRACE_ENTRY();
 
-	scst_unlink_kobj(pool->sgv_kobj);
 	kobject_del(pool->sgv_kobj);
 	kobject_put(pool->sgv_kobj);
-	pool->sgv_kobj = NULL;
 
 	TRACE_EXIT();
 }
@@ -5040,10 +5015,8 @@ void scst_devt_sysfs_del(struct scst_dev_type *devt)
 {
 	TRACE_ENTRY();
 
-	scst_unlink_kobj(devt->devt_kobj);
 	kobject_del(devt->devt_kobj);
 	kobject_put(devt->devt_kobj);
-	devt->devt_kobj = NULL;
 
 	TRACE_EXIT();
 }
