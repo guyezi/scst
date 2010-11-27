@@ -3329,7 +3329,8 @@ static ssize_t show_req_lim(struct kobject *kobj,
 
 	scst_sess = scst_kobj_to_sess(kobj);
 	ch = scst_sess_get_tgt_priv(scst_sess);
-	BUG_ON(!ch);
+	if (!ch)
+		return -ENOENT;
 	return sprintf(buf, "%d\n", atomic_read(&ch->req_lim));
 }
 
@@ -3341,7 +3342,8 @@ static ssize_t show_req_lim_delta(struct kobject *kobj,
 
 	scst_sess = scst_kobj_to_sess(kobj);
 	ch = scst_sess_get_tgt_priv(scst_sess);
-	BUG_ON(!ch);
+	if (!ch)
+		return -ENOENT;
 	return sprintf(buf, "%d\n", atomic_read(&ch->req_lim_delta));
 }
 
