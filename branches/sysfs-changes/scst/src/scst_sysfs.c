@@ -181,6 +181,34 @@ static ssize_t scst_acn_file_show(struct kobject *kobj,
 	struct kobj_attribute *attr, char *buf);
 
 /**
+ ** Backported sysfs functions.
+ **/
+
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 34)
+static int sysfs_create_files(struct kobject *kobj,
+			      const struct attribute **ptr)
+{
+	int err = 0;
+	int i;
+
+	for (i = 0; ptr[i] && !err; i++)
+		err = sysfs_create_file(kobj, ptr[i]);
+	if (err)
+		while (--i >= 0)
+			sysfs_remove_file(kobj, ptr[i]);
+	return err;
+}
+
+static void sysfs_remove_files(struct kobject * kobj,
+			       const struct attribute **ptr)
+{
+	int i;
+	for (i = 0; ptr[i]; i++)
+		sysfs_remove_file(kobj, ptr[i]);
+}
+#endif
+
+/**
  ** Sysfs work
  **/
 
