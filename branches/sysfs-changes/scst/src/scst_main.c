@@ -1425,10 +1425,6 @@ void scst_unregister_dev_driver(struct scst_dev_type *dev_type)
 
 	BUG_ON(dev_type == &scst_null_devtype);
 
-#ifdef CONFIG_SCST_PROC
-	scst_cleanup_proc_dev_handler_dir_entries(dev_type);
-#endif
-
 	scst_suspend_activity(false);
 	mutex_lock(&scst_mutex);
 
@@ -1457,7 +1453,9 @@ void scst_unregister_dev_driver(struct scst_dev_type *dev_type)
 	scst_resume_activity();
 
 
-#ifndef CONFIG_SCST_PROC
+#ifdef CONFIG_SCST_PROC
+	scst_cleanup_proc_dev_handler_dir_entries(dev_type);
+#else
 	scst_devt_sysfs_del(dev_type);
 #endif
 
