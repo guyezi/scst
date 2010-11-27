@@ -3666,7 +3666,7 @@ static inline int cancel_delayed_work_sync(struct work_struct *work)
 #ifdef CONFIG_LOCKDEP
 #define lockdep_assert_not_held(l) WARN_ON(debug_locks && lockdep_is_held(l))
 #else
-#define lockdep_assert_not_held(l) do { } while(0)
+#define lockdep_assert_not_held(l) do { } while (0)
 #endif
 #endif
 
@@ -3674,8 +3674,8 @@ static inline int cancel_delayed_work_sync(struct work_struct *work)
 extern void scst_assert_activity_suspended(void);
 extern void scst_assert_activity_not_suspended(void);
 #else
-#define scst_assert_activity_suspended() do { } while(0)
-#define scst_assert_activity_not_suspended() do { } while(0)
+#define scst_assert_activity_suspended() do { } while (0)
+#define scst_assert_activity_not_suspended() do { } while (0)
 #endif
 int scst_suspend_activity(bool interruptible);
 void scst_resume_activity(void);
