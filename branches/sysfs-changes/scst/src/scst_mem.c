@@ -1591,7 +1591,7 @@ EXPORT_SYMBOL_GPL(sgv_pool_set_allocator);
 
 #ifndef CONFIG_SCST_PROC
 /**
- * sgv_kobj_to_pool() - Look up an sgv pool by name.
+ * sgv_kobj_to_pool() - Convert a kobject pointer to a pool pointer.
  *
  * Must be called from inside an sgv pool sysfs .show() or .store() callback
  * function only.
@@ -1901,8 +1901,6 @@ ssize_t sgv_sysfs_stat_show(struct kobject *kobj,
 	int oa, om, res;
 
 	pool = sgv_kobj_to_pool(kobj);
-	if (!pool)
-		return -ENOENT;
 
 	for (i = 0; i < SGV_POOL_ELEMENTS; i++) {
 		int t;
@@ -1960,8 +1958,6 @@ ssize_t sgv_sysfs_stat_reset(struct kobject *kobj,
 	TRACE_ENTRY();
 
 	pool = sgv_kobj_to_pool(kobj);
-	if (!pool)
-		return -ENOENT;
 
 	for (i = 0; i < SGV_POOL_ELEMENTS; i++) {
 		atomic_set(&pool->cache_acc[i].hit_alloc, 0);
