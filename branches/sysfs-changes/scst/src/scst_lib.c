@@ -3980,6 +3980,10 @@ void scst_free_session(struct scst_session *sess)
 	/* Called under lock to protect from too early tgt release */
 	wake_up_all(&sess->tgt->unreg_waitQ);
 
+	/*
+	 * NOTE: do not dereference the sess->tgt pointer after scst_mutex
+	 * has been unlocked, because it can be already dead!!
+	 */
 	mutex_unlock(&scst_mutex);
 
 	if (sess->unique_session_name != sess->initiator_name)

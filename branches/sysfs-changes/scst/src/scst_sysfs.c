@@ -697,13 +697,11 @@ static ssize_t scst_tgtt_mgmt_store(struct kobject *kobj,
 
 	tgtt = scst_kobj_to_tgtt(kobj);
 
-	buffer = kzalloc(count+1, GFP_KERNEL);
+	buffer = kasprintf(GFP_KERNEL, "%.*s", (int)count, buf);
 	if (buffer == NULL) {
 		res = -ENOMEM;
 		goto out;
 	}
-	memcpy(buffer, buf, count);
-	buffer[count] = '\0';
 
 	res = scst_alloc_sysfs_work(scst_tgtt_mgmt_store_work_fn, false, &work);
 	if (res != 0)
@@ -2641,13 +2639,11 @@ static ssize_t __scst_acg_mgmt_store(struct scst_acg *acg,
 
 	TRACE_ENTRY();
 
-	buffer = kzalloc(count+1, GFP_KERNEL);
+	buffer = kasprintf(GFP_KERNEL, "%.*s", (int)count, buf);
 	if (buffer == NULL) {
 		res = -ENOMEM;
 		goto out;
 	}
-	memcpy(buffer, buf, count);
-	buffer[count] = '\0';
 
 	res = scst_alloc_sysfs_work(sysfs_work_fn, false, &work);
 	if (res != 0)
@@ -3371,7 +3367,7 @@ static int scst_process_ini_group_mgmt_store(char *buffer,
 			goto out_unlock;
 		}
 		acg = scst_alloc_add_acg(tgt, p, true);
-		if (!acg)
+		if (acg == NULL)
 			goto out_unlock;
 		break;
 	case SCST_INI_GROUP_ACTION_DEL:
@@ -3423,13 +3419,11 @@ static ssize_t scst_ini_group_mgmt_store(struct kobject *kobj,
 
 	tgt = scst_kobj_to_tgt(kobj->parent);
 
-	buffer = kzalloc(count+1, GFP_KERNEL);
+	buffer = kasprintf(GFP_KERNEL, "%.*s", (int)count, buf);
 	if (buffer == NULL) {
 		res = -ENOMEM;
 		goto out;
 	}
-	memcpy(buffer, buf, count);
-	buffer[count] = '\0';
 
 	res = scst_alloc_sysfs_work(scst_ini_group_mgmt_store_work_fn, false,
 					&work);
@@ -3577,7 +3571,7 @@ int scst_acn_sysfs_create(struct scst_acn *acn)
 	}
 
 	attr->attr.name = kstrdup(acn->name, GFP_KERNEL);
-	if (!attr->attr.name) {
+	if (attr->attr.name == NULL) {
 		PRINT_ERROR("Unable to allocate attributes for initiator '%s'",
 			acn->name);
 		res = -ENOMEM;
@@ -4160,15 +4154,13 @@ static int scst_write_trace(const char *buf, size_t length,
 		goto out;
 	}
 
-	buffer = kmalloc(length+1, GFP_KERNEL);
+	buffer = kasprintf(GFP_KERNEL, "%.*s", (int)length, buf);
 	if (buffer == NULL) {
 		PRINT_ERROR("Unable to alloc intermediate buffer (size %zd)",
 			length+1);
 		res = -ENOMEM;
 		goto out;
 	}
-	memcpy(buffer, buf, length);
-	buffer[length] = '\0';
 
 	TRACE_DBG("buffer %s", buffer);
 
@@ -4636,13 +4628,11 @@ static ssize_t __scst_devt_mgmt_store(struct kobject *kobj,
 
 	devt = scst_kobj_to_devt(kobj);
 
-	buffer = kzalloc(count+1, GFP_KERNEL);
+	buffer = kasprintf(GFP_KERNEL, "%.*s", (int)count, buf);
 	if (buffer == NULL) {
 		res = -ENOMEM;
 		goto out;
 	}
-	memcpy(buffer, buf, count);
-	buffer[count] = '\0';
 
 	res = scst_alloc_sysfs_work(sysfs_work_fn, false, &work);
 	if (res != 0)

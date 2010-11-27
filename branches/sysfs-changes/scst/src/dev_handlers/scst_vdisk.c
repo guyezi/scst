@@ -3993,8 +3993,7 @@ static int vcdrom_change(struct scst_vdisk_dev *virt_dev,
 	old_fn = virt_dev->filename;
 
 	if (!virt_dev->cdrom_empty) {
-		int len = strlen(filename) + 1;
-		char *fn = kmalloc(len, GFP_KERNEL);
+		char *fn = kstrdup(filename, GFP_KERNEL);
 		if (fn == NULL) {
 			TRACE(TRACE_OUT_OF_MEM, "%s",
 				"Allocation of filename failed");
@@ -4002,7 +4001,6 @@ static int vcdrom_change(struct scst_vdisk_dev *virt_dev,
 			goto out_unlock;
 		}
 
-		strlcpy(fn, filename, len);
 		virt_dev->filename = fn;
 
 		res = vdisk_get_file_size(virt_dev->filename,
@@ -4096,15 +4094,13 @@ static ssize_t vcdrom_sysfs_filename_store(struct kobject *kobj,
 
 	dev = scst_kobj_to_dev(kobj);
 
-	i_buf = kmalloc(count+1, GFP_KERNEL);
+	i_buf = kasprintf(GFP_KERNEL, "%.*s", (int)count, buf);
 	if (i_buf == NULL) {
 		PRINT_ERROR("Unable to alloc intermediate buffer with size %zd",
 			count+1);
 		res = -ENOMEM;
 		goto out;
 	}
-	memcpy(i_buf, buf, count);
-	i_buf[count] = '\0';
 
 	res = scst_alloc_sysfs_work(vcdrom_sysfs_process_filename_store,
 					false, &work);
@@ -4609,16 +4605,13 @@ static int vdisk_write_proc(char *buffer, char **start, off_t offset,
 	if ((length == 0) || (buffer == NULL) || (buffer[0] == '\0'))
 		goto out;
 
-	i_buf = kmalloc(length+1, GFP_KERNEL);
+	i_buf = kasprintf(GFP_KERNEL, "%.*s", (int)length, buffer);
 	if (i_buf == NULL) {
 		PRINT_ERROR("Unable to alloc intermediate buffer with size %d",
 			length+1);
 		res = -ENOMEM;
 		goto out;
 	}
-
-	memcpy(i_buf, buffer, length);
-	i_buf[length] = '\0';
 
 	if (mutex_lock_interruptible(&scst_vdisk_mutex) != 0) {
 		res = -EINTR;
@@ -4780,15 +4773,13 @@ static int vdisk_write_proc(char *buffer, char **start, off_t offset,
 			goto out_up;
 		}
 
-		len = strlen(filename) + 1;
-		virt_dev->filename = kmalloc(len, GFP_KERNEL);
+		virt_dev->filename = kstrdup(filename, GFP_KERNEL);
 		if (virt_dev->filename == NULL) {
 			TRACE(TRACE_OUT_OF_MEM, "%s",
 				  "Allocation of filename failed");
 			res = -ENOMEM;
 			goto out_free_vdev;
 		}
-		strlcpy(virt_dev->filename, filename, len);
 
 		list_add_tail(&virt_dev->vdev_list_entry,
 				  &vdev_list);
@@ -4983,15 +4974,13 @@ static int vcdrom_open(char *p, char *name)
 	virt_dev->removable = 1;
 
 	if (!virt_dev->cdrom_empty) {
-		len = strlen(filename) + 1;
-		virt_dev->filename = kmalloc(len, GFP_KERNEL);
+		virt_dev->filename = kstrdup(filename, GFP_KERNEL);
 		if (virt_dev->filename == NULL) {
 			TRACE(TRACE_OUT_OF_MEM, "%s",
 			      "Allocation of filename failed");
 			res = -ENOMEM;
 			goto out_free_vdev;
 		}
-		strncpy(virt_dev->filename, filename, len);
 	}
 
 	list_add_tail(&virt_dev->vdev_list_entry, &vdev_list);
@@ -5084,16 +5073,13 @@ static int vcdrom_write_proc(char *buffer, char **start, off_t offset,
 	if ((length == 0) || (buffer == NULL) || (buffer[0] == '\0'))
 		goto out;
 
-	i_buf = kmalloc(length+1, GFP_KERNEL);
+	i_buf = kasprintf(GFP_KERNEL, "%.*s", (int)length, buffer);
 	if (i_buf == NULL) {
 		PRINT_ERROR("Unable to alloc intermediate buffer with size %d",
 			length+1);
 		res = -ENOMEM;
 		goto out;
 	}
-
-	memcpy(i_buf, buffer, length);
-	i_buf[length] = '\0';
 
 	if (mutex_lock_interruptible(&scst_vdisk_mutex) != 0) {
 		res = -EINTR;
