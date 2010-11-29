@@ -676,13 +676,13 @@ sub addDriverDynamicAttribute {
 	return SCST_C_DRV_BAD_ATTRIBUTES if ($rc == 1);
 	return $rc if ($rc > 1);
 
-	my $path = mkpath(SCST_ROOT, SCST_TARGETS, $driver, SCST_MGMT_IO);
+	my $path = mkpath(SCST_ROOT, SCST_MGMT_IO);
 
 	my $io = new IO::File $path, O_WRONLY;
 
 	return SCST_C_DRV_ADDATTR_FAIL if (!$io);
 
-	my $cmd = "add_attribute $attribute $value\n";
+	my $cmd = "in " . mkpath(SCST_TARGETS, $driver) . " add_attribute $attribute $value\n";
 	my $bytes;
 
 	if ($self->{'debug'}) {
@@ -714,13 +714,13 @@ sub removeDriverDynamicAttribute {
 	return SCST_C_DRV_BAD_ATTRIBUTES if ($rc == 1);
 	return $rc if ($rc > 1);
 
-	my $path = mkpath(SCST_ROOT, SCST_TARGETS, $driver, SCST_MGMT_IO);
+	my $path = mkpath(SCST_ROOT, SCST_MGMT_IO);
 
 	my $io = new IO::File $path, O_WRONLY;
 
 	return SCST_C_DRV_REMATTR_FAIL if (!$io);
 
-	my $cmd = "del_attribute $attribute $value\n";
+	my $cmd = "in " . mkpath(SCST_TARGETS, $driver) . " del_attribute $attribute $value\n";
 	my $bytes;
 
 	if ($self->{'debug'}) {
@@ -813,7 +813,7 @@ sub addVirtualTarget {
 	return SCST_C_TGT_BAD_ATTRIBUTES if ($rc == TRUE);
 	return $rc if ($rc > 1);
 
-	my $path = mkpath(SCST_ROOT, SCST_TARGETS, $driver, SCST_MGMT_IO);
+	my $path = mkpath(SCST_ROOT, SCST_MGMT_IO);
 
 	my $io = new IO::File $path, O_WRONLY;
 
@@ -832,7 +832,7 @@ sub addVirtualTarget {
 	}
 
         $o_string =~ s/\s$//;
-	my $cmd = "add_target $target $o_string\n";
+	my $cmd = "in " . mkpath(SCST_TARGETS, $driver) . " add_target $target $o_string\n";
 	my $bytes;
 
 	if ($self->{'debug'}) {
@@ -936,13 +936,13 @@ sub addTargetDynamicAttribute {
 	return SCST_C_TGT_BAD_ATTRIBUTES if ($rc == 1);
 	return $rc if ($rc > 1);
 
-	my $path = mkpath(SCST_ROOT, SCST_TARGETS, $driver, SCST_MGMT_IO);
+	my $path = mkpath(SCST_ROOT, SCST_MGMT_IO);
 
 	my $io = new IO::File $path, O_WRONLY;
 
 	return SCST_C_TGT_ADDATTR_FAIL if (!$io);
 
-	my $cmd = "add_target_attribute $target $attribute $value\n";
+	my $cmd = "in " . mkpath(SCST_TARGETS, $driver) . " add_target_attribute $target $attribute $value\n";
 	my $bytes;
 
 	if ($self->{'debug'}) {
@@ -978,13 +978,13 @@ sub removeTargetDynamicAttribute {
 	return SCST_C_TGT_BAD_ATTRIBUTES if ($rc == 1);
 	return $rc if ($rc > 1);
 
-	my $path = mkpath(SCST_ROOT, SCST_TARGETS, $driver, SCST_MGMT_IO);
+	my $path = mkpath(SCST_ROOT, SCST_MGMT_IO);
 
 	my $io = new IO::File $path, O_WRONLY;
 
 	return SCST_C_TGT_REMATTR_FAIL if (!$io);
 
-	my $cmd = "del_target_attribute $target $attribute $value\n";
+	my $cmd = "in " . mkpath(SCST_TARGETS, $driver) . " del_target_attribute $target $attribute $value\n";
 	my $bytes;
 
 	if ($self->{'debug'}) {
@@ -1014,7 +1014,7 @@ sub removeVirtualTarget {
 
 	return SCST_C_DRV_NOTVIRT if (!$self->driverIsVirtualCapable($driver));
 
-	my $path = mkpath(SCST_ROOT, SCST_TARGETS, $driver, SCST_MGMT_IO);
+	my $path = mkpath(SCST_ROOT, SCST_MGMT_IO);
 
 	my $io = new IO::File $path, O_WRONLY;
 
@@ -1052,7 +1052,7 @@ sub removeVirtualTarget {
 		return SCST_C_TGT_BUSY if ($has_sessions);
 	}
 
-	my $cmd = "del_target $target\n";
+	my $cmd = "in " . mkpath(SCST_TARGETS, $driver) . " del_target $target\n";
 	my $bytes;
 
 	if ($self->{'debug'}) {
@@ -1170,14 +1170,13 @@ sub addGroup {
 	return SCST_C_GRP_EXISTS if ($rc == TRUE);
 	return $rc if ($rc > 1);
 
-	my $path = mkpath(SCST_ROOT, SCST_TARGETS, $driver, $target,
-	  SCST_GROUPS, SCST_MGMT_IO);
+	my $path = mkpath(SCST_ROOT, SCST_MGMT_IO);
 
 	my $io = new IO::File $path, O_WRONLY;
 
 	return SCST_C_GRP_ADD_FAIL if (!$io);
 
-	my $cmd = "create $group\n";
+	my $cmd = "in " . mkpath(SCST_TARGETS, $driver, $target, SCST_GROUPS) . " create $group\n";
 	my $bytes;
 
 	if ($self->{'debug'}) {
@@ -1210,14 +1209,13 @@ sub removeGroup {
 	return SCST_C_GRP_NO_GROUP if (!$rc);
 	return $rc if ($rc > 1);
 
-	my $path = mkpath(SCST_ROOT, SCST_TARGETS, $driver, $target,
-	  SCST_GROUPS, SCST_MGMT_IO);
+	my $path = mkpath(SCST_ROOT, SCST_MGMT_IO);
 
 	my $io = new IO::File $path, O_WRONLY;
 
 	return SCST_C_GRP_REM_FAIL if (!$io);
 
-	my $cmd = "del $group\n";
+	my $cmd = "in " . mkpath(SCST_TARGETS, $driver, $target, SCST_GROUPS) . " del $group\n";
 	my $bytes;
 
 	if ($self->{'debug'}) {
@@ -1255,14 +1253,13 @@ sub addInitiator {
 	return SCST_C_GRP_INI_EXISTS if ($rc == TRUE);
 	return $rc if ($rc > 1);
 
-	my $path = mkpath(SCST_ROOT, SCST_TARGETS, $driver, $target, SCST_GROUPS,
-	  $group, SCST_INITIATORS, SCST_MGMT_IO);
+	my $path = mkpath(SCST_ROOT, SCST_MGMT_IO);
 
 	my $io = new IO::File $path, O_WRONLY;
 
 	return SCST_C_GRP_ADD_INI_FAIL if (!$io);
 
-	my $cmd = "add $initiator\n";
+	my $cmd = "in " . mkpath(SCST_TARGETS, $driver, $target, SCST_GROUPS, $group, SCST_INITIATORS) . " add $initiator\n";
 	my $bytes;
 
 	if ($self->{'debug'}) {
@@ -1300,14 +1297,13 @@ sub removeInitiator {
 	return SCST_C_GRP_NO_INI if (!$rc);
 	return $rc if ($rc > 1);
 
-	my $path = mkpath(SCST_ROOT, SCST_TARGETS, $driver, $target, SCST_GROUPS,
-	  $group, SCST_INITIATORS, SCST_MGMT_IO);
+	my $path = mkpath(SCST_ROOT, SCST_MGMT_IO);
 
 	my $io = new IO::File $path, O_WRONLY;
 
 	return SCST_C_GRP_REM_INI_FAIL if (!$io);
 
-	my $cmd = "del $initiator\n";
+	my $cmd = "in " . mkpath(SCST_TARGETS, $driver, $target, SCST_GROUPS, $group, SCST_INITIATORS) . " del $initiator\n";
 	my $bytes;
 
 	if ($self->{'debug'}) {
@@ -1354,14 +1350,13 @@ sub moveInitiator {
 	return SCST_C_GRP_INI_EXISTS if ($rc == TRUE);
 	return $rc if ($rc > 1);
 
-	my $path = mkpath(SCST_ROOT, SCST_TARGETS, $driver, $target, SCST_GROUPS,
-	  $from, SCST_INITIATORS, SCST_MGMT_IO);
+	my $path = mkpath(SCST_ROOT, SCST_MGMT_IO);
 
 	my $io = new IO::File $path, O_WRONLY;
 
 	return SCST_C_GRP_MOV_INI_FAIL if (!$io);
 
-	my $cmd = "move $initiator $to\n";
+	my $cmd = "in " . mkpath(SCST_TARGETS, $driver, $target, SCST_GROUPS, $from, SCST_INITIATORS) . " move $initiator $to\n";
 	my $bytes;
 
 	if ($self->{'debug'}) {
@@ -1394,14 +1389,13 @@ sub clearInitiators {
 	return SCST_C_GRP_NO_GROUP if (!$rc);
 	return $rc if ($rc > 1);
 
-	my $path = mkpath(SCST_ROOT, SCST_TARGETS, $driver, $target, SCST_GROUPS,
-	  $group, SCST_INITIATORS, SCST_MGMT_IO);
+	my $path = mkpath(SCST_ROOT, SCST_MGMT_IO);
 
 	my $io = new IO::File $path, O_WRONLY;
 
 	return SCST_C_GRP_CLR_INI_FAIL if (!$io);
 
-	my $cmd = "clear\n";
+	my $cmd = "in " . mkpath(SCST_TARGETS, $driver, $target, SCST_GROUPS, $group, SCST_INITIATORS) . " clear\n";
 	my $bytes;
 
 	if ($self->{'debug'}) {
@@ -1454,10 +1448,9 @@ sub addLun {
 		$err  = SCST_C_GRP_ADD_LUN_FAIL;
 		$err2 = SCST_C_GRP_LUN_EXISTS;
 
-		$path = mkpath(SCST_ROOT, SCST_TARGETS, $driver, $target, SCST_GROUPS,
-		  $group, SCST_LUNS, SCST_MGMT_IO);
+		$path = mkpath(SCST_TARGETS, $driver, $target, SCST_GROUPS, $group, SCST_LUNS);
 	} else {
-		$path = mkpath(SCST_ROOT, SCST_TARGETS, $driver, $target, SCST_LUNS, SCST_MGMT_IO);
+		$path = mkpath(SCST_TARGETS, $driver, $target, SCST_LUNS);
 	}
 
 	return $err if (!defined($lun));
@@ -1466,7 +1459,7 @@ sub addLun {
 	return $err2 if ($rc == TRUE);
 	return $rc if ($rc > 1);
 
-	my $io = new IO::File $path, O_WRONLY;
+	my $io = new IO::File mkpath(SCST_ROOT, SCST_MGMT_IO), O_WRONLY;
 
 	return $err if (!$io);
 
@@ -1477,7 +1470,7 @@ sub addLun {
 	}
 
 	$o_string =~ s/\s$//;
-	my $cmd = "add $device $lun $o_string\n";
+	my $cmd = "in $path add $device $lun $o_string\n";
 
 	my $bytes;
 
@@ -1521,10 +1514,10 @@ sub removeLun {
 		$err  = SCST_C_GRP_REM_LUN_FAIL;
 		$err2 = SCST_C_GRP_NO_LUN;
 
-		$path = mkpath(SCST_ROOT, SCST_TARGETS, $driver, $target, SCST_GROUPS,
-		  $group, SCST_LUNS, SCST_MGMT_IO);
+		$path = mkpath(SCST_TARGETS, $driver, $target, SCST_GROUPS,
+		  $group, SCST_LUNS);
 	} else {
-		$path = mkpath(SCST_ROOT, SCST_TARGETS, $driver, $target, SCST_LUNS, SCST_MGMT_IO);
+		$path = mkpath(SCST_TARGETS, $driver, $target, SCST_LUNS);
 	}
 
 	return $err if (!defined($lun));
@@ -1533,11 +1526,11 @@ sub removeLun {
 	return $err2 if (!$rc);
 	return $rc if ($rc > 1);
 
-	my $io = new IO::File $path, O_WRONLY;
+	my $io = new IO::File mkpath(SCST_ROOT, SCST_MGMT_IO), O_WRONLY;
 
 	return $err if (!$io);
 
-	my $cmd = "del $lun\n";
+	my $cmd = "in $path del $lun\n";
 	my $bytes;
 
 	if ($self->{'debug'}) {
@@ -1582,10 +1575,10 @@ sub replaceLun {
 
 		$err = SCST_C_GRP_NO_LUN;
 
-		$path = mkpath(SCST_ROOT, SCST_TARGETS, $driver, $target, SCST_GROUPS,
-		  $group, SCST_LUNS, SCST_MGMT_IO);
+		$path = mkpath(SCST_TARGETS, $driver, $target, SCST_GROUPS,
+		  $group, SCST_LUNS);
 	} else {
-		$path = mkpath(SCST_ROOT, SCST_TARGETS, $driver, $target, SCST_LUNS, SCST_MGMT_IO);
+		$path = mkpath(SCST_TARGETS, $driver, $target, SCST_LUNS);
 	}
 
 	$rc = $self->lunExists($driver, $target, $lun, $group);
@@ -1604,7 +1597,7 @@ sub replaceLun {
 
 	return SCST_C_LUN_DEV_EXISTS if ($$luns{$lun} eq $device);
 
-	my $io = new IO::File $path, O_WRONLY;
+	my $io = new IO::File mkpath(SCST_ROOT, SCST_MGMT_IO), O_WRONLY;
 
 	return SCST_C_LUN_RPL_DEV_FAIL if (!$io);
 
@@ -1615,7 +1608,7 @@ sub replaceLun {
 	}
 
 	$o_string =~ s/\s$//;
-	my $cmd = "replace $device $lun $o_string\n";
+	my $cmd = "in $path replace $device $lun $o_string\n";
 	my $bytes;
 
 	if ($self->{'debug'}) {
@@ -1655,17 +1648,17 @@ sub clearLuns {
 
 		$err = SCST_C_GRP_CLR_LUN_FAIL;
 
-		$path = mkpath(SCST_ROOT, SCST_TARGETS, $driver, $target, SCST_GROUPS,
-		  $group, SCST_LUNS, SCST_MGMT_IO);
+		$path = mkpath(SCST_TARGETS, $driver, $target, SCST_GROUPS,
+		  $group, SCST_LUNS);
 	} else {
-		$path = mkpath(SCST_ROOT, SCST_TARGETS, $driver, $target, SCST_LUNS, SCST_MGMT_IO);
+		$path = mkpath(SCST_TARGETS, $driver, $target, SCST_LUNS);
 	}
 
-	my $io = new IO::File $path, O_WRONLY;
+	my $io = new IO::File mkpath(SCST_ROOT, SCST_MGMT_IO), O_WRONLY;
 
 	return $err if (!$io);
 
-	my $cmd = "clear\n";
+	my $cmd = "in $path clear\n";
 	my $bytes;
 
 	if ($self->{'debug'}) {
@@ -2858,7 +2851,7 @@ sub openDevice {
 	return SCST_C_DEV_BAD_ATTRIBUTES if ($rc == TRUE);
 	return $rc if ($rc > 1);
 
-	my $io = new IO::File mkpath(SCST_ROOT, SCST_HANDLERS, $handler, SCST_MGMT_IO), O_WRONLY;
+	my $io = new IO::File mkpath(SCST_ROOT, SCST_MGMT_IO), O_WRONLY;
 
 	if (!$io) {
 		$self->{'err_string'} = "openDevice(): Unable to open mgmt interface for ".
@@ -2877,7 +2870,7 @@ sub openDevice {
 	}
 
 	$o_string =~ s/\s$//;
-	my $cmd = "add_device $device $o_string\n";
+	my $cmd = "in " . mkpath(SCST_HANDLERS, $handler) . " add_device $device $o_string\n";
 
 	my $bytes;
 
@@ -2900,7 +2893,7 @@ sub closeDevice {
 	return SCST_C_HND_NO_HANDLER if (!$rc);
 	return $rc if ($rc > 1);
 
-	my $io = new IO::File mkpath(SCST_ROOT, SCST_HANDLERS, $handler, SCST_MGMT_IO), O_WRONLY;
+	my $io = new IO::File mkpath(SCST_ROOT, SCST_MGMT_IO), O_WRONLY;
 
 	if (!$io) {
 		$self->{'err_string'} = "closeDevice(): Unable to open mgmt interface for handler ".
@@ -2912,7 +2905,7 @@ sub closeDevice {
 	return SCST_C_DEV_NO_DEVICE if ($rc != TRUE);
 	return $rc if ($rc > 1);
 
-	my $cmd = "del_device $device\n";
+	my $cmd = "in " . mkpath(SCST_HANDLERS, $handler) . " del_device $device\n";
 
 	my $bytes;
 

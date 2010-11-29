@@ -43,6 +43,16 @@
 #include "scst_mem.h"
 #include "scst_pres.h"
 
+enum mgmt_path_type {
+	PATH_NOT_RECOGNIZED,
+	DEVICE_TYPE_PATH,
+	TARGET_TEMPLATE_PATH,
+	TARGET_LUNS_PATH,
+	TARGET_INI_GROUPS_PATH,
+	ACG_LUNS_PATH,
+	ACG_INITIATOR_GROUPS_PATH,
+};
+
 static DECLARE_COMPLETION(scst_sysfs_root_release_completion);
 
 static struct kobject *scst_sysfs_root_kobj;
@@ -117,9 +127,6 @@ static int scst_write_trace(const char *buf, size_t length,
 static ssize_t scst_luns_mgmt_show(struct kobject *kobj,
 				   struct kobj_attribute *attr,
 				   char *buf);
-static ssize_t scst_luns_mgmt_store(struct kobject *kobj,
-				    struct kobj_attribute *attr,
-				    const char *buf, size_t count);
 static ssize_t scst_tgt_addr_method_show(struct kobject *kobj,
 				   struct kobj_attribute *attr,
 				   char *buf);
@@ -138,25 +145,10 @@ static ssize_t scst_tgt_cpu_mask_show(struct kobject *kobj,
 static ssize_t scst_tgt_cpu_mask_store(struct kobject *kobj,
 				    struct kobj_attribute *attr,
 				    const char *buf, size_t count);
-static ssize_t scst_ini_group_mgmt_show(struct kobject *kobj,
-				   struct kobj_attribute *attr,
-				   char *buf);
-static ssize_t scst_ini_group_mgmt_store(struct kobject *kobj,
-				    struct kobj_attribute *attr,
-				    const char *buf, size_t count);
 static ssize_t scst_rel_tgt_id_show(struct kobject *kobj,
 				   struct kobj_attribute *attr,
 				   char *buf);
 static ssize_t scst_rel_tgt_id_store(struct kobject *kobj,
-				    struct kobj_attribute *attr,
-				    const char *buf, size_t count);
-static ssize_t scst_acg_luns_mgmt_store(struct kobject *kobj,
-				    struct kobj_attribute *attr,
-				    const char *buf, size_t count);
-static ssize_t scst_acg_ini_mgmt_show(struct kobject *kobj,
-				   struct kobj_attribute *attr,
-				   char *buf);
-static ssize_t scst_acg_ini_mgmt_store(struct kobject *kobj,
 				    struct kobj_attribute *attr,
 				    const char *buf, size_t count);
 static ssize_t scst_acg_addr_method_show(struct kobject *kobj,
@@ -179,6 +171,10 @@ static ssize_t scst_acg_cpu_mask_store(struct kobject *kobj,
 				    const char *buf, size_t count);
 static ssize_t scst_acn_file_show(struct kobject *kobj,
 	struct kobj_attribute *attr, char *buf);
+static int scst_process_devt_mgmt_store(char *buffer,
+					struct scst_dev_type *devt);
+static int scst_process_devt_pass_through_mgmt_store(char *buffer,
+						struct scst_dev_type *devt);
 
 /**
  ** Backported sysfs functions.
@@ -615,27 +611,12 @@ static struct kobj_attribute tgtt_trace_attr =
 static ssize_t scst_tgtt_mgmt_show(struct kobject *kobj,
 	struct kobj_attribute *attr, char *buf)
 {
-	static const char help[] =
-		"Usage: echo \"add_target target_name [parameters]\" >mgmt\n"
-		"       echo \"del_target target_name\" >mgmt\n"
-		"%s%s"
-		"%s"
-		"\n"
-		"where parameters are one or more "
-		"param_name=value pairs separated by ';'\n\n"
-		"%s%s%s%s%s%s%s%s\n";
+	static const char help[] = "%s%s%s%s%s%s%s%s";
 	struct scst_tgt_template *tgtt;
 
 	tgtt = scst_kobj_to_tgtt(kobj);
 
 	return scnprintf(buf, SCST_SYSFS_BLOCK_SIZE, help,
-		(tgtt->tgtt_optional_attributes != NULL) ?
-			"       echo \"add_attribute <attribute> <value>\" >mgmt\n"
-			"       echo \"del_attribute <attribute> <value>\" >mgmt\n" : "",
-		(tgtt->tgt_optional_attributes != NULL) ?
-			"       echo \"add_target_attribute target_name <attribute> <value>\" >mgmt\n"
-			"       echo \"del_target_attribute target_name <attribute> <value>\" >mgmt\n" : "",
-		(tgtt->mgmt_cmd_help) ? tgtt->mgmt_cmd_help : "",
 		(tgtt->add_target_parameters != NULL) ?
 			"The following parameters available: " : "",
 		(tgtt->add_target_parameters != NULL) ?
@@ -708,52 +689,8 @@ out_syntax_err:
 	goto out;
 }
 
-static int scst_tgtt_mgmt_store_work_fn(struct scst_sysfs_work_item *work)
-{
-	return scst_process_tgtt_mgmt_store(work->buf, work->tgtt);
-}
-
-static ssize_t scst_tgtt_mgmt_store(struct kobject *kobj,
-	struct kobj_attribute *attr, const char *buf, size_t count)
-{
-	int res;
-	char *buffer;
-	struct scst_sysfs_work_item *work;
-	struct scst_tgt_template *tgtt;
-
-	TRACE_ENTRY();
-
-	tgtt = scst_kobj_to_tgtt(kobj);
-
-	buffer = kasprintf(GFP_KERNEL, "%.*s", (int)count, buf);
-	if (buffer == NULL) {
-		res = -ENOMEM;
-		goto out;
-	}
-
-	res = scst_alloc_sysfs_work(scst_tgtt_mgmt_store_work_fn, false, &work);
-	if (res != 0)
-		goto out_free;
-
-	work->buf = buffer;
-	work->tgtt = tgtt;
-
-	res = scst_sysfs_queue_wait_work(work);
-	if (res == 0)
-		res = count;
-
-out:
-	TRACE_EXIT_RES(res);
-	return res;
-
-out_free:
-	kfree(buffer);
-	goto out;
-}
-
 static struct kobj_attribute scst_tgtt_mgmt =
-	__ATTR(mgmt, S_IRUGO | S_IWUSR, scst_tgtt_mgmt_show,
-	       scst_tgtt_mgmt_store);
+	__ATTR(mgmt, S_IRUGO | S_IWUSR, scst_tgtt_mgmt_show, NULL);
 
 /**
  * kobject_create_and_add_kt() - Create a kernel object and add it to sysfs.
@@ -861,20 +798,7 @@ static struct kobj_type tgt_ktype = {
 };
 
 static struct kobj_attribute scst_luns_mgmt =
-	__ATTR(mgmt, S_IRUGO | S_IWUSR, scst_luns_mgmt_show,
-	       scst_luns_mgmt_store);
-
-static struct kobj_attribute scst_acg_luns_mgmt =
-	__ATTR(mgmt, S_IRUGO | S_IWUSR, scst_luns_mgmt_show,
-	       scst_acg_luns_mgmt_store);
-
-static struct kobj_attribute scst_acg_ini_mgmt =
-	__ATTR(mgmt, S_IRUGO | S_IWUSR, scst_acg_ini_mgmt_show,
-	       scst_acg_ini_mgmt_store);
-
-static struct kobj_attribute scst_ini_group_mgmt =
-	__ATTR(mgmt, S_IRUGO | S_IWUSR, scst_ini_group_mgmt_show,
-	       scst_ini_group_mgmt_store);
+	__ATTR(mgmt, S_IRUGO | S_IWUSR, scst_luns_mgmt_show, NULL);
 
 static struct kobj_attribute scst_tgt_addr_method =
 	__ATTR(addr_method, S_IRUGO | S_IWUSR, scst_tgt_addr_method_show,
@@ -1089,14 +1013,6 @@ int scst_tgt_sysfs_create(struct scst_tgt *tgt)
 		goto out_nomem;
 	}
 
-	res = sysfs_create_file(tgt->tgt_ini_grp_kobj,
-			&scst_ini_group_mgmt.attr);
-	if (res != 0) {
-		PRINT_ERROR("Can't add attribute %s for tgt %s",
-			scst_ini_group_mgmt.attr.name, tgt->tgt_name);
-		goto out_err;
-	}
-
 	res = sysfs_create_file(tgt->tgt_kobj,
 			&scst_rel_tgt_id.attr);
 	if (res != 0) {
@@ -1236,16 +1152,14 @@ static int scst_process_dev_sysfs_threads_data_store(
 
 	TRACE_ENTRY();
 
+	//scst_assert_activity_suspended();
+
 	TRACE_DBG("dev %p, threads_num %d, threads_pool_type %d", dev,
 		threads_num, threads_pool_type);
 
-	res = scst_suspend_activity(true);
-	if (res != 0)
-		goto out;
-
 	if (mutex_lock_interruptible(&scst_mutex) != 0) {
 		res = -EINTR;
-		goto out_resume;
+		goto out;
 	}
 
 	scst_stop_dev_threads(dev);
@@ -1265,9 +1179,6 @@ static int scst_process_dev_sysfs_threads_data_store(
 
 out_unlock:
 	mutex_unlock(&scst_mutex);
-
-out_resume:
-	scst_resume_activity();
 
 out:
 	TRACE_EXIT_RES(res);
@@ -2430,6 +2341,8 @@ static int __scst_process_luns_mgmt_store(char *buffer,
 
 	TRACE_ENTRY();
 
+	//scst_assert_activity_suspended();
+
 	TRACE_DBG("buffer %s", buffer);
 
 	p = buffer;
@@ -2453,13 +2366,9 @@ static int __scst_process_luns_mgmt_store(char *buffer,
 		goto out;
 	}
 
-	res = scst_suspend_activity(true);
-	if (res != 0)
-		goto out;
-
 	if (mutex_lock_interruptible(&scst_mutex) != 0) {
 		res = -EINTR;
-		goto out_resume;
+		goto out;
 	}
 
 	if ((action != SCST_LUN_ACTION_CLEAR) &&
@@ -2638,9 +2547,6 @@ static int __scst_process_luns_mgmt_store(char *buffer,
 out_unlock:
 	mutex_unlock(&scst_mutex);
 
-out_resume:
-	scst_resume_activity();
-
 out:
 	TRACE_EXIT_RES(res);
 	return res;
@@ -2651,92 +2557,14 @@ out:
 #undef SCST_LUN_ACTION_CLEAR
 }
 
-static int scst_luns_mgmt_store_work_fn(struct scst_sysfs_work_item *work)
-{
-	return __scst_process_luns_mgmt_store(work->buf, work->tgt, work->acg,
-			work->is_tgt_kobj);
-}
-
-static ssize_t __scst_acg_mgmt_store(struct scst_acg *acg,
-	const char *buf, size_t count, bool is_tgt_kobj,
-	int (*sysfs_work_fn)(struct scst_sysfs_work_item *))
-{
-	int res;
-	char *buffer;
-	struct scst_sysfs_work_item *work;
-
-	TRACE_ENTRY();
-
-	buffer = kasprintf(GFP_KERNEL, "%.*s", (int)count, buf);
-	if (buffer == NULL) {
-		res = -ENOMEM;
-		goto out;
-	}
-
-	res = scst_alloc_sysfs_work(sysfs_work_fn, false, &work);
-	if (res != 0)
-		goto out_free;
-
-	work->buf = buffer;
-	work->tgt = acg->tgt;
-	work->acg = acg;
-	work->is_tgt_kobj = is_tgt_kobj;
-
-	res = scst_sysfs_queue_wait_work(work);
-	if (res == 0)
-		res = count;
-
-out:
-	TRACE_EXIT_RES(res);
-	return res;
-
-out_free:
-	kfree(buffer);
-	goto out;
-}
-
-static ssize_t __scst_luns_mgmt_store(struct scst_acg *acg,
-	bool tgt_kobj, const char *buf, size_t count)
-{
-	return __scst_acg_mgmt_store(acg, buf, count, tgt_kobj,
-			scst_luns_mgmt_store_work_fn);
-}
-
 static ssize_t scst_luns_mgmt_show(struct kobject *kobj,
 				   struct kobj_attribute *attr,
 				   char *buf)
 {
 	static const char help[] =
-		"Usage: echo \"add|del H:C:I:L lun [parameters]\" >mgmt\n"
-		"       echo \"add VNAME lun [parameters]\" >mgmt\n"
-		"       echo \"del lun\" >mgmt\n"
-		"       echo \"replace H:C:I:L lun [parameters]\" >mgmt\n"
-		"       echo \"replace VNAME lun [parameters]\" >mgmt\n"
-		"       echo \"clear\" >mgmt\n"
-		"\n"
-		"where parameters are one or more "
-		"param_name=value pairs separated by ';'\n"
-		"\nThe following parameters available: read_only.\n";
+		"The following parameters available: read_only.\n";
 
 	return sprintf(buf, "%s", help);
-}
-
-static ssize_t scst_luns_mgmt_store(struct kobject *kobj,
-				    struct kobj_attribute *attr,
-				    const char *buf, size_t count)
-{
-	int res;
-	struct scst_acg *acg;
-	struct scst_tgt *tgt;
-
-	tgt = scst_kobj_to_tgt(kobj->parent);
-
-	acg = tgt->default_acg;
-
-	res = __scst_luns_mgmt_store(acg, true, buf, count);
-
-	TRACE_EXIT_RES(res);
-	return res;
 }
 
 static ssize_t __scst_acg_addr_method_show(struct scst_acg *acg, char *buf)
@@ -2847,16 +2675,14 @@ static int __scst_acg_process_io_grouping_type_store(struct scst_tgt *tgt,
 	int res = 0;
 	struct scst_acg_dev *acg_dev;
 
+	//scst_assert_activity_suspended();
+
 	TRACE_DBG("tgt %p, acg %p, io_grouping_type %d", tgt, acg,
 		io_grouping_type);
 
-	res = scst_suspend_activity(true);
-	if (res != 0)
-		goto out;
-
 	if (mutex_lock_interruptible(&scst_mutex) != 0) {
 		res = -EINTR;
-		goto out_resume;
+		goto out;
 	}
 
 	acg->acg_io_grouping_type = io_grouping_type;
@@ -2872,9 +2698,6 @@ static int __scst_acg_process_io_grouping_type_store(struct scst_tgt *tgt,
 	}
 
 	mutex_unlock(&scst_mutex);
-
-out_resume:
-	scst_resume_activity();
 
 out:
 	return res;
@@ -3180,10 +3003,10 @@ int scst_acg_sysfs_create(struct scst_tgt *tgt, struct scst_acg *acg)
 		goto out_del;
 	}
 
-	res = sysfs_create_file(acg->luns_kobj, &scst_acg_luns_mgmt.attr);
+	res = sysfs_create_file(acg->luns_kobj, &scst_luns_mgmt.attr);
 	if (res != 0) {
 		PRINT_ERROR("Can't add tgt attr %s for tgt %s",
-			scst_acg_luns_mgmt.attr.name, tgt->tgt_name);
+			scst_luns_mgmt.attr.name, tgt->tgt_name);
 		goto out_del;
 	}
 
@@ -3193,14 +3016,6 @@ int scst_acg_sysfs_create(struct scst_tgt *tgt, struct scst_acg *acg)
 		PRINT_ERROR("Can't create initiators kobj for tgt %s",
 			tgt->tgt_name);
 		res = -ENOMEM;
-		goto out_del;
-	}
-
-	res = sysfs_create_file(acg->initiators_kobj,
-			&scst_acg_ini_mgmt.attr);
-	if (res != 0) {
-		PRINT_ERROR("Can't add tgt attr %s for tgt %s",
-			scst_acg_ini_mgmt.attr.name, tgt->tgt_name);
 		goto out_del;
 	}
 
@@ -3316,16 +3131,6 @@ out:
 	return res;
 }
 
-static ssize_t scst_ini_group_mgmt_show(struct kobject *kobj,
-	struct kobj_attribute *attr, char *buf)
-{
-	static const char help[] =
-		"Usage: echo \"create GROUP_NAME\" >mgmt\n"
-		"       echo \"del GROUP_NAME\" >mgmt\n";
-
-	return sprintf(buf, "%s", help);
-}
-
 static int scst_process_ini_group_mgmt_store(char *buffer,
 	struct scst_tgt *tgt)
 {
@@ -3337,6 +3142,8 @@ static int scst_process_ini_group_mgmt_store(char *buffer,
 #define SCST_INI_GROUP_ACTION_DEL	2
 
 	TRACE_ENTRY();
+
+	//scst_assert_activity_suspended();
 
 	TRACE_DBG("tgt %p, buffer %s", tgt, buffer);
 
@@ -3355,13 +3162,9 @@ static int scst_process_ini_group_mgmt_store(char *buffer,
 		goto out;
 	}
 
-	res = scst_suspend_activity(true);
-	if (res != 0)
-		goto out;
-
 	if (mutex_lock_interruptible(&scst_mutex) != 0) {
 		res = -EINTR;
-		goto out_resume;
+		goto out;
 	}
 
 	while (isspace(*p) && *p != '\0')
@@ -3395,8 +3198,10 @@ static int scst_process_ini_group_mgmt_store(char *buffer,
 			goto out_unlock;
 		}
 		acg = scst_alloc_add_acg(tgt, p, true);
-		if (acg == NULL)
+		if (acg == NULL) {
+			res = -ENOMEM;
 			goto out_unlock;
+		}
 		break;
 	case SCST_INI_GROUP_ACTION_DEL:
 		TRACE_DBG("Deleting group '%s'", p);
@@ -3419,59 +3224,12 @@ static int scst_process_ini_group_mgmt_store(char *buffer,
 out_unlock:
 	mutex_unlock(&scst_mutex);
 
-out_resume:
-	scst_resume_activity();
-
 out:
 	TRACE_EXIT_RES(res);
 	return res;
 
 #undef SCST_LUN_ACTION_CREATE
 #undef SCST_LUN_ACTION_DEL
-}
-
-static int scst_ini_group_mgmt_store_work_fn(struct scst_sysfs_work_item *work)
-{
-	return scst_process_ini_group_mgmt_store(work->buf, work->tgt);
-}
-
-static ssize_t scst_ini_group_mgmt_store(struct kobject *kobj,
-	struct kobj_attribute *attr, const char *buf, size_t count)
-{
-	int res;
-	char *buffer;
-	struct scst_tgt *tgt;
-	struct scst_sysfs_work_item *work;
-
-	TRACE_ENTRY();
-
-	tgt = scst_kobj_to_tgt(kobj->parent);
-
-	buffer = kasprintf(GFP_KERNEL, "%.*s", (int)count, buf);
-	if (buffer == NULL) {
-		res = -ENOMEM;
-		goto out;
-	}
-
-	res = scst_alloc_sysfs_work(scst_ini_group_mgmt_store_work_fn, false,
-					&work);
-	if (res != 0)
-		goto out_free;
-
-	work->buf = buffer;
-	work->tgt = tgt;
-
-	res = scst_sysfs_queue_wait_work(work);
-	if (res == 0)
-		res = count;
-
-out:
-	TRACE_EXIT_RES(res);
-	return res;
-
-out_free:
-	kfree(buffer);
-	goto out;
 }
 
 static ssize_t scst_rel_tgt_id_show(struct kobject *kobj,
@@ -3662,33 +3420,6 @@ static ssize_t scst_acn_file_show(struct kobject *kobj,
 		attr->attr.name);
 }
 
-static ssize_t scst_acg_luns_mgmt_store(struct kobject *kobj,
-				    struct kobj_attribute *attr,
-				    const char *buf, size_t count)
-{
-	int res;
-	struct scst_acg *acg;
-
-	acg = scst_kobj_to_acg(kobj->parent);
-
-	res = __scst_luns_mgmt_store(acg, false, buf, count);
-
-	TRACE_EXIT_RES(res);
-	return res;
-}
-
-static ssize_t scst_acg_ini_mgmt_show(struct kobject *kobj,
-	struct kobj_attribute *attr, char *buf)
-{
-	static const char help[] =
-		"Usage: echo \"add INITIATOR_NAME\" >mgmt\n"
-		"       echo \"del INITIATOR_NAME\" >mgmt\n"
-		"       echo \"move INITIATOR_NAME DEST_GROUP_NAME\" >mgmt\n"
-		"       echo \"clear\" >mgmt\n";
-
-	return sprintf(buf, "%s", help);
-}
-
 static int scst_process_acg_ini_mgmt_store(char *buffer,
 	struct scst_tgt *tgt, struct scst_acg *acg)
 {
@@ -3704,6 +3435,8 @@ static int scst_process_acg_ini_mgmt_store(char *buffer,
 #define SCST_ACG_ACTION_INI_MOVE	4
 
 	TRACE_ENTRY();
+
+	//scst_assert_activity_suspended();
 
 	TRACE_DBG("tgt %p, acg %p, buffer %s", tgt, acg, buffer);
 
@@ -3736,13 +3469,9 @@ static int scst_process_acg_ini_mgmt_store(char *buffer,
 			goto out;
 		}
 
-	res = scst_suspend_activity(true);
-	if (res != 0)
-		goto out;
-
 	if (mutex_lock_interruptible(&scst_mutex) != 0) {
 		res = -EINTR;
-		goto out_resume;
+		goto out;
 	}
 
 	if (action != SCST_ACG_ACTION_INI_CLEAR)
@@ -3865,9 +3594,6 @@ static int scst_process_acg_ini_mgmt_store(char *buffer,
 out_unlock:
 	mutex_unlock(&scst_mutex);
 
-out_resume:
-	scst_resume_activity();
-
 out:
 	TRACE_EXIT_RES(res);
 	return res;
@@ -3878,21 +3604,6 @@ out:
 #undef SCST_ACG_ACTION_INI_MOVE
 }
 
-static int scst_acg_ini_mgmt_store_work_fn(struct scst_sysfs_work_item *work)
-{
-	return scst_process_acg_ini_mgmt_store(work->buf, work->tgt, work->acg);
-}
-
-static ssize_t scst_acg_ini_mgmt_store(struct kobject *kobj,
-	struct kobj_attribute *attr, const char *buf, size_t count)
-{
-	struct scst_acg *acg;
-
-	acg = scst_kobj_to_acg(kobj->parent);
-
-	return __scst_acg_mgmt_store(acg, buf, count, false,
-		scst_acg_ini_mgmt_store_work_fn);
-}
 
 /**
  ** SGV directory implementation
@@ -3974,6 +3685,331 @@ static struct kobj_type sgv_ktype = {
 /**
  ** SCST sysfs root directory implementation
  **/
+
+static ssize_t scst_mgmt_show(struct kobject *kobj,
+	struct kobj_attribute *attr, char *buf)
+{
+	ssize_t count;
+	static const char help[] =
+/* scst_devt_mgmt or scst_devt_pass_through_mgmt */
+"in handlers/<devt> <devt_cmd>\n"
+/* scst_tgtt_mgmt */
+"in targets/<tgtt> <tgt_cmd>\n"
+/* scst_luns_mgmt */
+"in targets/<tgtt>/<target>/luns <luns_cmd>\n"
+/* scst_ini_group_mgmt */
+"in targets/<tgtt>/<target>/ini_groups <ini_group_cmd>\n"
+/* scst_acg_luns_mgmt */
+"in targets/<tgtt>/<target>/ini_groups/<acg>/luns <luns_cmd>\n"
+/* scst_acg_ini_mgmt */
+"in targets/<tgtt>/<target>/ini_groups/<acg>/initiators <acg_ini_cmd>\n"
+"\n"
+"devt_cmd syntax:\n"
+"\n"
+"add_device device_name [parameters]\n"
+"del_device device_name\n"
+"add_attribute <attribute> <value>\n"
+"del_attribute <attribute> <value>\n"
+"add_device_attribute device_name <attribute> <value>\n"
+"del_device_attribute device_name <attribute> <value>\n"
+"\n"
+"devt_cmd syntax for pass-through device types:\n"
+"\n"
+"add_device H:C:I:L\n"
+"del_device H:C:I:L\n"
+"\n"
+"tgt_cmd syntax:\n"
+"\n"
+"add_target target_name [parameters]\n"
+"del_target target_name\n"
+"add_attribute <attribute> <value>\n"
+"del_attribute <attribute> <value>\n"
+"add_target_attribute target_name <attribute> <value>\"\n"
+"del_target_attribute target_name <attribute> <value>\"\n"
+"\n"
+"where parameters is one or more param_name=value pairs separated by ';'\n"
+"\n"
+"luns_cmd syntax:\n"
+"\n"
+"add|del H:C:I:L lun [parameters]\n"
+"add VNAME lun [parameters]\n"
+"del lun\n"
+"replace H:C:I:L lun [parameters]\n"
+"replace VNAME lun [parameters]\n"
+"clear\n"
+"\n"
+"where parameters is either read_only or empty.\n"
+"\n"
+"ini_group mgmt syntax:\n"
+"\n"
+"create GROUP_NAME\n"
+"del GROUP_NAME\n"
+"\n"
+"acg_ini_cmd syntax:\n"
+"\n"
+"add INITIATOR_NAME\n"
+"del INITIATOR_NAME\n"
+"move INITIATOR_NAME DEST_GROUP_NAME\n"
+"clear\n";
+
+	TRACE_ENTRY();
+
+	count = scnprintf(buf, PAGE_SIZE, help);
+
+	TRACE_EXIT_RES(count);
+	return count;
+}
+
+static struct scst_dev_type *__scst_lookup_devt(const char *name)
+{
+	struct scst_dev_type *dt;
+
+	lockdep_assert_held(&scst_mutex);
+
+	list_for_each_entry(dt, &scst_virtual_dev_type_list,
+			    dev_type_list_entry)
+		if (strcmp(dt->name, name) == 0)
+			return dt;
+
+	TRACE_DBG("devt %s not found", name);
+
+	return NULL;
+}
+
+static struct scst_tgt_template *__scst_lookup_tgtt(const char *name)
+{
+	struct scst_tgt_template *tt;
+
+	lockdep_assert_held(&scst_mutex);
+
+	list_for_each_entry(tt, &scst_template_list, scst_template_list_entry)
+		if (strcmp(tt->name, name) == 0)
+			return tt;
+
+	TRACE_DBG("tgtt %s not found", name);
+
+	return NULL;
+}
+
+static struct scst_tgt *__scst_lookup_tgt(struct scst_tgt_template *tgtt,
+					  const char *target_name)
+{
+	struct scst_tgt *tgt;
+
+	lockdep_assert_held(&scst_mutex);
+
+	list_for_each_entry(tgt, &tgtt->tgt_list, tgt_list_entry)
+		if (strcmp(tgt->tgt_name, target_name) == 0)
+			return tgt;
+
+	TRACE_DBG("tgt %s not found", target_name);
+
+	return NULL;
+}
+
+static struct scst_acg *__scst_lookup_acg(const struct scst_tgt *tgt,
+					  const char *acg_name)
+{
+	struct scst_acg *acg;
+
+	lockdep_assert_held(&scst_mutex);
+
+	acg = tgt->default_acg;
+	if (acg && strcmp(acg->acg_name, acg_name) == 0)
+		return acg;
+
+	list_for_each_entry(acg, &tgt->tgt_acg_list, acg_list_entry)
+		if (strcmp(acg->acg_name, acg_name) == 0)
+			return acg;
+
+	TRACE_DBG("acg %s not found", acg_name);
+
+	return NULL;
+}
+
+static enum mgmt_path_type __parse_path(char *path,
+					struct scst_dev_type **devt,
+					struct scst_tgt_template **tgtt,
+					struct scst_tgt **tgt,
+					struct scst_acg **acg)
+{
+	char *comp[7];
+	int i;
+	enum mgmt_path_type res = PATH_NOT_RECOGNIZED;
+
+	TRACE_ENTRY();
+
+	lockdep_assert_held(&scst_mutex);
+
+	BUG_ON(!path || !devt || !tgtt || !tgt || !acg);
+
+	*devt = NULL;
+	*tgtt = NULL;
+	*tgt = NULL;
+	*acg = NULL;
+
+	if (path[0] == '/')
+		path++;
+	comp[0] = path;
+	for (i = 1; i < ARRAY_SIZE(comp); ++i) {
+		comp[i] = strchr(comp[i - 1], '/');
+		if (!comp[i])
+			break;
+		*comp[i]++ = '\0';
+	}
+
+	for (i = 0; i < ARRAY_SIZE(comp); ++i) {
+		if (!comp[i])
+			break;
+		TRACE_DBG("comp[%d] = %s", i, comp[i]);
+	}
+
+	if (!comp[0] || !comp[1])
+		goto err;
+	if (strcmp(comp[0], "handlers") == 0 && !comp[2]) {
+		*devt = __scst_lookup_devt(comp[1]);
+		if (!*devt)
+			goto err;
+		res = DEVICE_TYPE_PATH;
+		goto out;
+	} else if (strcmp(comp[0], "targets") == 0) {
+		*tgtt = __scst_lookup_tgtt(comp[1]);
+		if (!*tgtt)
+			goto err;
+		if (!comp[2]) {
+			res = TARGET_TEMPLATE_PATH;
+			goto out;
+		}
+		if (!comp[3])
+			goto err;
+		*tgt = __scst_lookup_tgt(*tgtt, comp[2]);
+		if (!*tgt)
+			goto err;
+		if (strcmp(comp[3], "luns") == 0) {
+			res = TARGET_LUNS_PATH;
+			goto out;
+		}
+		else if (strcmp(comp[3], "ini_groups") != 0)
+			goto err;
+		if (!comp[4]) {
+			res = TARGET_INI_GROUPS_PATH;
+			goto out;
+		}
+		if (!comp[5] || (comp[5] && comp[6]))
+			goto err;
+		*acg = __scst_lookup_acg(*tgt, comp[5]);
+		if (!acg)
+			goto err;
+		if (strcmp(comp[5], "luns") == 0) {
+			res = ACG_LUNS_PATH;
+			goto out;
+		} else if (strcmp(comp[5], "initiators") == 0) {
+			res = ACG_INITIATOR_GROUPS_PATH;
+			goto out;
+		}
+	}
+out:
+	TRACE_EXIT_RES(res);
+err:
+	return res;
+}
+
+static ssize_t scst_mgmt_store(struct kobject *kobj,
+	struct kobj_attribute *attr, const char *buf, size_t count)
+{
+	ssize_t res;
+	char *buffer, *path, *path_end, *cmd;
+	enum mgmt_path_type mgmt_path_type;
+	struct scst_dev_type *devt;
+	struct scst_tgt_template *tgtt;
+	struct scst_tgt *tgt;
+	struct scst_acg *acg;
+
+	TRACE_ENTRY();
+
+	lockdep_assert_held(&scst_mutex);
+
+	TRACE_DBG("Processing management command %.*s", (int)count, buf);
+
+	res = -ENOMEM;
+	buffer = kasprintf(GFP_KERNEL, "%.*s", (int)count, buf);
+	if (!buffer)
+		goto out;
+
+	res = -EINVAL;
+	if (strncmp(buffer, "in ", 3) != 0)
+		goto out;
+	
+	path = buffer + 3;
+	while (*path && isspace((u8)*path))
+		path++;
+	path_end = path;
+	while (*path_end && !isspace((u8)*path_end))
+		path_end++;
+	*path_end++ = '\0';
+	cmd = path_end;
+	while (*cmd && isspace((u8)*cmd))
+		cmd++;
+
+	res = scst_suspend_activity(true);
+	if (res)
+		goto out;
+
+	res = mutex_lock_interruptible(&scst_mutex);
+	if (res)
+		goto out_resume;
+
+	mgmt_path_type = __parse_path(path, &devt, &tgtt, &tgt, &acg);
+	/*
+	 * Since destroying device types, target templates, targets and access
+	 * control groups happens while activity is suspended, it is safe to
+	 * unlock scst_mutex here.
+	 */
+	mutex_unlock(&scst_mutex);
+
+	res = -EINVAL;
+	switch (mgmt_path_type) {
+	case DEVICE_TYPE_PATH:
+		BUG_ON(!devt);
+		if (devt->add_device)
+			res = scst_process_devt_mgmt_store(cmd, devt);
+		else
+			res = scst_process_devt_pass_through_mgmt_store(cmd,
+									devt);
+		break;
+	case TARGET_TEMPLATE_PATH:
+		res = scst_process_tgtt_mgmt_store(cmd, tgtt);
+		break;
+	case TARGET_LUNS_PATH:
+		BUG_ON(!tgt);
+		res = __scst_process_luns_mgmt_store(cmd, tgt, tgt->default_acg,
+						     true);
+		break;
+	case TARGET_INI_GROUPS_PATH:
+		res = scst_process_ini_group_mgmt_store(cmd, tgt);
+		break;
+	case ACG_LUNS_PATH:
+		BUG_ON(!acg);
+		res = __scst_process_luns_mgmt_store(cmd, acg->tgt, acg, false);
+		break;
+	case ACG_INITIATOR_GROUPS_PATH:
+		BUG_ON(!acg);
+		res = scst_process_acg_ini_mgmt_store(cmd, acg->tgt, acg);
+		break;
+	case PATH_NOT_RECOGNIZED:
+		break;
+	}
+
+	kfree(buffer);
+
+out_resume:
+	scst_resume_activity();
+out:
+	if (res == 0)
+		res = count;
+	TRACE_EXIT_RES(res);
+	return res;
+}
 
 static ssize_t scst_threads_show(struct kobject *kobj,
 	struct kobj_attribute *attr, char *buf)
@@ -4413,6 +4449,9 @@ static ssize_t scst_last_sysfs_mgmt_res_show(struct kobject *kobj,
 	return res;
 }
 
+static struct kobj_attribute scst_mgmt_attr =
+	__ATTR(mgmt, S_IRUGO | S_IWUSR, scst_mgmt_show, scst_mgmt_store);
+
 static struct kobj_attribute scst_threads_attr =
 	__ATTR(threads, S_IRUGO | S_IWUSR, scst_threads_show,
 	       scst_threads_store);
@@ -4435,6 +4474,7 @@ static struct kobj_attribute scst_last_sysfs_mgmt_res_attr =
 		scst_last_sysfs_mgmt_res_show, NULL);
 
 static struct attribute *scst_sysfs_root_default_attrs[] = {
+	&scst_mgmt_attr.attr,
 	&scst_threads_attr.attr,
 	&scst_setup_id_attr.attr,
 #if defined(CONFIG_SCST_DEBUG) || defined(CONFIG_SCST_TRACING)
@@ -4545,27 +4585,12 @@ static struct kobj_type scst_devt_ktype = {
 static ssize_t scst_devt_mgmt_show(struct kobject *kobj,
 	struct kobj_attribute *attr, char *buf)
 {
-	static const char help[] =
-		"Usage: echo \"add_device device_name [parameters]\" >mgmt\n"
-		"       echo \"del_device device_name\" >mgmt\n"
-		"%s%s"
-		"%s"
-		"\n"
-		"where parameters are one or more "
-		"param_name=value pairs separated by ';'\n\n"
-		"%s%s%s%s%s%s%s%s\n";
+	static const char help[] = "%s%s%s%s%s%s%s%s";
 	struct scst_dev_type *devt;
 
 	devt = scst_kobj_to_devt(kobj);
 
 	return scnprintf(buf, SCST_SYSFS_BLOCK_SIZE, help,
-		(devt->devt_optional_attributes != NULL) ?
-			"       echo \"add_attribute <attribute> <value>\" >mgmt\n"
-			"       echo \"del_attribute <attribute> <value>\" >mgmt\n" : "",
-		(devt->dev_optional_attributes != NULL) ?
-			"       echo \"add_device_attribute device_name <attribute> <value>\" >mgmt"
-			"       echo \"del_device_attribute device_name <attribute> <value>\" >mgmt\n" : "",
-		(devt->mgmt_cmd_help) ? devt->mgmt_cmd_help : "",
 		(devt->add_device_parameters != NULL) ?
 			"The following parameters available: " : "",
 		(devt->add_device_parameters != NULL) ?
@@ -4638,69 +4663,8 @@ out_syntax_err:
 	goto out;
 }
 
-static int scst_devt_mgmt_store_work_fn(struct scst_sysfs_work_item *work)
-{
-	return scst_process_devt_mgmt_store(work->buf, work->devt);
-}
-
-static ssize_t __scst_devt_mgmt_store(struct kobject *kobj,
-	struct kobj_attribute *attr, const char *buf, size_t count,
-	int (*sysfs_work_fn)(struct scst_sysfs_work_item *work))
-{
-	int res;
-	char *buffer;
-	struct scst_dev_type *devt;
-	struct scst_sysfs_work_item *work;
-
-	TRACE_ENTRY();
-
-	devt = scst_kobj_to_devt(kobj);
-
-	buffer = kasprintf(GFP_KERNEL, "%.*s", (int)count, buf);
-	if (buffer == NULL) {
-		res = -ENOMEM;
-		goto out;
-	}
-
-	res = scst_alloc_sysfs_work(sysfs_work_fn, false, &work);
-	if (res != 0)
-		goto out_free;
-
-	work->buf = buffer;
-	work->devt = devt;
-
-	res = scst_sysfs_queue_wait_work(work);
-	if (res == 0)
-		res = count;
-
-out:
-	TRACE_EXIT_RES(res);
-	return res;
-
-out_free:
-	kfree(buffer);
-	goto out;
-}
-
-static ssize_t scst_devt_mgmt_store(struct kobject *kobj,
-	struct kobj_attribute *attr, const char *buf, size_t count)
-{
-	return __scst_devt_mgmt_store(kobj, attr, buf, count,
-		scst_devt_mgmt_store_work_fn);
-}
-
 static struct kobj_attribute scst_devt_mgmt =
-	__ATTR(mgmt, S_IRUGO | S_IWUSR, scst_devt_mgmt_show,
-	       scst_devt_mgmt_store);
-
-static ssize_t scst_devt_pass_through_mgmt_show(struct kobject *kobj,
-	struct kobj_attribute *attr, char *buf)
-{
-	static const char help[] =
-		"Usage: echo \"add_device H:C:I:L\" >mgmt\n"
-		"       echo \"del_device H:C:I:L\" >mgmt\n";
-	return sprintf(buf, "%s", help);
-}
+	__ATTR(mgmt, S_IRUGO | S_IWUSR, scst_devt_mgmt_show, NULL);
 
 static int scst_process_devt_pass_through_mgmt_store(char *buffer,
 	struct scst_dev_type *devt)
@@ -4711,6 +4675,8 @@ static int scst_process_devt_pass_through_mgmt_store(char *buffer,
 	struct scst_device *d, *dev = NULL;
 
 	TRACE_ENTRY();
+
+	//scst_assert_activity_suspended();
 
 	TRACE_DBG("devt %p, buffer %s", devt, buffer);
 
@@ -4817,23 +4783,6 @@ out_syntax_err:
 	goto out;
 }
 
-static int scst_devt_pass_through_mgmt_store_work_fn(
-	struct scst_sysfs_work_item *work)
-{
-	return scst_process_devt_pass_through_mgmt_store(work->buf, work->devt);
-}
-
-static ssize_t scst_devt_pass_through_mgmt_store(struct kobject *kobj,
-	struct kobj_attribute *attr, const char *buf, size_t count)
-{
-	return __scst_devt_mgmt_store(kobj, attr, buf, count,
-		scst_devt_pass_through_mgmt_store_work_fn);
-}
-
-static struct kobj_attribute scst_devt_pass_through_mgmt =
-	__ATTR(mgmt, S_IRUGO | S_IWUSR, scst_devt_pass_through_mgmt_show,
-	       scst_devt_pass_through_mgmt_store);
-
 int scst_devt_sysfs_create(struct scst_dev_type *devt)
 {
 	int res;
@@ -4861,13 +4810,7 @@ int scst_devt_sysfs_create(struct scst_dev_type *devt)
 		goto out;
 	}
 
-	if (devt->add_device != NULL) {
-		res = sysfs_create_file(devt->devt_kobj,
-				&scst_devt_mgmt.attr);
-	} else {
-		res = sysfs_create_file(devt->devt_kobj,
-				&scst_devt_pass_through_mgmt.attr);
-	}
+	res = sysfs_create_file(devt->devt_kobj, &scst_devt_mgmt.attr);
 	if (res != 0) {
 		PRINT_ERROR("Can't add mgmt attr for dev handler %s",
 			devt->name);
