@@ -3996,69 +3996,6 @@ int scst_wait_info_completion(struct scst_sysfs_user_info *info,
 
 unsigned int scst_get_setup_id(void);
 
-/**
- * struct scst_sysfs_work_item - SCST sysfs work structure.
- *
- * Necessary to avoid locking inversion between scst_mutex and sysfs
- * (sd->s_active). All processing is pushed from sysfs .store() callback
- * functions to a worker thread to avoid having to lock scst_mutex inside the
- * .store() callback function. To avoid deadlocks, sysfs .store() callback
- * functions return EAGAIN if processing is taking too long. User space should
- * then poll the last_sysfs_mgmt_res sysfs attribute until reading it returns
- * another result than EAGAIN. See also the locking policy documented in
- * scst_sysfs.c for more information.
- */
-struct scst_sysfs_work_item {
-	/*
-	 * If true, then last_sysfs_mgmt_res will not be updated. This is
-	 * needed to allow read only sysfs monitoring during management actions.
-	 * All management actions are supposed to be externally serialized,
-	 * so then last_sysfs_mgmt_res automatically serialized too.
-	 * Otherwise a monitoring action can overwrite value of simultaneous
-	 * management action's last_sysfs_mgmt_res.
-	 */
-	bool read_only_action;
-
-	struct list_head sysfs_work_list_entry;
-	struct kref sysfs_work_kref;
-	int (*sysfs_work_fn)(struct scst_sysfs_work_item *work);
-	struct completion sysfs_work_done;
-	char *buf;
-
-	union {
-		struct scst_dev_type *devt;
-		struct scst_tgt_template *tgtt;
-		struct {
-			struct scst_tgt *tgt;
-			struct scst_acg *acg;
-			union {
-				bool is_tgt_kobj;
-				int io_grouping_type;
-				bool enable;
-				cpumask_t cpu_mask;
-			};
-		};
-		struct {
-			struct scst_device *dev;
-			int new_threads_num;
-			enum scst_dev_type_threads_pool_type new_threads_pool_type;
-		};
-		struct scst_session *sess;
-		struct {
-			struct scst_tgt *tgt;
-			unsigned long l;
-		};
-	};
-	int work_res;
-	char *res_buf;
-};
-
-int scst_alloc_sysfs_work(int (*sysfs_work_fn)(struct scst_sysfs_work_item *),
-	bool read_only_action, struct scst_sysfs_work_item **res_work);
-int scst_sysfs_queue_wait_work(struct scst_sysfs_work_item *work);
-void scst_sysfs_work_get(struct scst_sysfs_work_item *work);
-void scst_sysfs_work_put(struct scst_sysfs_work_item *work);
-
 #endif /* CONFIG_SCST_PROC */
 
 char *scst_get_next_lexem(char **token_str);

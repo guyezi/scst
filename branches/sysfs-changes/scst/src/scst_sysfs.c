@@ -205,239 +205,6 @@ static void sysfs_remove_files(struct kobject * kobj,
 #endif
 
 /**
- ** Sysfs work
- **/
-
-static DEFINE_SPINLOCK(sysfs_work_lock);
-static LIST_HEAD(sysfs_work_list);
-static DECLARE_WAIT_QUEUE_HEAD(sysfs_work_waitQ);
-static int active_sysfs_works;
-static int last_sysfs_work_res;
-static struct task_struct *sysfs_work_thread;
-
-/**
- * scst_alloc_sysfs_work() - allocates a sysfs work
- */
-int scst_alloc_sysfs_work(int (*sysfs_work_fn)(struct scst_sysfs_work_item *),
-	bool read_only_action, struct scst_sysfs_work_item **res_work)
-{
-	int res = 0;
-	struct scst_sysfs_work_item *work;
-
-	TRACE_ENTRY();
-
-	if (sysfs_work_fn == NULL) {
-		PRINT_ERROR("%s", "sysfs_work_fn is NULL");
-		res = -EINVAL;
-		goto out;
-	}
-
-	*res_work = NULL;
-
-	work = kzalloc(sizeof(*work), GFP_KERNEL);
-	if (work == NULL) {
-		PRINT_ERROR("Unable to alloc sysfs work (size %zd)",
-			sizeof(*work));
-		res = -ENOMEM;
-		goto out;
-	}
-
-	work->read_only_action = read_only_action;
-	kref_init(&work->sysfs_work_kref);
-	init_completion(&work->sysfs_work_done);
-	work->sysfs_work_fn = sysfs_work_fn;
-
-	*res_work = work;
-
-out:
-	TRACE_EXIT_RES(res);
-	return res;
-}
-EXPORT_SYMBOL(scst_alloc_sysfs_work);
-
-static void scst_sysfs_work_release(struct kref *kref)
-{
-	struct scst_sysfs_work_item *work;
-
-	TRACE_ENTRY();
-
-	work = container_of(kref, struct scst_sysfs_work_item,
-			sysfs_work_kref);
-
-	TRACE_DBG("Freeing sysfs work %p (buf %p)", work, work->buf);
-
-	kfree(work->buf);
-	kfree(work->res_buf);
-	kfree(work);
-
-	TRACE_EXIT();
-	return;
-}
-
-/**
- * scst_sysfs_work_get() - increases ref counter of the sysfs work
- */
-void scst_sysfs_work_get(struct scst_sysfs_work_item *work)
-{
-	kref_get(&work->sysfs_work_kref);
-}
-EXPORT_SYMBOL(scst_sysfs_work_get);
-
-/**
- * scst_sysfs_work_put() - decreases ref counter of the sysfs work
- */
-void scst_sysfs_work_put(struct scst_sysfs_work_item *work)
-{
-	kref_put(&work->sysfs_work_kref, scst_sysfs_work_release);
-}
-EXPORT_SYMBOL(scst_sysfs_work_put);
-
-/**
- * scst_sysfs_queue_wait_work() - waits for the work to complete
- *
- * Returns status of the completed work or -EAGAIN if the work not
- * completed before timeout. In the latter case a user should poll
- * last_sysfs_mgmt_res until it returns the result of the processing.
- */
-int scst_sysfs_queue_wait_work(struct scst_sysfs_work_item *work)
-{
-	int res = 0, rc;
-	unsigned long timeout = 15*HZ;
-
-	TRACE_ENTRY();
-
-	spin_lock(&sysfs_work_lock);
-
-	TRACE_DBG("Adding sysfs work %p to the list", work);
-	list_add_tail(&work->sysfs_work_list_entry, &sysfs_work_list);
-
-	active_sysfs_works++;
-
-	spin_unlock(&sysfs_work_lock);
-
-	kref_get(&work->sysfs_work_kref);
-
-	wake_up(&sysfs_work_waitQ);
-
-	while (1) {
-		rc = wait_for_completion_interruptible_timeout(
-			&work->sysfs_work_done, timeout);
-		if (rc == 0) {
-			if (!mutex_is_locked(&scst_mutex)) {
-				TRACE_DBG("scst_mutex not locked, continue "
-					"waiting (work %p)", work);
-				timeout = 5*HZ;
-				continue;
-			}
-			TRACE_MGMT_DBG("Time out waiting for work %p",
-				work);
-			res = -EAGAIN;
-			goto out_put;
-		} else if (rc < 0) {
-			res = rc;
-			goto out_put;
-		}
-		break;
-	}
-
-	res = work->work_res;
-
-out_put:
-	kref_put(&work->sysfs_work_kref, scst_sysfs_work_release);
-
-	TRACE_EXIT_RES(res);
-	return res;
-}
-EXPORT_SYMBOL(scst_sysfs_queue_wait_work);
-
-/* Called under sysfs_work_lock and drops/reacquire it inside */
-static void scst_process_sysfs_works(void)
-	__releases(&sysfs_work_lock)
-	__acquires(&sysfs_work_lock)
-{
-	struct scst_sysfs_work_item *work;
-
-	TRACE_ENTRY();
-
-	while (!list_empty(&sysfs_work_list)) {
-		work = list_entry(sysfs_work_list.next,
-			struct scst_sysfs_work_item, sysfs_work_list_entry);
-		list_del(&work->sysfs_work_list_entry);
-		spin_unlock(&sysfs_work_lock);
-
-		TRACE_DBG("Sysfs work %p", work);
-
-		work->work_res = work->sysfs_work_fn(work);
-
-		spin_lock(&sysfs_work_lock);
-		if (!work->read_only_action)
-			last_sysfs_work_res = work->work_res;
-		active_sysfs_works--;
-		spin_unlock(&sysfs_work_lock);
-
-		complete_all(&work->sysfs_work_done);
-		kref_put(&work->sysfs_work_kref, scst_sysfs_work_release);
-
-		spin_lock(&sysfs_work_lock);
-	}
-
-	TRACE_EXIT();
-	return;
-}
-
-static inline int test_sysfs_work_list(void)
-{
-	int res = !list_empty(&sysfs_work_list) ||
-		  unlikely(kthread_should_stop());
-	return res;
-}
-
-static int sysfs_work_thread_fn(void *arg)
-{
-	TRACE_ENTRY();
-
-	PRINT_INFO("User interface thread started, PID %d", current->pid);
-
-	current->flags |= PF_NOFREEZE;
-
-	set_user_nice(current, -10);
-
-	spin_lock(&sysfs_work_lock);
-	while (!kthread_should_stop()) {
-		wait_queue_t wait;
-		init_waitqueue_entry(&wait, current);
-
-		if (!test_sysfs_work_list()) {
-			add_wait_queue_exclusive(&sysfs_work_waitQ, &wait);
-			for (;;) {
-				set_current_state(TASK_INTERRUPTIBLE);
-				if (test_sysfs_work_list())
-					break;
-				spin_unlock(&sysfs_work_lock);
-				schedule();
-				spin_lock(&sysfs_work_lock);
-			}
-			set_current_state(TASK_RUNNING);
-			remove_wait_queue(&sysfs_work_waitQ, &wait);
-		}
-
-		scst_process_sysfs_works();
-	}
-	spin_unlock(&sysfs_work_lock);
-
-	/*
-	 * If kthread_should_stop() is true, we are guaranteed to be
-	 * on the module unload, so both lists must be empty.
-	 */
-	sBUG_ON(!list_empty(&sysfs_work_list));
-
-	PRINT_INFO("User interface thread PID %d finished", current->pid);
-
-	TRACE_EXIT();
-	return 0;
-}
-
-/**
  ** Kernel object that points to an SCST object.
  **/
 
@@ -900,18 +667,12 @@ out_put:
 	return res;
 }
 
-static int scst_tgt_enable_store_work_fn(struct scst_sysfs_work_item *work)
-{
-	return scst_process_tgt_enable_store(work->tgt, work->enable);
-}
-
 static ssize_t scst_tgt_enable_store(struct kobject *kobj,
 	struct kobj_attribute *attr, const char *buf, size_t count)
 {
 	int res;
 	struct scst_tgt *tgt;
 	bool enable;
-	struct scst_sysfs_work_item *work;
 
 	TRACE_ENTRY();
 
@@ -933,17 +694,7 @@ static ssize_t scst_tgt_enable_store(struct kobject *kobj,
 		goto out;
 	}
 
-	res = scst_alloc_sysfs_work(scst_tgt_enable_store_work_fn, false,
-					&work);
-	if (res != 0)
-		goto out;
-
-	work->tgt = tgt;
-	work->enable = enable;
-
-	kobject_get(tgt->tgt_kobj);
-
-	res = scst_sysfs_queue_wait_work(work);
+	res = scst_process_tgt_enable_store(tgt, enable);
 	if (res == 0)
 		res = count;
 
@@ -1185,13 +936,6 @@ out:
 	return res;
 }
 
-static int scst_dev_sysfs_threads_data_store_work_fn(
-	struct scst_sysfs_work_item *work)
-{
-	return scst_process_dev_sysfs_threads_data_store(work->dev,
-		work->new_threads_num, work->new_threads_pool_type);
-}
-
 static ssize_t scst_dev_sysfs_check_threads_data(
 	struct scst_device *dev, int threads_num,
 	enum scst_dev_type_threads_pool_type threads_pool_type, bool *stop)
@@ -1242,7 +986,6 @@ static ssize_t scst_dev_sysfs_threads_num_store(struct kobject *kobj,
 	struct scst_device *dev;
 	long newtn;
 	bool stop;
-	struct scst_sysfs_work_item *work;
 
 	TRACE_ENTRY();
 
@@ -1263,16 +1006,8 @@ static ssize_t scst_dev_sysfs_threads_num_store(struct kobject *kobj,
 	if ((res != 0) || stop)
 		goto out;
 
-	res = scst_alloc_sysfs_work(scst_dev_sysfs_threads_data_store_work_fn,
-					false, &work);
-	if (res != 0)
-		goto out;
-
-	work->dev = dev;
-	work->new_threads_num = newtn;
-	work->new_threads_pool_type = dev->threads_pool_type;
-
-	res = scst_sysfs_queue_wait_work(work);
+	res = scst_process_dev_sysfs_threads_data_store(dev, newtn,
+							dev->threads_pool_type);
 	if (res == 0)
 		res = count;
 
@@ -1331,7 +1066,6 @@ static ssize_t scst_dev_sysfs_threads_pool_type_store(struct kobject *kobj,
 	int res;
 	struct scst_device *dev;
 	enum scst_dev_type_threads_pool_type newtpt;
-	struct scst_sysfs_work_item *work;
 	bool stop;
 
 	TRACE_ENTRY();
@@ -1352,16 +1086,8 @@ static ssize_t scst_dev_sysfs_threads_pool_type_store(struct kobject *kobj,
 	if ((res != 0) || stop)
 		goto out;
 
-	res = scst_alloc_sysfs_work(scst_dev_sysfs_threads_data_store_work_fn,
-					false, &work);
-	if (res != 0)
-		goto out;
-
-	work->dev = dev;
-	work->new_threads_num = dev->threads_num;
-	work->new_threads_pool_type = newtpt;
-
-	res = scst_sysfs_queue_wait_work(work);
+	res = scst_process_dev_sysfs_threads_data_store(dev, dev->threads_num,
+							newtpt);
 	if (res == 0)
 		res = count;
 
@@ -1907,10 +1633,9 @@ static ssize_t scst_sess_latency_show(struct kobject *kobj,
 	return res;
 }
 
-static int scst_sess_zero_latency(struct scst_sysfs_work_item *work)
+static int scst_sess_zero_latency(struct scst_session *sess)
 {
 	int res = 0, t;
-	struct scst_session *sess = work->sess;
 
 	TRACE_ENTRY();
 
@@ -1966,7 +1691,6 @@ static ssize_t scst_sess_latency_store(struct kobject *kobj,
 {
 	int res;
 	struct scst_session *sess;
-	struct scst_sysfs_work_item *work;
 
 	TRACE_ENTRY();
 
@@ -2039,34 +1763,18 @@ out_put:
 	return res;
 }
 
-static int scst_sysfs_sess_get_active_commands_work_fn(struct scst_sysfs_work_item *work)
-{
-	return scst_sysfs_sess_get_active_commands(work->sess);
-}
-
 static ssize_t scst_sess_sysfs_active_commands_show(struct kobject *kobj,
 			    struct kobj_attribute *attr, char *buf)
 {
 	int res;
 	struct scst_session *sess;
-	struct scst_sysfs_work_item *work;
 
 	sess = scst_kobj_to_sess(kobj);
 
-	res = scst_alloc_sysfs_work(scst_sysfs_sess_get_active_commands_work_fn,
-			true, &work);
-	if (res != 0)
-		goto out;
-
-	work->sess = sess;
-
-	kobject_get(sess->sess_kobj);
-
-	res = scst_sysfs_queue_wait_work(work);
-	if (res != -EAGAIN)
+	res = scst_sysfs_sess_get_active_commands(sess);
+	if (res >= 0)
 		res = sprintf(buf, "%i\n", res);
 
-out:
 	return res;
 }
 
@@ -2703,19 +2411,12 @@ out:
 	return res;
 }
 
-static int __scst_acg_io_grouping_type_store_work_fn(struct scst_sysfs_work_item *work)
-{
-	return __scst_acg_process_io_grouping_type_store(work->tgt, work->acg,
-			work->io_grouping_type);
-}
-
 static ssize_t __scst_acg_io_grouping_type_store(struct scst_acg *acg,
 	const char *buf, size_t count)
 {
 	int res = 0;
 	int prev = acg->acg_io_grouping_type;
 	long io_grouping_type;
-	struct scst_sysfs_work_item *work;
 
 	if (strncasecmp(buf, SCST_IO_GROUPING_AUTO_STR,
 			min_t(int, strlen(SCST_IO_GROUPING_AUTO_STR), count)) == 0)
@@ -2739,17 +2440,8 @@ static ssize_t __scst_acg_io_grouping_type_store(struct scst_acg *acg,
 	if (prev == io_grouping_type)
 		goto out;
 
-	res = scst_alloc_sysfs_work(__scst_acg_io_grouping_type_store_work_fn,
-					false, &work);
-	if (res != 0)
-		goto out;
-
-	work->tgt = acg->tgt;
-	work->acg = acg;
-	work->io_grouping_type = io_grouping_type;
-
-	res = scst_sysfs_queue_wait_work(work);
-
+	res = __scst_acg_process_io_grouping_type_store(acg->tgt, acg,
+							io_grouping_type);
 out:
 	return res;
 }
@@ -2871,50 +2563,36 @@ out:
 	return res;
 }
 
-static int __scst_acg_cpu_mask_store_work_fn(struct scst_sysfs_work_item *work)
-{
-	return __scst_acg_process_cpu_mask_store(work->tgt, work->acg,
-			&work->cpu_mask);
-}
-
 static ssize_t __scst_acg_cpu_mask_store(struct scst_acg *acg,
 	const char *buf, size_t count)
 {
 	int res;
-	struct scst_sysfs_work_item *work;
+	cpumask_t *cpu_mask;
 
 	/* cpumask might be too big for stack */
-
-	res = scst_alloc_sysfs_work(__scst_acg_cpu_mask_store_work_fn,
-					false, &work);
-	if (res != 0)
+	res = -ENOMEM;
+	cpu_mask = kmalloc(cpumask_size(), GFP_KERNEL);
+	if (!cpu_mask)
 		goto out;
 
 	/*
 	 * We can't use cpumask_parse_user() here, because it expects
 	 * buffer in the user space.
 	 */
-	res = __bitmap_parse(buf, count, 0, cpumask_bits(&work->cpu_mask),
+	res = __bitmap_parse(buf, count, 0, cpumask_bits(cpu_mask),
 				nr_cpumask_bits);
 	if (res != 0) {
 		PRINT_ERROR("__bitmap_parse() failed: %d", res);
-		goto out_release;
+		goto out;
 	}
 
-	if (cpus_equal(acg->acg_cpu_mask, work->cpu_mask))
+	if (cpus_equal(acg->acg_cpu_mask, *cpu_mask))
 		goto out;
 
-	work->tgt = acg->tgt;
-	work->acg = acg;
-
-	res = scst_sysfs_queue_wait_work(work);
-
+	res = __scst_acg_process_cpu_mask_store(acg->tgt, acg, cpu_mask);
 out:
+	kfree(cpu_mask);
 	return res;
-
-out_release:
-	scst_sysfs_work_release(&work->sysfs_work_kref);
-	goto out;
 }
 
 static ssize_t scst_tgt_cpu_mask_show(struct kobject *kobj,
@@ -3249,11 +2927,10 @@ static ssize_t scst_rel_tgt_id_show(struct kobject *kobj,
 	return res;
 }
 
-static int scst_process_rel_tgt_id_store(struct scst_sysfs_work_item *work)
+static int scst_process_rel_tgt_id_store(struct scst_tgt *tgt,
+					 unsigned long rel_tgt_id)
 {
 	int res = 0;
-	struct scst_tgt *tgt = work->tgt;
-	unsigned long rel_tgt_id = work->l;
 
 	TRACE_ENTRY();
 
@@ -3268,7 +2945,7 @@ static int scst_process_rel_tgt_id_store(struct scst_sysfs_work_item *work)
 			PRINT_ERROR("Relative port id %d is not unique",
 				(uint16_t)rel_tgt_id);
 			res = -EBADSLT;
-			goto out_put;
+			goto out;
 		}
 	}
 
@@ -3280,15 +2957,12 @@ static int scst_process_rel_tgt_id_store(struct scst_sysfs_work_item *work)
 		PRINT_ERROR("Invalid relative port id %d",
 			(uint16_t)rel_tgt_id);
 		res = -EINVAL;
-		goto out_put;
+		goto out;
 	}
 
 set:
 	tgt->rel_tgt_id = (uint16_t)rel_tgt_id;
-
-out_put:
-	kobject_put(tgt->tgt_kobj);
-
+out:
 	TRACE_EXIT_RES(res);
 	return res;
 }
@@ -3299,7 +2973,6 @@ static ssize_t scst_rel_tgt_id_store(struct kobject *kobj,
 	int res = 0;
 	struct scst_tgt *tgt;
 	unsigned long rel_tgt_id;
-	struct scst_sysfs_work_item *work;
 
 	TRACE_ENTRY();
 
@@ -3314,17 +2987,7 @@ static ssize_t scst_rel_tgt_id_store(struct kobject *kobj,
 		goto out;
 	}
 
-	res = scst_alloc_sysfs_work(scst_process_rel_tgt_id_store, false,
-					&work);
-	if (res != 0)
-		goto out;
-
-	work->tgt = tgt;
-	work->l = rel_tgt_id;
-
-	kobject_get(tgt->tgt_kobj);
-
-	res = scst_sysfs_queue_wait_work(work);
+	res = scst_process_rel_tgt_id_store(tgt, rel_tgt_id);
 	if (res == 0)
 		res = count;
 
@@ -4061,17 +3724,11 @@ out:
 	return res;
 }
 
-static int scst_threads_store_work_fn(struct scst_sysfs_work_item *work)
-{
-	return scst_process_threads_store(work->new_threads_num);
-}
-
 static ssize_t scst_threads_store(struct kobject *kobj,
 	struct kobj_attribute *attr, const char *buf, size_t count)
 {
 	int res;
 	long newtn;
-	struct scst_sysfs_work_item *work;
 
 	TRACE_ENTRY();
 
@@ -4086,16 +3743,9 @@ static ssize_t scst_threads_store(struct kobject *kobj,
 		goto out;
 	}
 
-	res = scst_alloc_sysfs_work(scst_threads_store_work_fn, false, &work);
-	if (res != 0)
-		goto out;
-
-	work->new_threads_num = newtn;
-
-	res = scst_sysfs_queue_wait_work(work);
+	res = scst_process_threads_store(newtn);
 	if (res == 0)
 		res = count;
-
 out:
 	TRACE_EXIT_RES(res);
 	return res;
@@ -4437,13 +4087,7 @@ static ssize_t scst_last_sysfs_mgmt_res_show(struct kobject *kobj,
 
 	TRACE_ENTRY();
 
-	spin_lock(&sysfs_work_lock);
-	TRACE_DBG("active_sysfs_works %d", active_sysfs_works);
-	if (active_sysfs_works > 0)
-		res = -EAGAIN;
-	else
-		res = sprintf(buf, "%d\n", last_sysfs_work_res);
-	spin_unlock(&sysfs_work_lock);
+	res = sprintf(buf, "%d\n", 0);
 
 	TRACE_EXIT_RES(res);
 	return res;
@@ -5075,16 +4719,6 @@ int __init scst_sysfs_init(void)
 
 	TRACE_ENTRY();
 
-	sysfs_work_thread = kthread_run(sysfs_work_thread_fn,
-		NULL, "scst_uid");
-	if (IS_ERR(sysfs_work_thread)) {
-		res = PTR_ERR(sysfs_work_thread);
-		PRINT_ERROR("kthread_run() for user interface thread "
-			"failed: %d", res);
-		sysfs_work_thread = NULL;
-		goto out;
-	}
-
 	scst_sysfs_root_kobj = kobject_create_and_add_kt(&scst_sysfs_root_ktype,
 						       kernel_kobj, "scst_tgt");
 	if (!scst_sysfs_root_kobj)
@@ -5134,8 +4768,6 @@ targets_kobj_error:
 	kobject_put(scst_sysfs_root_kobj);
 
 sysfs_root_kobj_error:
-	kthread_stop(sysfs_work_thread);
-
 	if (res == 0)
 		res = -EINVAL;
 
@@ -5174,9 +4806,6 @@ void scst_sysfs_cleanup(void)
 #if 0
 	msleep(3000);
 #endif
-
-	if (sysfs_work_thread)
-		kthread_stop(sysfs_work_thread);
 
 	PRINT_INFO("%s", "Exiting SCST sysfs hierarchy done");
 
