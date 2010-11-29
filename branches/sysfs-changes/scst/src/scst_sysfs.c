@@ -17,10 +17,14 @@
  *  GNU General Public License for more details.
  *
  *  Locking strategy:
- *  - Inside a sysfs .show() or .store() callback function, do not suspend
- *    activity nor lock scst_mutex.
- *  - Dynamic kobject creation may happen while activity is suspended and/or
- *    scst_mutex is locked.
+ *  - Only suspend activity or lock scst_mutex inside .show() or .store()
+ *    callback function associated with a attributes registered by
+ *    scst_sysfs_init() and never from sysfs callback functions invoked for
+ *    dynamically created sysfs attributes.
+ *  - Dynamic kobject creation and deletion may happen while activity is
+ *    suspended and/or scst_mutex is locked. It is even necessary to do that
+ *    under lock to avoid races between creation and deletion/recreation.
+ *
  *  The above scheme avoids locking inversion between the s_active locking
  *  object associated with each kobject and activity suspending / scst_mutex.
  */
