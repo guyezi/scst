@@ -51,6 +51,12 @@ start_server()
 		modprobe ${module} || return $?
 	done
 
+        find /sys/kernel/scst_tgt -name trace_level | while read f; do
+	    #echo add entryexit >$f
+	    #echo add debug >$f
+	    :
+	done
+
 	/usr/local/sbin/iscsi-scstd
 
 	$SCST_CMD -config $SCST_CFG || return $?
