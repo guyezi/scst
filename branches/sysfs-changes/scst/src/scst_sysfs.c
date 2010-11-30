@@ -3590,8 +3590,7 @@ static enum mgmt_path_type __parse_path(char *path,
 		if (strcmp(comp[3], "luns") == 0) {
 			res = TARGET_LUNS_PATH;
 			goto out;
-		}
-		else if (strcmp(comp[3], "ini_groups") != 0)
+		} else if (strcmp(comp[3], "ini_groups") != 0)
 			goto err;
 		if (!comp[4]) {
 			res = TARGET_INI_GROUPS_PATH;
@@ -3648,7 +3647,7 @@ static ssize_t scst_mgmt_store(struct kobject *kobj,
 	res = -EINVAL;
 	if (strncmp(buffer, "in ", 3) != 0)
 		goto out;
-	
+
 	path = buffer + 3;
 	while (*path && isspace((u8)*path))
 		path++;
