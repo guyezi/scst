@@ -405,12 +405,6 @@ void scst_unregister_target_template(struct scst_tgt_template *vtt)
 
 	TRACE_ENTRY();
 
-#ifdef CONFIG_SCST_PROC
-	scst_cleanup_proc_target_dir_entries(vtt);
-#else
-	scst_tgtt_sysfs_del(vtt);
-#endif
-
 	mutex_lock(&scst_mutex);
 
 	list_for_each_entry(t, &scst_template_list, scst_template_list_entry) {
@@ -435,7 +429,14 @@ restart:
 		mutex_lock(&scst_mutex);
 		goto restart;
 	}
+
 	mutex_unlock(&scst_mutex);
+
+#ifdef CONFIG_SCST_PROC
+	scst_cleanup_proc_target_dir_entries(vtt);
+#else
+	scst_tgtt_sysfs_del(vtt);
+#endif
 
 	PRINT_INFO("Target template %s unregistered successfully", vtt->name);
 
@@ -509,28 +510,23 @@ struct scst_tgt *scst_register_target(struct scst_tgt_template *vtt,
 			SCST_DEFAULT_TGT_NAME_SUFFIX, tgt_num++);
 	}
 
+	if (mutex_lock_interruptible(&scst_mutex) != 0) {
+		rc = -EINTR;
+		goto out_free_tgt;
+	}
+
 #ifdef CONFIG_SCST_PROC
 	rc = scst_build_proc_target_entries(tgt);
-	if (rc)
-		goto out_free_tgt;
-
-	rc = mutex_lock_interruptible(&scst_mutex);
-	if (rc)
-		goto out_free_tgt;
+	if (rc < 0)
+		goto out_unlock;
 #else
 	rc = scst_tgt_sysfs_create(tgt);
-	if (rc)
-		goto out_free_tgt;
-
-	rc = mutex_lock_interruptible(&scst_mutex);
-	if (rc)
-		goto out_sysfs_del;
+	if (rc < 0)
+		goto out_unlock;
 
 	tgt->default_acg = scst_alloc_add_acg(tgt, tgt->tgt_name, false);
-	if (!tgt->default_acg) {
-		mutex_unlock(&scst_mutex);
+	if (tgt->default_acg == NULL)
 		goto out_sysfs_del;
-	}
 #endif
 
 	mutex_lock(&scst_mutex2);
@@ -555,8 +551,13 @@ out:
 
 #ifndef CONFIG_SCST_PROC
 out_sysfs_del:
+	mutex_unlock(&scst_mutex);
 	scst_tgt_sysfs_del(tgt);
+	goto out_free_tgt;
 #endif
+
+out_unlock:
+	mutex_unlock(&scst_mutex);
 
 out_free_tgt:
 	/* In case of error tgt_name will be freed in scst_free_tgt() */
@@ -1431,7 +1432,6 @@ void scst_unregister_dev_driver(struct scst_dev_type *dev_type)
 	mutex_unlock(&scst_mutex);
 	scst_resume_activity();
 
-
 #ifdef CONFIG_SCST_PROC
 	scst_cleanup_proc_dev_handler_dir_entries(dev_type);
 #else
@@ -1519,16 +1519,19 @@ void scst_unregister_virtual_dev_driver(struct scst_dev_type *dev_type)
 {
 	TRACE_ENTRY();
 
+	mutex_lock(&scst_mutex);
+
+	/* Disable sysfs mgmt calls (e.g. addition of new devices) */
+	list_del(&dev_type->dev_type_list_entry);
+
+	mutex_unlock(&scst_mutex);
+
 #ifdef CONFIG_SCST_PROC
 	if (!dev_type->no_proc)
 		scst_cleanup_proc_dev_handler_dir_entries(dev_type);
 #else
 	scst_devt_sysfs_del(dev_type);
 #endif
-
-	mutex_lock(&scst_mutex);
-	list_del(&dev_type->dev_type_list_entry);
-	mutex_unlock(&scst_mutex);
 
 	PRINT_INFO("Device handler \"%s\" unloaded", dev_type->name);
 
