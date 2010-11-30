@@ -265,6 +265,7 @@ static void vdisk_exec_read(struct scst_cmd *cmd,
 	struct scst_vdisk_thr *thr, loff_t loff);
 static void vdisk_exec_write(struct scst_cmd *cmd,
 	struct scst_vdisk_thr *thr, loff_t loff);
+static int vcdrom_set_filename(struct scst_device *dev, char *buf);
 static void blockio_exec_rw(struct scst_cmd *cmd, struct scst_vdisk_thr *thr,
 	u64 lba_start, int write);
 static int blockio_flush(struct block_device *bdev);
@@ -334,9 +335,6 @@ static ssize_t vdev_sysfs_t10_dev_id_show(struct kobject *kobj,
 static ssize_t vdev_sysfs_usn_show(struct kobject *kobj,
 	struct kobj_attribute *attr, char *buf);
 
-static ssize_t vcdrom_sysfs_filename_store(struct kobject *kobj,
-	struct kobj_attribute *attr, const char *buf, size_t count);
-
 static struct kobj_attribute vdev_size_attr =
 	__ATTR(size_mb, S_IRUGO, vdev_sysfs_size_show, NULL);
 static struct kobj_attribute vdisk_blocksize_attr =
@@ -364,8 +362,7 @@ static struct kobj_attribute vdev_usn_attr =
 	__ATTR(usn, S_IRUGO, vdev_sysfs_usn_show, NULL);
 
 static struct kobj_attribute vcdrom_filename_attr =
-	__ATTR(filename, S_IRUGO|S_IWUSR, vdev_sysfs_filename_show,
-		vcdrom_sysfs_filename_store);
+	__ATTR(filename, S_IRUGO, vdev_sysfs_filename_show, NULL);
 
 static const struct attribute *vdisk_fileio_attrs[] = {
 	&vdev_size_attr.attr,
@@ -552,6 +549,7 @@ static struct scst_dev_type vcdrom_devtype = {
 #else
 	.add_device =		vcdrom_add_device,
 	.del_device =		vcdrom_del_device,
+	.set_filename =	 	vcdrom_set_filename,
 	.dev_attrs =		vcdrom_attrs,
 	.add_device_parameters = NULL,
 #endif
@@ -4018,10 +4016,7 @@ out_unlock:
 	goto out_resume;
 }
 
-#ifndef CONFIG_SCST_PROC
-
-static int vcdrom_sysfs_process_filename_store(struct scst_device *dev,
-					       char *buf)
+static int vcdrom_set_filename(struct scst_device *dev, char *buf)
 {
 	int res;
 	struct scst_vdisk_dev *virt_dev;
@@ -4035,37 +4030,10 @@ static int vcdrom_sysfs_process_filename_store(struct scst_device *dev,
 
 	TRACE_EXIT_RES(res);
 	return res;
+
 }
 
-static ssize_t vcdrom_sysfs_filename_store(struct kobject *kobj,
-	struct kobj_attribute *attr, const char *buf, size_t count)
-{
-	int res;
-	char *i_buf;
-	struct scst_device *dev;
-
-	TRACE_ENTRY();
-
-	dev = scst_kobj_to_dev(kobj);
-
-	i_buf = kasprintf(GFP_KERNEL, "%.*s", (int)count, buf);
-	if (i_buf == NULL) {
-		PRINT_ERROR("Unable to alloc intermediate buffer with size %zd",
-			count+1);
-		res = -ENOMEM;
-		goto out;
-	}
-
-	res = vcdrom_sysfs_process_filename_store(dev, i_buf);
-	if (res == 0)
-		res = count;
-
-	kfree(i_buf);
-
-out:
-	TRACE_EXIT_RES(res);
-	return res;
-}
+#ifndef CONFIG_SCST_PROC
 
 static ssize_t vdev_sysfs_size_show(struct kobject *kobj,
 	struct kobj_attribute *attr, char *buf)

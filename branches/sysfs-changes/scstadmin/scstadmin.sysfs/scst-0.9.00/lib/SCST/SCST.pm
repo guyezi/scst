@@ -2936,23 +2936,42 @@ sub setDeviceAttribute {
 	return SCST_C_DEV_BAD_ATTRIBUTES if (!defined($$attributes{$attribute}));
 	return SCST_C_DEV_ATTRIBUTE_STATIC if ($$attributes{$attribute}->{'static'});
 
-	my $path = mkpath(SCST_ROOT, SCST_DEVICES, $device, $attribute);
+	if ($attribute eq "filename") {
+		my $io = new IO::File mkpath(SCST_ROOT, SCST_MGMT_IO), O_WRONLY;
 
-	my $io = new IO::File $path, O_WRONLY;
+		return SCST_C_DEV_SETATTR_FAIL if (!$io);
 
-	return SCST_C_DEV_SETATTR_FAIL if (!$io);
+		my $cmd = "in " . mkpath(SCST_DEVICES, $device) . " set_filename $value";
+		my $bytes;
 
-	my $bytes;
+		if ($self->{'debug'}) {
+			print "DBG($$): set filename of $device to $value\n";
+		} else {
+			$bytes = _syswrite($io, $value, length($value));
+		}
 
-	if ($self->{'debug'}) {
-		print "DBG($$): $path -> $attribute = $value\n";
+		close $io;
+
+		return FALSE if ($self->{'debug'} || $bytes);
 	} else {
-		$bytes = _syswrite($io, $value, length($value));
+		my $path = mkpath(SCST_ROOT, SCST_DEVICES, $device, $attribute);
+	
+		my $io = new IO::File $path, O_WRONLY;
+	
+		return SCST_C_DEV_SETATTR_FAIL if (!$io);
+	
+		my $bytes;
+	
+		if ($self->{'debug'}) {
+			print "DBG($$): $path -> $attribute = $value\n";
+		} else {
+			$bytes = _syswrite($io, $value, length($value));
+		}
+	
+		close $io;
+
+		return FALSE if ($self->{'debug'} || $bytes);
 	}
-
-	close $io;
-
-	return FALSE if ($self->{'debug'} || $bytes);
         return SCST_C_DEV_SETATTR_FAIL;
 }
 

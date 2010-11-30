@@ -49,6 +49,7 @@
 
 enum mgmt_path_type {
 	PATH_NOT_RECOGNIZED,
+	DEVICE_PATH,
 	DEVICE_TYPE_PATH,
 	TARGET_TEMPLATE_PATH,
 	TARGET_LUNS_PATH,
@@ -314,6 +315,90 @@ struct sysfs_ops *scst_sysfs_get_sysfs_ops(void)
 	return &scst_sysfs_ops;
 }
 EXPORT_SYMBOL_GPL(scst_sysfs_get_sysfs_ops);
+
+/**
+ ** Lookup functions.
+ **/
+
+static struct scst_dev_type *__scst_lookup_devt(const char *name)
+{
+	struct scst_dev_type *dt;
+
+	lockdep_assert_held(&scst_mutex);
+
+	list_for_each_entry(dt, &scst_virtual_dev_type_list,
+			    dev_type_list_entry)
+		if (strcmp(dt->name, name) == 0)
+			return dt;
+
+	TRACE_DBG("devt %s not found", name);
+
+	return NULL;
+}
+
+static struct scst_device *__scst_lookup_dev(const char *name)
+{
+	struct scst_device *d;
+
+	list_for_each_entry(d, &scst_dev_list, dev_list_entry)
+		if (strcmp(d->virt_name, name) == 0)
+			return d;
+
+	TRACE_DBG("dev %s not found", name);
+
+	return NULL;
+}
+
+static struct scst_tgt_template *__scst_lookup_tgtt(const char *name)
+{
+	struct scst_tgt_template *tt;
+
+	lockdep_assert_held(&scst_mutex);
+
+	list_for_each_entry(tt, &scst_template_list, scst_template_list_entry)
+		if (strcmp(tt->name, name) == 0)
+			return tt;
+
+	TRACE_DBG("tgtt %s not found", name);
+
+	return NULL;
+}
+
+static struct scst_tgt *__scst_lookup_tgt(struct scst_tgt_template *tgtt,
+					  const char *target_name)
+{
+	struct scst_tgt *tgt;
+
+	lockdep_assert_held(&scst_mutex);
+
+	list_for_each_entry(tgt, &tgtt->tgt_list, tgt_list_entry)
+		if (strcmp(tgt->tgt_name, target_name) == 0)
+			return tgt;
+
+	TRACE_DBG("tgt %s not found", target_name);
+
+	return NULL;
+}
+
+static struct scst_acg *__scst_lookup_acg(const struct scst_tgt *tgt,
+					  const char *acg_name)
+{
+	struct scst_acg *acg;
+
+	lockdep_assert_held(&scst_mutex);
+
+	acg = tgt->default_acg;
+	if (acg && strcmp(acg->acg_name, acg_name) == 0)
+		return acg;
+
+	list_for_each_entry(acg, &tgt->tgt_acg_list, acg_list_entry)
+		if (strcmp(acg->acg_name, acg_name) == 0)
+			return acg;
+
+	TRACE_DBG("acg %s not found", acg_name);
+
+	return NULL;
+}
 
 /**
  ** Target Template
@@ -852,6 +937,24 @@ struct scst_device *scst_kobj_to_dev(struct kobject *kobj)
 	return scst_kobj_to_scst_obj(kobj);
 }
 EXPORT_SYMBOL(scst_kobj_to_dev);
+
+static int scst_process_dev_mgmt_store(char *cmd, struct scst_device *dev)
+{
+	int res;
+
+	TRACE_ENTRY();
+
+	res = -EPERM;
+	if (!dev->handler->set_filename)
+		goto out;
+	res = -EINVAL;
+	if (strncmp(cmd, "set_filename ", 13) != 0)
+		goto out;
+	res = dev->handler->set_filename(dev, cmd + 13);
+out:
+	TRACE_EXIT_RES(res);
+	return res;
+}
 
 static ssize_t scst_dev_sysfs_type_show(struct kobject *kobj,
 			    struct kobj_attribute *attr, char *buf)
@@ -2035,7 +2138,7 @@ static int __scst_process_luns_mgmt_store(char *buffer,
 	char *p, *e = NULL;
 	unsigned int virt_lun;
 	struct scst_acg_dev *acg_dev = NULL, *acg_dev_tmp;
-	struct scst_device *d, *dev = NULL;
+	struct scst_device *dev = NULL;
 
 #define SCST_LUN_ACTION_ADD	1
 #define SCST_LUN_ACTION_DEL	2
@@ -2044,7 +2147,7 @@ static int __scst_process_luns_mgmt_store(char *buffer,
 
 	TRACE_ENTRY();
 
-	scst_assert_activity_suspended();
+	/*scst_assert_activity_suspended();*/
 
 	TRACE_DBG("buffer %s", buffer);
 
@@ -2089,13 +2192,7 @@ static int __scst_process_luns_mgmt_store(char *buffer,
 			e++;
 		*e = '\0';
 
-		list_for_each_entry(d, &scst_dev_list, dev_list_entry) {
-			if (!strcmp(d->virt_name, p)) {
-				dev = d;
-				TRACE_DBG("Device %p (%s) found", dev, p);
-				break;
-			}
-		}
+		dev = __scst_lookup_dev(p);
 		if (dev == NULL) {
 			PRINT_ERROR("Device '%s' not found", p);
 			res = -EINVAL;
@@ -3348,6 +3445,8 @@ static ssize_t scst_mgmt_show(struct kobject *kobj,
 {
 	ssize_t count;
 	static const char help[] =
+/* devices/<dev>/filename */
+"in devices/<dev> set_filename <filename>"
 /* scst_devt_mgmt or scst_devt_pass_through_mgmt */
 "in handlers/<devt> <devt_cmd>\n"
 /* scst_tgtt_mgmt */
@@ -3417,75 +3516,9 @@ static ssize_t scst_mgmt_show(struct kobject *kobj,
 	return count;
 }
 
-static struct scst_dev_type *__scst_lookup_devt(const char *name)
-{
-	struct scst_dev_type *dt;
-
-	lockdep_assert_held(&scst_mutex);
-
-	list_for_each_entry(dt, &scst_virtual_dev_type_list,
-			    dev_type_list_entry)
-		if (strcmp(dt->name, name) == 0)
-			return dt;
-
-	TRACE_DBG("devt %s not found", name);
-
-	return NULL;
-}
-
-static struct scst_tgt_template *__scst_lookup_tgtt(const char *name)
-{
-	struct scst_tgt_template *tt;
-
-	lockdep_assert_held(&scst_mutex);
-
-	list_for_each_entry(tt, &scst_template_list, scst_template_list_entry)
-		if (strcmp(tt->name, name) == 0)
-			return tt;
-
-	TRACE_DBG("tgtt %s not found", name);
-
-	return NULL;
-}
-
-static struct scst_tgt *__scst_lookup_tgt(struct scst_tgt_template *tgtt,
-					  const char *target_name)
-{
-	struct scst_tgt *tgt;
-
-	lockdep_assert_held(&scst_mutex);
-
-	list_for_each_entry(tgt, &tgtt->tgt_list, tgt_list_entry)
-		if (strcmp(tgt->tgt_name, target_name) == 0)
-			return tgt;
-
-	TRACE_DBG("tgt %s not found", target_name);
-
-	return NULL;
-}
-
-static struct scst_acg *__scst_lookup_acg(const struct scst_tgt *tgt,
-					  const char *acg_name)
-{
-	struct scst_acg *acg;
-
-	lockdep_assert_held(&scst_mutex);
-
-	acg = tgt->default_acg;
-	if (acg && strcmp(acg->acg_name, acg_name) == 0)
-		return acg;
-
-	list_for_each_entry(acg, &tgt->tgt_acg_list, acg_list_entry)
-		if (strcmp(acg->acg_name, acg_name) == 0)
-			return acg;
-
-	TRACE_DBG("acg %s not found", acg_name);
-
-	return NULL;
-}
-
 static enum mgmt_path_type __parse_path(char *path,
 					struct scst_dev_type **devt,
+					struct scst_device **dev,
 					struct scst_tgt_template **tgtt,
 					struct scst_tgt **tgt,
 					struct scst_acg **acg)
@@ -3501,6 +3534,7 @@ static enum mgmt_path_type __parse_path(char *path,
 	BUG_ON(!path || !devt || !tgtt || !tgt || !acg);
 
 	*devt = NULL;
+	*dev = NULL;
 	*tgtt = NULL;
 	*tgt = NULL;
 	*acg = NULL;
@@ -3523,7 +3557,13 @@ static enum mgmt_path_type __parse_path(char *path,
 
 	if (!comp[0] || !comp[1])
 		goto err;
-	if (strcmp(comp[0], "handlers") == 0 && !comp[2]) {
+	if (strcmp(comp[0], "devices") == 0) {
+		*dev = __scst_lookup_dev(comp[1]);
+		if (!*dev)
+			goto err;
+		res = DEVICE_PATH;
+		goto out;
+	} else if (strcmp(comp[0], "handlers") == 0 && !comp[2]) {
 		*devt = __scst_lookup_devt(comp[1]);
 		if (!*devt)
 			goto err;
@@ -3578,6 +3618,7 @@ static ssize_t scst_mgmt_store(struct kobject *kobj,
 	char *buffer, *path, *path_end, *cmd;
 	enum mgmt_path_type mgmt_path_type;
 	struct scst_dev_type *devt;
+	struct scst_device *dev;
 	struct scst_tgt_template *tgtt;
 	struct scst_tgt *tgt;
 	struct scst_acg *acg;
@@ -3620,16 +3661,14 @@ static ssize_t scst_mgmt_store(struct kobject *kobj,
 	if (res)
 		goto out_resume;
 
-	mgmt_path_type = __parse_path(path, &devt, &tgtt, &tgt, &acg);
-	/*
-	 * Since destroying device types, target templates, targets and access
-	 * control groups happens while activity is suspended, it is safe to
-	 * unlock scst_mutex here.
-	 */
+	mgmt_path_type = __parse_path(path, &devt, &dev, &tgtt, &tgt, &acg);
 	mutex_unlock(&scst_mutex);
 
 	res = -EINVAL;
 	switch (mgmt_path_type) {
+	case DEVICE_PATH:
+		res = scst_process_dev_mgmt_store(cmd, dev);
+		break;
 	case DEVICE_TYPE_PATH:
 		BUG_ON(!devt);
 		if (devt->add_device)

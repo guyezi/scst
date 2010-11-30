@@ -1291,6 +1291,13 @@ struct scst_dev_type {
 	 */
 	void (*detach_tgt) (struct scst_tgt_dev *tgt_dev);
 
+	/*
+	 * Set the file if storage is provided by a file.
+	 *
+	 * OPTIONAL.
+	 */
+	ssize_t (*set_filename)(struct scst_device *dev, char *filename);
+
 #ifdef CONFIG_SCST_PROC
 	/*
 	 * Those functions can be used to export the handler's statistics and
@@ -3673,9 +3680,9 @@ static inline int cancel_delayed_work_sync(struct work_struct *work)
 #ifdef CONFIG_DEBUG_LOCK_ALLOC
 extern struct lockdep_map scst_suspend_dep_map;
 #define scst_assert_activity_suspended()		\
-	WARN_ON(!lock_is_held(&scst_suspend_dep_map));
+	WARN_ON(debug_locks && !lock_is_held(&scst_suspend_dep_map));
 #define scst_assert_activity_not_suspended()		\
-	WARN_ON(lock_is_held(&scst_suspend_dep_map));
+	WARN_ON(debug_locks && lock_is_held(&scst_suspend_dep_map));
 #else
 #define scst_assert_activity_suspended() do { } while (0)
 #define scst_assert_activity_not_suspended() do { } while (0)
