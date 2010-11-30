@@ -6215,6 +6215,10 @@ failed:
 	if (res != 0)
 		goto failed;
 
+	/*
+	 * scst_sess_alloc_tgt_devs() must be called after session added in the
+	 * sess_list to not race with scst_check_reassign_sess()!
+	 */
 	res = scst_sess_alloc_tgt_devs(sess);
 #endif
 

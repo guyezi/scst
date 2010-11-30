@@ -180,11 +180,11 @@ static int scst_process_devt_mgmt_store(char *buffer,
 static int scst_process_devt_pass_through_mgmt_store(char *buffer,
 						struct scst_dev_type *devt);
 
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 34)
 /**
  ** Backported sysfs functions.
  **/
 
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 34)
 static int sysfs_create_files(struct kobject *kobj,
 			      const struct attribute **ptr)
 {
@@ -199,10 +199,11 @@ static int sysfs_create_files(struct kobject *kobj,
 	return err;
 }
 
-static void sysfs_remove_files(struct kobject * kobj,
+static void sysfs_remove_files(struct kobject *kobj,
 			       const struct attribute **ptr)
 {
 	int i;
+
 	for (i = 0; ptr[i]; i++)
 		sysfs_remove_file(kobj, ptr[i]);
 }
@@ -825,15 +826,13 @@ void scst_tgt_sysfs_del(struct scst_tgt *tgt)
 	TRACE_ENTRY();
 
 	kobject_del(tgt->tgt_sess_kobj);
-	kobject_put(tgt->tgt_sess_kobj);
-
 	kobject_del(tgt->tgt_luns_kobj);
-	kobject_put(tgt->tgt_luns_kobj);
-
 	kobject_del(tgt->tgt_ini_grp_kobj);
-	kobject_put(tgt->tgt_ini_grp_kobj);
-
 	kobject_del(tgt->tgt_kobj);
+
+	kobject_put(tgt->tgt_sess_kobj);
+	kobject_put(tgt->tgt_luns_kobj);
+	kobject_put(tgt->tgt_ini_grp_kobj);
 	kobject_put(tgt->tgt_kobj);
 
 	TRACE_EXIT();
@@ -1180,7 +1179,8 @@ void scst_devt_dev_sysfs_del(struct scst_device *dev)
 	if (dev->handler == &scst_null_devtype)
 		goto out;
 
-	sysfs_remove_files(dev->dev_kobj, dev->handler->dev_attrs);
+	if (dev->handler->dev_attrs)
+		sysfs_remove_files(dev->dev_kobj, dev->handler->dev_attrs);
 	sysfs_remove_file(dev->dev_kobj, &dev_threads_pool_type_attr.attr);
 	sysfs_remove_file(dev->dev_kobj, &dev_threads_num_attr.attr);
 	sysfs_remove_link(dev->handler->devt_kobj, dev->virt_name);
@@ -1262,9 +1262,9 @@ void scst_dev_sysfs_del(struct scst_device *dev)
 	TRACE_ENTRY();
 
 	kobject_del(dev->dev_exp_kobj);
-	kobject_put(dev->dev_exp_kobj);
-
 	kobject_del(dev->dev_kobj);
+
+	kobject_put(dev->dev_exp_kobj);
 	kobject_put(dev->dev_kobj);
 
 	TRACE_EXIT();
@@ -1874,8 +1874,7 @@ int scst_sess_sysfs_create(struct scst_session *sess)
 		res = sysfs_create_files(sess->sess_kobj,
 					 sess->tgt->tgtt->sess_attrs);
 		if (res) {
-			PRINT_ERROR("Can't add attributes for initiator %s",
-				    name);
+			PRINT_ERROR("Can't add attributes for session %s", name);
 			goto out_free;
 		}
 	}
@@ -2639,12 +2638,11 @@ void scst_acg_sysfs_del(struct scst_acg *acg)
 	TRACE_ENTRY();
 
 	kobject_del(acg->luns_kobj);
-	kobject_put(acg->luns_kobj);
-
 	kobject_del(acg->initiators_kobj);
-	kobject_put(acg->initiators_kobj);
-
 	kobject_del(acg->acg_kobj);
+
+	kobject_put(acg->luns_kobj);
+	kobject_put(acg->initiators_kobj);
 	kobject_put(acg->acg_kobj);
 
 	TRACE_EXIT();
