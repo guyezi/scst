@@ -907,7 +907,7 @@ static int scst_process_dev_sysfs_threads_data_store(
 
 	TRACE_ENTRY();
 
-	//scst_assert_activity_suspended();
+	scst_assert_activity_suspended();
 
 	TRACE_DBG("dev %p, threads_num %d, threads_pool_type %d", dev,
 		threads_num, threads_pool_type);
@@ -2053,7 +2053,7 @@ static int __scst_process_luns_mgmt_store(char *buffer,
 
 	TRACE_ENTRY();
 
-	//scst_assert_activity_suspended();
+	scst_assert_activity_suspended();
 
 	TRACE_DBG("buffer %s", buffer);
 
@@ -2387,7 +2387,7 @@ static int __scst_acg_process_io_grouping_type_store(struct scst_tgt *tgt,
 	int res = 0;
 	struct scst_acg_dev *acg_dev;
 
-	//scst_assert_activity_suspended();
+	scst_assert_activity_suspended();
 
 	TRACE_DBG("tgt %p, acg %p, io_grouping_type %d", tgt, acg,
 		io_grouping_type);
@@ -2825,7 +2825,7 @@ static int scst_process_ini_group_mgmt_store(char *buffer,
 
 	TRACE_ENTRY();
 
-	//scst_assert_activity_suspended();
+	scst_assert_activity_suspended();
 
 	TRACE_DBG("tgt %p, buffer %s", tgt, buffer);
 
@@ -3103,7 +3103,7 @@ static int scst_process_acg_ini_mgmt_store(char *buffer,
 
 	TRACE_ENTRY();
 
-	//scst_assert_activity_suspended();
+	scst_assert_activity_suspended();
 
 	TRACE_DBG("tgt %p, acg %p, buffer %s", tgt, acg, buffer);
 
@@ -3594,7 +3594,8 @@ static ssize_t scst_mgmt_store(struct kobject *kobj,
 
 	TRACE_ENTRY();
 
-	lockdep_assert_held(&scst_mutex);
+	scst_assert_activity_not_suspended();
+	lockdep_assert_not_held(&scst_mutex);
 
 	TRACE_DBG("Processing management command %.*s", (int)count, buf);
 
@@ -4324,7 +4325,7 @@ static int scst_process_devt_pass_through_mgmt_store(char *buffer,
 
 	TRACE_ENTRY();
 
-	//scst_assert_activity_suspended();
+	scst_assert_activity_suspended();
 
 	TRACE_DBG("devt %p, buffer %s", devt, buffer);
 
