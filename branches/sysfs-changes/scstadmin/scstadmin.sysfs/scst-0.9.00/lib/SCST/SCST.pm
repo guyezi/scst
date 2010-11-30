@@ -1784,7 +1784,7 @@ sub deviceAttributes {
 				$attributes{$attribute}->{'value'} = undef;
 			} else {
 				my $is_static;
-				if (($mode & S_IWUSR) >> 6) {
+				if (($attribute eq 'filename') || ($mode & S_IWUSR) >> 6) {
 					$is_static = FALSE;
 				} else {
 					$is_static = TRUE;
@@ -2947,7 +2947,7 @@ sub setDeviceAttribute {
 		if ($self->{'debug'}) {
 			print "DBG($$): set filename of $device to $value\n";
 		} else {
-			$bytes = _syswrite($io, $value, length($value));
+			$bytes = _syswrite($io, $cmd, length($cmd));
 		}
 
 		close $io;
