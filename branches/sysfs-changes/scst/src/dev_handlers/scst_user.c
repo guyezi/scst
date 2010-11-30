@@ -3529,7 +3529,7 @@ out:
 static ssize_t dev_user_sysfs_commands_show(struct kobject *kobj,
 	struct kobj_attribute *attr, char *buf)
 {
-	int pos, ppos, i;
+	int pos = 0, ppos, i;
 	struct scst_device *dev;
 	struct scst_user_dev *udev;
 	unsigned long flags;
@@ -3540,7 +3540,6 @@ static ssize_t dev_user_sysfs_commands_show(struct kobject *kobj,
 
 	udev = (struct scst_user_dev *)dev->dh_priv;
 
-	pos = 0;
 	spin_lock_irqsave(&udev->udev_cmd_threads.cmd_list_lock, flags);
 	for (i = 0; i < (int)ARRAY_SIZE(udev->ucmd_hash); i++) {
 		struct list_head *head = &udev->ucmd_hash[i];
