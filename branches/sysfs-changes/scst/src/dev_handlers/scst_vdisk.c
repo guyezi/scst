@@ -222,8 +222,9 @@ struct scst_vdisk_dev {
 	int virt_id;
 	char name[16+1];	/* Name of the virtual device,
 				   must be <= SCSI Model + 1 */
+	struct mutex filename_mutex;
 	char *filename;		/* File name, protected by
-				   scst_mutex and suspended activities */
+				   filename_mutex and activity suspending */
 	uint16_t command_set_version;
 	unsigned int t10_dev_id_set:1; /* true if t10_dev_id manually set */
 	char t10_dev_id[16+8+2]; /* T10 device ID */
@@ -585,16 +586,27 @@ MODULE_PARM_DESC(scst_vdisk_ID, "SCST virtual disk subsystem ID");
 
 #endif /* CONFIG_SCST_PROC */
 
-static const char *vdev_get_filename(const struct scst_vdisk_dev *virt_dev)
+static char *__vdev_get_filename(struct scst_vdisk_dev *virt_dev)
 {
+	lockdep_assert_held(&virt_dev->filename_mutex);
+
 	if (virt_dev->filename != NULL)
 		return virt_dev->filename;
 	else
 		return "none";
 }
 
+static void vdev_set_filename(struct scst_vdisk_dev *virt_dev, char *n)
+{
+	BUG_ON(!virt_dev);
+	mutex_lock(&virt_dev->filename_mutex);
+	kfree(virt_dev->filename);
+	virt_dev->filename = n;
+	mutex_unlock(&virt_dev->filename_mutex);
+}
+
 /* Returns fd, use IS_ERR(fd) to get error status */
-static struct file *vdev_open_fd(const struct scst_vdisk_dev *virt_dev)
+static struct file *vdev_open_fd(struct scst_vdisk_dev *virt_dev)
 {
 	int open_flags = 0;
 	struct file *fd;
@@ -609,9 +621,11 @@ static struct file *vdev_open_fd(const struct scst_vdisk_dev *virt_dev)
 		open_flags |= O_DIRECT;
 	if (virt_dev->wt_flag && !virt_dev->nv_cache)
 		open_flags |= O_SYNC;
+	mutex_lock(&virt_dev->filename_mutex);
 	TRACE_DBG("Opening file %s, flags 0x%x",
 		  virt_dev->filename, open_flags);
 	fd = filp_open(virt_dev->filename, O_LARGEFILE | open_flags, 0600);
+	mutex_unlock(&virt_dev->filename_mutex);
 
 	TRACE_EXIT();
 	return fd;
@@ -627,11 +641,12 @@ static void vdisk_blockio_check_flush_support(struct scst_vdisk_dev *virt_dev)
 	if (!virt_dev->blockio || virt_dev->rd_only || virt_dev->nv_cache)
 		goto out;
 
+	mutex_lock(&virt_dev->filename_mutex);
 	fd = filp_open(virt_dev->filename, O_LARGEFILE, 0600);
 	if (IS_ERR(fd)) {
 		PRINT_ERROR("filp_open(%s) returned error %ld",
 			virt_dev->filename, PTR_ERR(fd));
-		goto out;
+		goto out_unlock;
 	}
 
 	inode = fd->f_dentry->d_inode;
@@ -650,7 +665,8 @@ static void vdisk_blockio_check_flush_support(struct scst_vdisk_dev *virt_dev)
 
 out_close:
 	filp_close(fd, NULL);
-
+out_unlock:
+	mutex_unlock(&virt_dev->filename_mutex);
 out:
 	TRACE_EXIT();
 	return;
@@ -667,11 +683,12 @@ static void vdisk_check_tp_support(struct scst_vdisk_dev *virt_dev)
 	if (virt_dev->rd_only || !virt_dev->thin_provisioned)
 		goto out;
 
+	mutex_lock(&virt_dev->filename_mutex);
 	fd = filp_open(virt_dev->filename, O_LARGEFILE, 0600);
 	if (IS_ERR(fd)) {
 		PRINT_ERROR("filp_open(%s) returned error %ld",
 			virt_dev->filename, PTR_ERR(fd));
-		goto out;
+		goto out_unlock;
 	}
 
 	inode = fd->f_dentry->d_inode;
@@ -706,7 +723,8 @@ static void vdisk_check_tp_support(struct scst_vdisk_dev *virt_dev)
 
 out_close:
 	filp_close(fd, NULL);
-
+out_unlock:
+	mutex_unlock(&virt_dev->filename_mutex);
 out:
 	TRACE_EXIT();
 	return;
@@ -799,8 +817,10 @@ static int vdisk_attach(struct scst_device *dev)
 		if (virt_dev->nullio)
 			err = VDISK_NULLIO_SIZE;
 		else {
+			mutex_lock(&virt_dev->filename_mutex);
 			res = vdisk_get_file_size(virt_dev->filename,
 				virt_dev->blockio, &err);
+			mutex_unlock(&virt_dev->filename_mutex);
 			if (res != 0)
 				goto out;
 		}
@@ -816,16 +836,18 @@ static int vdisk_attach(struct scst_device *dev)
 	virt_dev->nblocks = virt_dev->file_size >> virt_dev->block_shift;
 
 	if (!virt_dev->cdrom_empty) {
+		mutex_lock(&virt_dev->filename_mutex);
 		PRINT_INFO("Attached SCSI target virtual %s %s "
 		      "(file=\"%s\", fs=%lldMB, bs=%d, nblocks=%lld,"
 		      " cyln=%lld%s)",
 		      (dev->type == TYPE_DISK) ? "disk" : "cdrom",
-		      virt_dev->name, vdev_get_filename(virt_dev),
+		      virt_dev->name, __vdev_get_filename(virt_dev),
 		      virt_dev->file_size >> 20, virt_dev->block_size,
 		      (long long unsigned int)virt_dev->nblocks,
 		      (long long unsigned int)virt_dev->nblocks/64/32,
 		      virt_dev->nblocks < 64*32
 		      ? " !WARNING! cyln less than 1" : "");
+		mutex_unlock(&virt_dev->filename_mutex);
 	} else {
 		PRINT_INFO("Attached empty SCSI target virtual cdrom %s",
 			virt_dev->name);
@@ -857,8 +879,10 @@ static void vdisk_detach(struct scst_device *dev)
 
 	TRACE_DBG("virt_id %d", dev->virt_id);
 
+	mutex_lock(&virt_dev->filename_mutex);
 	PRINT_INFO("Detached virtual device %s (\"%s\")",
-		      virt_dev->name, vdev_get_filename(virt_dev));
+		      virt_dev->name, __vdev_get_filename(virt_dev));
+	mutex_unlock(&virt_dev->filename_mutex);
 
 	/* virt_dev will be freed by the caller */
 	dev->dh_priv = NULL;
@@ -906,8 +930,10 @@ static struct scst_vdisk_thr *vdisk_init_thr_data(
 	if (!virt_dev->cdrom_empty) {
 		res->fd = vdev_open_fd(virt_dev);
 		if (IS_ERR(res->fd)) {
+			mutex_lock(&virt_dev->filename_mutex);
 			PRINT_ERROR("filp_open(%s) returned an error %ld",
 				virt_dev->filename, PTR_ERR(res->fd));
+			mutex_unlock(&virt_dev->filename_mutex);
 			goto out_free;
 		}
 		if (virt_dev->blockio)
@@ -3269,8 +3295,10 @@ static int vdisk_resync_size(struct scst_vdisk_dev *virt_dev)
 
 	sBUG_ON(virt_dev->nullio);
 
+	mutex_lock(&virt_dev->filename_mutex);
 	res = vdisk_get_file_size(virt_dev->filename,
 			virt_dev->blockio, &file_size);
+	mutex_unlock(&virt_dev->filename_mutex);
 	if (res != 0)
 		goto out;
 
@@ -3341,6 +3369,8 @@ static int vdev_create(struct scst_dev_type *devt,
 		goto out_free;
 	}
 	strcpy(virt_dev->name, name);
+
+	mutex_init(&virt_dev->filename_mutex);
 
 	dev_id_num = vdisk_gen_dev_id_num(virt_dev->name);
 	dev_id_len = scnprintf(dev_id_str, sizeof(dev_id_str), "%llx",
@@ -3458,7 +3488,7 @@ static int vdev_parse_add_dev_params(struct scst_vdisk_dev *virt_dev,
 				goto out;
 			}
 
-			virt_dev->filename = kstrdup(pp, GFP_KERNEL);
+			vdev_set_filename(virt_dev, kstrdup(pp, GFP_KERNEL));
 			if (virt_dev->filename == NULL) {
 				PRINT_ERROR("Unable to duplicate file name %s "
 					"(device %s)", pp, virt_dev->name);
@@ -3956,9 +3986,9 @@ static int vcdrom_change(struct scst_vdisk_dev *virt_dev,
 			goto out_unlock;
 		}
 
-		virt_dev->filename = fn;
+		vdev_set_filename(virt_dev, fn);
 
-		res = vdisk_get_file_size(virt_dev->filename,
+		res = vdisk_get_file_size(filename,
 				virt_dev->blockio, &err);
 		if (res != 0)
 			goto out_free_fn;
@@ -3986,8 +4016,7 @@ static int vcdrom_change(struct scst_vdisk_dev *virt_dev,
 	if (!virt_dev->cdrom_empty) {
 		PRINT_INFO("Changed SCSI target virtual cdrom %s "
 			"(file=\"%s\", fs=%lldMB, bs=%d, nblocks=%lld,"
-			" cyln=%lld%s)", virt_dev->name,
-			vdev_get_filename(virt_dev),
+			" cyln=%lld%s)", virt_dev->name, filename,
 			virt_dev->file_size >> 20, virt_dev->block_size,
 			(long long unsigned int)virt_dev->nblocks,
 			(long long unsigned int)virt_dev->nblocks/64/32,
@@ -4195,57 +4224,24 @@ static ssize_t vdisk_sysfs_removable_show(struct kobject *kobj,
 	return pos;
 }
 
-static int vdev_sysfs_process_get_filename(struct scst_device *dev,
-					   char **filename)
-{
-	int res = 0;
-	struct scst_vdisk_dev *virt_dev;
-
-	TRACE_ENTRY();
-
-	*filename = NULL;
-
-	if (mutex_lock_interruptible(&scst_vdisk_mutex) != 0) {
-		res = -EINTR;
-		goto out;
-	}
-
-	virt_dev = (struct scst_vdisk_dev *)dev->dh_priv;
-
-	if (virt_dev == NULL)
-		goto out_unlock;
-
-	if (virt_dev->filename != NULL)
-		*filename = kasprintf(GFP_KERNEL, "%s\n%s\n",
-			vdev_get_filename(virt_dev), SCST_SYSFS_KEY_MARK);
-	else
-		*filename = kasprintf(GFP_KERNEL, "%s\n",
-					vdev_get_filename(virt_dev));
-
-out_unlock:
-	mutex_unlock(&scst_vdisk_mutex);
-out:
-	TRACE_EXIT_RES(res);
-	return res;
-}
-
 static ssize_t vdev_sysfs_filename_show(struct kobject *kobj,
 	struct kobj_attribute *attr, char *buf)
 {
-	int res = 0;
 	struct scst_device *dev;
-	char *filename;
+	struct scst_vdisk_dev *virt_dev;
+	int res;
 
 	TRACE_ENTRY();
 
 	dev = scst_kobj_to_dev(kobj);
+	virt_dev = dev->dh_priv;
 
-	res = vdev_sysfs_process_get_filename(dev, &filename);
-	if (res != 0)
+	res = mutex_lock_interruptible(&virt_dev->filename_mutex);
+	if (res)
 		goto out;
-
-	res = snprintf(buf, SCST_SYSFS_BLOCK_SIZE, "%s\n", filename);
-	kfree(filename);
+	res = snprintf(buf, SCST_SYSFS_BLOCK_SIZE, "%s\n",
+		       __vdev_get_filename(virt_dev));
+	mutex_unlock(&virt_dev->filename_mutex);
 
 out:
 	TRACE_EXIT_RES(res);
@@ -4446,8 +4442,10 @@ static int vdisk_read_proc(struct seq_file *seq, struct scst_dev_type *dev_type)
 			c++;
 		}
 		read_lock_bh(&vdisk_t10_dev_id_rwlock);
-		seq_printf(seq, "%-45s %-16s\n", vdev_get_filename(virt_dev),
+		mutex_lock(&virt_dev->filename_mutex);
+		seq_printf(seq, "%-45s %-16s\n", __vdev_get_filename(virt_dev),
 			virt_dev->t10_dev_id);
+		mutex_unlock(&virt_dev->filename_mutex);
 		read_unlock_bh(&vdisk_t10_dev_id_rwlock);
 	}
 	mutex_unlock(&scst_vdisk_mutex);
@@ -4642,7 +4640,7 @@ static int vdisk_write_proc(char *buffer, char **start, off_t offset,
 			goto out_up;
 		}
 
-		virt_dev->filename = kstrdup(filename, GFP_KERNEL);
+		vdev_set_filename(kstrdup(filename, GFP_KERNEL));
 		if (virt_dev->filename == NULL) {
 			TRACE(TRACE_OUT_OF_MEM, "%s",
 				  "Allocation of filename failed");
@@ -4662,9 +4660,8 @@ static int vdisk_write_proc(char *buffer, char **start, off_t offset,
 		}
 		TRACE_DBG("Added virt_dev (name %s, file name %s, "
 			"id %d, block size %d) to "
-			"vdev_list", virt_dev->name,
-			vdev_get_filename(virt_dev), virt_dev->virt_id,
-			virt_dev->block_size);
+			"vdev_list", virt_dev->name, filename,
+			virt_dev->virt_id, virt_dev->block_size);
 	} else if (action == 0) {	/* close */
 		virt_dev = NULL;
 		list_for_each_entry(vv, &vdev_list,
@@ -4753,8 +4750,7 @@ out:
 
 out_free_vpath:
 	list_del(&virt_dev->vdev_list_entry);
-	kfree(virt_dev->filename);
-	virt_dev->filename = NULL;
+	vdev_set_filename(virt_dev, NULL);
 
 out_free_vdev:
 	vdev_destroy(virt_dev);
@@ -4782,9 +4778,11 @@ static int vcdrom_read_proc(struct seq_file *seq,
 	list_for_each_entry(virt_dev, &vdev_list, vdev_list_entry) {
 		if (virt_dev->dev->type != TYPE_ROM)
 			continue;
+		mutex_lock(&virt_dev->filename_mutex);
 		seq_printf(seq, "%-17s %-9d %s\n", virt_dev->name,
 			(uint32_t)(virt_dev->file_size >> 20),
-			vdev_get_filename(virt_dev));
+			__vdev_get_filename(virt_dev));
+		mutex_unlock(&virt_dev->filename_mutex);
 	}
 
 	mutex_unlock(&scst_vdisk_mutex);
@@ -4843,7 +4841,7 @@ static int vcdrom_open(char *p, char *name)
 	virt_dev->removable = 1;
 
 	if (!virt_dev->cdrom_empty) {
-		virt_dev->filename = kstrdup(filename, GFP_KERNEL);
+		vdev_set_filename(kstrdup(filename, GFP_KERNEL));
 		if (virt_dev->filename == NULL) {
 			TRACE(TRACE_OUT_OF_MEM, "%s",
 			      "Allocation of filename failed");
@@ -4864,16 +4862,14 @@ static int vcdrom_open(char *p, char *name)
 		goto out_free_vpath;
 	}
 	TRACE_DBG("Added virt_dev (name %s filename %s id %d) "
-		  "to vdev_list", virt_dev->name,
-		  vdev_get_filename(virt_dev), virt_dev->virt_id);
+		  "to vdev_list", virt_dev->name, filename, virt_dev->virt_id);
 
 out:
 	return res;
 
 out_free_vpath:
 	list_del(&virt_dev->vdev_list_entry);
-	kfree(virt_dev->filename);
-	virt_dev->filename = NULL;
+	vdev_set_filename(NULL);
 
 out_free_vdev:
 	vdev_destroy(virt_dev);
