@@ -799,10 +799,6 @@ static void __scst_resume_activity(void)
 
 	TRACE_ENTRY();
 
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 29)
-	lock_release(&scst_suspend_dep_map, 1/*nested*/, _RET_IP_);
-#endif
-
 	suspend_count--;
 	TRACE_MGMT_DBG("suspend_count %d left", suspend_count);
 	if (suspend_count > 0)
@@ -845,6 +841,10 @@ out:
 void scst_resume_activity(void)
 {
 	TRACE_ENTRY();
+
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 29)
+	lock_release(&scst_suspend_dep_map, 1/*nested*/, _RET_IP_);
+#endif
 
 	mutex_lock(&scst_suspend_mutex);
 	__scst_resume_activity();
