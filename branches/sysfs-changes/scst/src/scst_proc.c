@@ -1293,6 +1293,7 @@ out:
 	return res;
 }
 
+/* Called under scst_mutex */
 int scst_build_proc_target_dir_entries(struct scst_tgt_template *vtt)
 {
 	int res = 0;
