@@ -3752,7 +3752,7 @@ out:
 
 }
 
-#else /* CONFIG_SCST_PROC */
+#endif /* CONFIG_SCST_PROC */
 
 /* scst_vdisk_mutex supposed to be held */
 static void vdev_del_device(struct scst_vdisk_dev *virt_dev)
@@ -3771,48 +3771,12 @@ static void vdev_del_device(struct scst_vdisk_dev *virt_dev)
 	return;
 }
 
-#endif /* CONFIG_SCST_PROC */
-
-/* scst_vdisk_mutex supposed not to be held */
-static void vdev_del_device_by_id(const int id)
-{
-	struct scst_vdisk_dev *virt_dev;
-
-	TRACE_ENTRY();
-
-	mutex_lock(&scst_vdisk_mutex);
-	list_for_each_entry(virt_dev, &vdev_list, vdev_list_entry) {
-		if (virt_dev->virt_id == id) {
-			list_del(&virt_dev->vdev_list_entry);
-			goto unlock;
-		}
-	}
-	virt_dev = NULL;
-unlock:
-	mutex_unlock(&scst_vdisk_mutex);
-
-	if (!virt_dev)
-		goto out;
-
-	scst_unregister_virtual_device(id);
-
-	PRINT_INFO("Virtual device %s unregistered", virt_dev->name);
-	TRACE_DBG("virt_id %d unregistered", id);
-
-	vdev_destroy(virt_dev);
-
-out:
-	TRACE_EXIT();
-	return;
-}
-
 #ifndef CONFIG_SCST_PROC
 
 static ssize_t vdisk_del_device(const char *device_name)
 {
 	int res = 0;
 	struct scst_vdisk_dev *virt_dev;
-	int id = -1;
 
 	TRACE_ENTRY();
 
@@ -3828,13 +3792,10 @@ static ssize_t vdisk_del_device(const char *device_name)
 		goto out_unlock;
 	}
 
-	id = virt_dev->virt_id;
+	vdev_del_device(virt_dev);
 
 out_unlock:
 	mutex_unlock(&scst_vdisk_mutex);
-
-	if (virt_dev)
-		vdev_del_device_by_id(id);
 
 out:
 	TRACE_EXIT_RES(res);
@@ -3918,7 +3879,6 @@ static ssize_t vcdrom_del_device(const char *device_name)
 {
 	int res = 0;
 	struct scst_vdisk_dev *virt_dev;
-	int id = -1;
 
 	TRACE_ENTRY();
 
@@ -3934,13 +3894,10 @@ static ssize_t vcdrom_del_device(const char *device_name)
 		goto out_unlock;
 	}
 
-	id = virt_dev->virt_id;
+	vdev_del_device(virt_dev);
 
 out_unlock:
 	mutex_unlock(&scst_vdisk_mutex);
-
-	if (virt_dev)
-		vdev_del_device_by_id(id);
 
 out:
 	TRACE_EXIT_RES(res);
@@ -5193,21 +5150,16 @@ static void exit_scst_vdisk(struct scst_dev_type *devtype)
 	TRACE_ENTRY();
 
 	mutex_lock(&scst_vdisk_mutex);
-	while (!list_empty(&vdev_list)) {
+	while (1) {
 		struct scst_vdisk_dev *virt_dev;
-		int id;
 
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 22)
+		if (list_empty(&vdev_list))
+			break;
+
 		virt_dev = list_entry(vdev_list.next, typeof(*virt_dev),
 				vdev_list_entry);
-#else
-		virt_dev = list_first_entry(&vdev_list, typeof(*virt_dev),
-					    vdev_list_entry);
-#endif
-		id = virt_dev->virt_id;
-		mutex_unlock(&scst_vdisk_mutex);
-		vdev_del_device_by_id(id);
-		mutex_lock(&scst_vdisk_mutex);
+
+		vdev_del_device(virt_dev);
 	}
 	mutex_unlock(&scst_vdisk_mutex);
 
