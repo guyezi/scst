@@ -1296,7 +1296,7 @@ struct scst_dev_type {
 	 *
 	 * OPTIONAL.
 	 */
-	ssize_t (*set_filename)(struct scst_device *dev, char *filename);
+	int (*set_filename)(struct scst_device *dev, char *filename);
 
 #ifdef CONFIG_SCST_PROC
 	/*

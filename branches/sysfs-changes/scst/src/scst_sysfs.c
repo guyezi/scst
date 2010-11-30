@@ -324,7 +324,9 @@ static struct scst_dev_type *__scst_lookup_devt(const char *name)
 {
 	struct scst_dev_type *dt;
 
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 29)
 	lockdep_assert_held(&scst_mutex);
+#endif
 
 	list_for_each_entry(dt, &scst_virtual_dev_type_list,
 			    dev_type_list_entry)
@@ -353,7 +355,9 @@ static struct scst_tgt_template *__scst_lookup_tgtt(const char *name)
 {
 	struct scst_tgt_template *tt;
 
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 29)
 	lockdep_assert_held(&scst_mutex);
+#endif
 
 	list_for_each_entry(tt, &scst_template_list, scst_template_list_entry)
 		if (strcmp(tt->name, name) == 0)
@@ -369,7 +373,9 @@ static struct scst_tgt *__scst_lookup_tgt(struct scst_tgt_template *tgtt,
 {
 	struct scst_tgt *tgt;
 
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 29)
 	lockdep_assert_held(&scst_mutex);
+#endif
 
 	list_for_each_entry(tgt, &tgtt->tgt_list, tgt_list_entry)
 		if (strcmp(tgt->tgt_name, target_name) == 0)
@@ -385,7 +391,9 @@ static struct scst_acg *__scst_lookup_acg(const struct scst_tgt *tgt,
 {
 	struct scst_acg *acg;
 
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 29)
 	lockdep_assert_held(&scst_mutex);
+#endif
 
 	acg = tgt->default_acg;
 	if (acg && strcmp(acg->acg_name, acg_name) == 0)
@@ -1798,19 +1806,10 @@ static ssize_t scst_sess_latency_store(struct kobject *kobj,
 
 	sess = scst_kobj_to_sess(kobj);
 
-	res = scst_alloc_sysfs_work(scst_sess_zero_latency, false, &work);
-	if (res != 0)
-		goto out;
-
-	work->sess = sess;
-
-	kobject_get(sess->sess_kobj);
-
-	res = scst_sysfs_queue_wait_work(work);
+	res = scst_sess_zero_latency(sess);
 	if (res == 0)
 		res = count;
 
-out:
 	TRACE_EXIT_RES(res);
 	return res;
 }
@@ -2663,7 +2662,11 @@ static ssize_t __scst_acg_cpu_mask_store(struct scst_acg *acg,
 
 	/* cpumask might be too big for stack */
 	res = -ENOMEM;
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 28)
 	cpu_mask = kmalloc(cpumask_size(), GFP_KERNEL);
+#else
+	cpu_mask = kmalloc(sizeof(*cpu_mask), GFP_KERNEL);
+#endif
 	if (!cpu_mask)
 		goto out;
 
@@ -3529,7 +3532,9 @@ static enum mgmt_path_type __parse_path(char *path,
 
 	TRACE_ENTRY();
 
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 29)
 	lockdep_assert_held(&scst_mutex);
+#endif
 
 	BUG_ON(!path || !devt || !tgtt || !tgt || !acg);
 
@@ -3626,7 +3631,9 @@ static ssize_t scst_mgmt_store(struct kobject *kobj,
 	TRACE_ENTRY();
 
 	scst_assert_activity_not_suspended();
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 29)
 	lockdep_assert_not_held(&scst_mutex);
+#endif
 
 	TRACE_DBG("Processing management command \"%.*s\"",
 		  count >= 1 && buf[count - 1] == '\n'

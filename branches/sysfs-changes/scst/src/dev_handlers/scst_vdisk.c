@@ -544,13 +544,13 @@ static struct scst_dev_type vcdrom_devtype = {
 	.parse =		vcdrom_parse,
 	.exec =			vcdrom_exec,
 	.task_mgmt_fn =		vdisk_task_mgmt_fn,
+	.set_filename =	 	vcdrom_set_filename,
 #ifdef CONFIG_SCST_PROC
 	.read_proc =		vcdrom_read_proc,
 	.write_proc =		vcdrom_write_proc,
 #else
 	.add_device =		vcdrom_add_device,
 	.del_device =		vcdrom_del_device,
-	.set_filename =	 	vcdrom_set_filename,
 	.dev_attrs =		vcdrom_attrs,
 	.add_device_parameters = NULL,
 #endif
@@ -588,7 +588,9 @@ MODULE_PARM_DESC(scst_vdisk_ID, "SCST virtual disk subsystem ID");
 
 static char *__vdev_get_filename(struct scst_vdisk_dev *virt_dev)
 {
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 29)
 	lockdep_assert_held(&virt_dev->filename_mutex);
+#endif
 
 	if (virt_dev->filename != NULL)
 		return virt_dev->filename;
@@ -4465,7 +4467,7 @@ static int vdisk_write_proc(char *buffer, char **start, off_t offset,
 	struct scst_vdisk_dev *virt_dev, *vv;
 	uint32_t block_size = DEF_DISK_BLOCKSIZE;
 	int block_shift = DEF_DISK_BLOCKSIZE_SHIFT;
-	size_t len, slen;
+	size_t slen;
 
 	TRACE_ENTRY();
 
@@ -4640,7 +4642,7 @@ static int vdisk_write_proc(char *buffer, char **start, off_t offset,
 			goto out_up;
 		}
 
-		vdev_set_filename(kstrdup(filename, GFP_KERNEL));
+		vdev_set_filename(virt_dev, kstrdup(filename, GFP_KERNEL));
 		if (virt_dev->filename == NULL) {
 			TRACE(TRACE_OUT_OF_MEM, "%s",
 				  "Allocation of filename failed");
@@ -4797,7 +4799,6 @@ static int vcdrom_open(char *p, char *name)
 {
 	struct scst_vdisk_dev *virt_dev, *vv;
 	char *filename;
-	int len;
 	int res = 0;
 	int cdrom_empty;
 
@@ -4841,7 +4842,7 @@ static int vcdrom_open(char *p, char *name)
 	virt_dev->removable = 1;
 
 	if (!virt_dev->cdrom_empty) {
-		vdev_set_filename(kstrdup(filename, GFP_KERNEL));
+		vdev_set_filename(virt_dev, kstrdup(filename, GFP_KERNEL));
 		if (virt_dev->filename == NULL) {
 			TRACE(TRACE_OUT_OF_MEM, "%s",
 			      "Allocation of filename failed");
@@ -4869,7 +4870,7 @@ out:
 
 out_free_vpath:
 	list_del(&virt_dev->vdev_list_entry);
-	vdev_set_filename(NULL);
+	vdev_set_filename(virt_dev, NULL);
 
 out_free_vdev:
 	vdev_destroy(virt_dev);
