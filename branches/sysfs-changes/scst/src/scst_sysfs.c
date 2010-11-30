@@ -3658,11 +3658,10 @@ static ssize_t scst_mgmt_store(struct kobject *kobj,
 		break;
 	}
 
-	kfree(buffer);
-
 out_resume:
 	scst_resume_activity();
 out:
+	kfree(buffer);
 	if (res == 0)
 		res = count;
 	TRACE_EXIT_RES(res);
