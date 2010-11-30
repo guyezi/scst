@@ -267,7 +267,7 @@ void *scst_kobj_to_scst_obj(struct kobject *kobj)
 
 	scst_kobj = container_of(kobj, struct scst_kobj, kobj);
 
-	TRACE_EXIT_RES(scst_kobj->scst_obj);
+	TRACE_EXIT_HRES(scst_kobj->scst_obj);
 	return scst_kobj->scst_obj;
 }
 
@@ -462,7 +462,7 @@ out_syntax_err:
 }
 
 static struct kobj_attribute scst_tgtt_mgmt =
-	__ATTR(mgmt, S_IRUGO | S_IWUSR, scst_tgtt_mgmt_show, NULL);
+	__ATTR(mgmt, S_IRUGO, scst_tgtt_mgmt_show, NULL);
 
 /**
  * kobject_create_and_add_kt() - Create a kernel object and add it to sysfs.
@@ -570,7 +570,7 @@ static struct kobj_type tgt_ktype = {
 };
 
 static struct kobj_attribute scst_luns_mgmt =
-	__ATTR(mgmt, S_IRUGO | S_IWUSR, scst_luns_mgmt_show, NULL);
+	__ATTR(mgmt, S_IRUGO, scst_luns_mgmt_show, NULL);
 
 static struct kobj_attribute scst_tgt_addr_method =
 	__ATTR(addr_method, S_IRUGO | S_IWUSR, scst_tgt_addr_method_show,
@@ -3587,7 +3587,10 @@ static ssize_t scst_mgmt_store(struct kobject *kobj,
 	scst_assert_activity_not_suspended();
 	lockdep_assert_not_held(&scst_mutex);
 
-	TRACE_DBG("Processing management command %.*s", (int)count, buf);
+	TRACE_DBG("Processing management command \"%.*s\"",
+		  count >= 1 && buf[count - 1] == '\n'
+		  ? (int)count - 1 : (int)count,
+		  buf);
 
 	res = -ENOMEM;
 	buffer = kasprintf(GFP_KERNEL, "%.*s", (int)count, buf);
@@ -4302,7 +4305,7 @@ out_syntax_err:
 }
 
 static struct kobj_attribute scst_devt_mgmt =
-	__ATTR(mgmt, S_IRUGO | S_IWUSR, scst_devt_mgmt_show, NULL);
+	__ATTR(mgmt, S_IRUGO, scst_devt_mgmt_show, NULL);
 
 static int scst_process_devt_pass_through_mgmt_store(char *buffer,
 	struct scst_dev_type *devt)

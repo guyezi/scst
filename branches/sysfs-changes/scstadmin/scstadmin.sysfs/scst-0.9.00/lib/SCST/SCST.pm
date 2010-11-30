@@ -768,7 +768,7 @@ sub driverIsVirtualCapable {
 
 	my $path = mkpath(SCST_ROOT, SCST_TARGETS, $driver, SCST_MGMT_IO);
 
-	my $io = new IO::File $path, O_WRONLY;
+	my $io = new IO::File $path, O_RDONLY;
 
 	return FALSE if (!defined($io));
 	return TRUE;
