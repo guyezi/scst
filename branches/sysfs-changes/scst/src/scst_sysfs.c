@@ -3598,8 +3598,8 @@ static enum mgmt_path_type __parse_path(char *path,
 		}
 		if (!comp[5] || (comp[5] && comp[6]))
 			goto err;
-		*acg = __scst_lookup_acg(*tgt, comp[5]);
-		if (!acg)
+		*acg = __scst_lookup_acg(*tgt, comp[4]);
+		if (!*acg)
 			goto err;
 		if (strcmp(comp[5], "luns") == 0) {
 			res = ACG_LUNS_PATH;

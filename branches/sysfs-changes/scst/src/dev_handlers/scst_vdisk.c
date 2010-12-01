@@ -4241,8 +4241,9 @@ static ssize_t vdev_sysfs_filename_show(struct kobject *kobj,
 	res = mutex_lock_interruptible(&virt_dev->filename_mutex);
 	if (res)
 		goto out;
-	res = snprintf(buf, SCST_SYSFS_BLOCK_SIZE, "%s\n",
-		       __vdev_get_filename(virt_dev));
+	res = snprintf(buf, SCST_SYSFS_BLOCK_SIZE, "%s\n%s",
+		       __vdev_get_filename(virt_dev),
+		       virt_dev->filename ? SCST_SYSFS_KEY_MARK "\n" : "");
 	mutex_unlock(&virt_dev->filename_mutex);
 
 out:
