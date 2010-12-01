@@ -544,7 +544,7 @@ static struct scst_dev_type vcdrom_devtype = {
 	.parse =		vcdrom_parse,
 	.exec =			vcdrom_exec,
 	.task_mgmt_fn =		vdisk_task_mgmt_fn,
-	.set_filename = 	vcdrom_set_filename,
+	.set_filename =		vcdrom_set_filename,
 #ifdef CONFIG_SCST_PROC
 	.read_proc =		vcdrom_read_proc,
 	.write_proc =		vcdrom_write_proc,
