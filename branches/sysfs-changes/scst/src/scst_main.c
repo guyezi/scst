@@ -146,7 +146,7 @@ struct list_head scst_sess_shut_list;
 
 wait_queue_head_t scst_dev_cmd_waitQ;
 
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 29)
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 29) && defined(CONFIG_LOCKDEP)
 static struct lock_class_key scst_suspend_key;
 struct lockdep_map scst_suspend_dep_map =
 	STATIC_LOCKDEP_MAP_INIT("scst_suspend_activity", &scst_suspend_key);
@@ -1213,8 +1213,6 @@ void scst_unregister_virtual_device(int id)
 	struct scst_acg_dev *acg_dev, *aa;
 
 	TRACE_ENTRY();
-
-	lockdep_assert_not_held(&scst_mutex);
 
 	scst_suspend_activity(false);
 	mutex_lock(&scst_mutex);

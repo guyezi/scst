@@ -3629,11 +3629,6 @@ static ssize_t scst_mgmt_store(struct kobject *kobj,
 
 	TRACE_ENTRY();
 
-	scst_assert_activity_not_suspended();
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 29)
-	lockdep_assert_not_held(&scst_mutex);
-#endif
-
 	TRACE_DBG("Processing management command \"%.*s\"",
 		  count >= 1 && buf[count - 1] == '\n'
 		  ? (int)count - 1 : (int)count,
