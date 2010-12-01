@@ -146,10 +146,12 @@ struct list_head scst_sess_shut_list;
 
 wait_queue_head_t scst_dev_cmd_waitQ;
 
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 29) && defined(CONFIG_LOCKDEP)
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 29)
+#ifdef CONFIG_LOCKDEP
 static struct lock_class_key scst_suspend_key;
 struct lockdep_map scst_suspend_dep_map =
 	STATIC_LOCKDEP_MAP_INIT("scst_suspend_activity", &scst_suspend_key);
+#endif
 #endif
 static struct mutex scst_suspend_mutex;
 /* protected by scst_suspend_mutex */
