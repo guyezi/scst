@@ -58,6 +58,11 @@ iscsi_scstd_start()
 	for m in $ADD_MODULES; do
 		modprobe $m
 	done
+	find /sys/kernel/scst_tgt -name trace_level | while read f; do
+	    #echo "add entryexit" >$f
+	    #echo "add debug" >$f
+	    :
+	done
 	start-stop-daemon --start --exec $DAEMON --quiet
 	/usr/local/sbin/scstadmin -config /etc/scst.conf
 	RETVAL=$?
@@ -79,7 +84,7 @@ iscsi_scstd_stop()
 	else
 	    echo "failed."
 	fi
-	# ugly, but pid file is not removed ba iscsi-scstd
+	# ugly, but pid file is not removed by iscsi-scstd
 	rm -f $PID_FILE
 
 	echo -n "Removing iSCSI-SCST target modules: "
