@@ -490,7 +490,7 @@ struct scst_tgt *scst_register_target(struct scst_tgt_template *vtt,
 			TRACE(TRACE_OUT_OF_MEM, "Allocation of default "
 				"group name failed (tgt %s)", target_name);
 			rc = -ENOMEM;
-			goto out_free_tgt;
+			goto out_unlock;
 		}
 		/* In case of error default_group_name will be freed in scst_free_tgt() */
 #endif
@@ -500,7 +500,7 @@ struct scst_tgt *scst_register_target(struct scst_tgt_template *vtt,
 			TRACE(TRACE_OUT_OF_MEM, "Allocation of tgt name %s failed",
 				target_name);
 			rc = -ENOMEM;
-			goto out_free_tgt;
+			goto out_unlock;
 		}
 	} else {
 		static int tgt_num; /* protected by scst_mutex */
@@ -511,7 +511,7 @@ struct scst_tgt *scst_register_target(struct scst_tgt_template *vtt,
 			TRACE(TRACE_OUT_OF_MEM, "Allocation of tgt name failed "
 				"(template name %s)", vtt->name);
 			rc = -ENOMEM;
-			goto out_free_tgt;
+			goto out_unlock;
 		}
 		tgt_num++;
 	}
