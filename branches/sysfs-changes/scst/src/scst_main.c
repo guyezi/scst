@@ -491,18 +491,16 @@ struct scst_tgt *scst_register_target(struct scst_tgt_template *vtt,
 		}
 	} else {
 		static int tgt_num; /* protected by scst_mutex */
-		int len = strlen(vtt->name) +
-			strlen(SCST_DEFAULT_TGT_NAME_SUFFIX) + 11 + 1;
 
-		tgt->tgt_name = kmalloc(len, GFP_KERNEL);
+		tgt->tgt_name = kasprintf(GFP_KERNEL, "%s%s%d", vtt->name,
+			SCST_DEFAULT_TGT_NAME_SUFFIX, tgt_num);
 		if (tgt->tgt_name == NULL) {
 			TRACE(TRACE_OUT_OF_MEM, "Allocation of tgt name failed "
 				"(template name %s)", vtt->name);
 			rc = -ENOMEM;
 			goto out_free_tgt;
 		}
-		sprintf(tgt->tgt_name, "%s%s%d", vtt->name,
-			SCST_DEFAULT_TGT_NAME_SUFFIX, tgt_num++);
+		tgt_num++;
 	}
 
 	if (mutex_lock_interruptible(&scst_mutex) != 0) {
