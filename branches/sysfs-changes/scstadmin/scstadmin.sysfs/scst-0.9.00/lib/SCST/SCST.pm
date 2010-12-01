@@ -1,3 +1,5 @@
+# -*- mode: perl; perl-indent-level: 8; -*-
+
 package SCST::SCST;
 
 # Author:	Mark R. Buechler
@@ -2011,7 +2013,7 @@ sub targetAttributes {
 				$attributes{$attribute}->{'value'} = undef;
 			} else {
 				my $is_static;
-				if (($mode & S_IWUSR) >> 6) {
+				if (($attribute eq 'enabled') || (($mode & S_IWUSR) >> 6)) {
 					$is_static = FALSE;
 				} else {
 					$is_static = TRUE;
@@ -2076,22 +2078,38 @@ sub setTargetAttribute {
 
 	return SCST_C_TGT_BAD_ATTRIBUTES if (!defined($$attributes{$attribute}));
 	return SCST_C_TGT_ATTRIBUTE_STATIC if ($$attributes{$attribute}->{'static'});
-
-	my $path = mkpath(SCST_ROOT, SCST_TARGETS, $driver, $target, $attribute);
-
-	my $io = new IO::File $path, O_WRONLY;
-
-	return SCST_C_TGT_SETATTR_FAIL if (!$io);
-
 	my $bytes;
 
-	if ($self->{'debug'}) {
-		print "DBG($$): $path -> $attribute = $value\n";
-	} else {
-		$bytes = _syswrite($io, $value, length($value));
-	}
+	if ($attribute eq 'enabled') {
+		my $io = new IO::File mkpath(SCST_ROOT, SCST_MGMT_IO), O_WRONLY;
 
-	close $io;
+		return SCST_C_TGT_SETATTR_FAIL if (!$io);
+
+		my $path = mkpath(SCST_TARGETS, $driver, $target);
+		my $cmd = "in $path " . ($value eq '1' ? 'enable' : 'disable');
+
+		if ($self->{'debug'}) {
+			print "DBG($$): $path -> $attribute = $value\n";
+		} else {
+			$bytes = _syswrite($io, $cmd, length($cmd));
+		}
+
+		close $io;
+	} else {
+		my $path = mkpath(SCST_ROOT, SCST_TARGETS, $driver, $target, $attribute);
+
+		my $io = new IO::File $path, O_WRONLY;
+
+		return SCST_C_TGT_SETATTR_FAIL if (!$io);
+
+		if ($self->{'debug'}) {
+			print "DBG($$): $path -> $attribute = $value\n";
+		} else {
+			$bytes = _syswrite($io, $value, length($value));
+		}
+
+		close $io;
+	}
 
 	return FALSE if ($self->{'debug'} || $bytes);
         return SCST_C_TGT_SETATTR_FAIL;

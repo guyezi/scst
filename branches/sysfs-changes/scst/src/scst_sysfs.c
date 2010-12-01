@@ -52,6 +52,7 @@ enum mgmt_path_type {
 	DEVICE_PATH,
 	DEVICE_TYPE_PATH,
 	TARGET_TEMPLATE_PATH,
+	TARGET_PATH,
 	TARGET_LUNS_PATH,
 	TARGET_INI_GROUPS_PATH,
 	ACG_LUNS_PATH,
@@ -763,45 +764,24 @@ out:
 	return res;
 }
 
-static ssize_t scst_tgt_enable_store(struct kobject *kobj,
-	struct kobj_attribute *attr, const char *buf, size_t count)
+static int scst_process_tgt_mgmt_store(char *cmd, struct scst_tgt *tgt)
 {
 	int res;
-	struct scst_tgt *tgt;
-	bool enable;
 
 	TRACE_ENTRY();
 
-	BUG_ON(!buf);
+	res = -EINVAL;
+	if (strcmp(cmd, "enable") == 0)
+		res = scst_process_tgt_enable_store(tgt, true);
+	else if (strcmp(cmd, "disable") == 0)
+		res = scst_process_tgt_enable_store(tgt, false);
 
-	tgt = scst_kobj_to_tgt(kobj);
-
-	switch (buf[0]) {
-	case '0':
-		enable = false;
-		break;
-	case '1':
-		enable = true;
-		break;
-	default:
-		PRINT_ERROR("%s: Requested action not understood: %s",
-		       __func__, buf);
-		res = -EINVAL;
-		goto out;
-	}
-
-	res = scst_process_tgt_enable_store(tgt, enable);
-	if (res == 0)
-		res = count;
-
-out:
 	TRACE_EXIT_RES(res);
 	return res;
 }
 
 static struct kobj_attribute tgt_enable_attr =
-	__ATTR(enabled, S_IRUGO | S_IWUSR,
-	       scst_tgt_enable_show, scst_tgt_enable_store);
+	__ATTR(enabled, S_IRUGO, scst_tgt_enable_show, NULL);
 
 int scst_tgt_sysfs_create(struct scst_tgt *tgt)
 {
@@ -3453,7 +3433,9 @@ static ssize_t scst_mgmt_show(struct kobject *kobj,
 /* scst_devt_mgmt or scst_devt_pass_through_mgmt */
 "in handlers/<devt> <devt_cmd>\n"
 /* scst_tgtt_mgmt */
-"in targets/<tgtt> <tgt_cmd>\n"
+"in targets/<tgtt> <tgtt_cmd>\n"
+/* scst_tgt_mgmt */
+"in targets/<tgtt>/<target>/luns <tgt_cmd>\n"
 /* scst_luns_mgmt */
 "in targets/<tgtt>/<target>/luns <luns_cmd>\n"
 /* scst_ini_group_mgmt */
@@ -3477,7 +3459,7 @@ static ssize_t scst_mgmt_show(struct kobject *kobj,
 "add_device H:C:I:L\n"
 "del_device H:C:I:L\n"
 "\n"
-"tgt_cmd syntax:\n"
+"tgtt_cmd syntax:\n"
 "\n"
 "add_target target_name [parameters]\n"
 "del_target target_name\n"
@@ -3487,6 +3469,11 @@ static ssize_t scst_mgmt_show(struct kobject *kobj,
 "del_target_attribute target_name <attribute> <value>\"\n"
 "\n"
 "where parameters is one or more param_name=value pairs separated by ';'\n"
+"\n"
+"tgt_cmd syntax:\n"
+"\n"
+"enable\n"
+"disable\n"
 "\n"
 "luns_cmd syntax:\n"
 "\n"
@@ -3582,11 +3569,13 @@ static enum mgmt_path_type __parse_path(char *path,
 			res = TARGET_TEMPLATE_PATH;
 			goto out;
 		}
-		if (!comp[3])
-			goto err;
 		*tgt = __scst_lookup_tgt(*tgtt, comp[2]);
 		if (!*tgt)
 			goto err;
+		if (!comp[3]) {
+			res = TARGET_PATH;
+			goto out;
+		}
 		if (strcmp(comp[3], "luns") == 0) {
 			res = TARGET_LUNS_PATH;
 			goto out;
@@ -3681,8 +3670,10 @@ static ssize_t scst_mgmt_store(struct kobject *kobj,
 	case TARGET_TEMPLATE_PATH:
 		res = scst_process_tgtt_mgmt_store(cmd, tgtt);
 		break;
+	case TARGET_PATH:
+		res = scst_process_tgt_mgmt_store(cmd, tgt);
+		break;
 	case TARGET_LUNS_PATH:
-		BUG_ON(!tgt);
 		res = __scst_process_luns_mgmt_store(cmd, tgt, tgt->default_acg,
 						     true);
 		break;
