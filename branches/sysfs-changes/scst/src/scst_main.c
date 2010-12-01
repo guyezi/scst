@@ -977,11 +977,11 @@ static void scst_unregister_device(struct scsi_device *scsidp)
 		scst_acg_del_lun(acg_dev->acg, acg_dev->lun, true);
 	}
 
+	scst_dev_sysfs_del(dev);
+
 	mutex_unlock(&scst_mutex);
 
 	scst_resume_activity();
-
-	scst_dev_sysfs_del(dev);
 
 	PRINT_INFO("Detached from scsi%d, channel %d, id %d, lun %d, type %d",
 		scsidp->host->host_no, scsidp->channel, scsidp->id,
@@ -1213,10 +1213,10 @@ void scst_unregister_virtual_device(int id)
 		scst_acg_del_lun(acg_dev->acg, acg_dev->lun, true);
 	}
 
+	scst_dev_sysfs_del(dev);
+
 	mutex_unlock(&scst_mutex);
 	scst_resume_activity();
-
-	scst_dev_sysfs_del(dev);
 
 	PRINT_INFO("Detached from virtual device %s (id %d)",
 		dev->virt_name, dev->virt_id);
@@ -1399,14 +1399,14 @@ void scst_unregister_dev_driver(struct scst_dev_type *dev_type)
 
 	list_del(&dev_type->dev_type_list_entry);
 
-	mutex_unlock(&scst_mutex);
-	scst_resume_activity();
-
 #ifdef CONFIG_SCST_PROC
 	scst_cleanup_proc_dev_handler_dir_entries(dev_type);
 #else
 	scst_devt_sysfs_del(dev_type);
 #endif
+
+	mutex_unlock(&scst_mutex);
+	scst_resume_activity();
 
 	PRINT_INFO("Device handler \"%s\" for type %d unloaded",
 		   dev_type->name, dev_type->type);
@@ -1494,14 +1494,14 @@ void scst_unregister_virtual_dev_driver(struct scst_dev_type *dev_type)
 	/* Disable sysfs mgmt calls (e.g. addition of new devices) */
 	list_del(&dev_type->dev_type_list_entry);
 
-	mutex_unlock(&scst_mutex);
-
 #ifdef CONFIG_SCST_PROC
 	if (!dev_type->no_proc)
 		scst_cleanup_proc_dev_handler_dir_entries(dev_type);
 #else
 	scst_devt_sysfs_del(dev_type);
 #endif
+
+	mutex_unlock(&scst_mutex);
 
 	PRINT_INFO("Device handler \"%s\" unloaded", dev_type->name);
 
