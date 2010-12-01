@@ -626,12 +626,12 @@ again:
 	}
 #endif
 
-	mutex_unlock(&scst_mutex);
-	scst_resume_activity();
-
 #ifndef CONFIG_SCST_PROC
 	scst_tgt_sysfs_del(tgt);
 #endif
+
+	mutex_unlock(&scst_mutex);
+	scst_resume_activity();
 
 	PRINT_INFO("Target %s for template %s unregistered successfully",
 		tgt->tgt_name, vtt->name);
@@ -1062,7 +1062,6 @@ int scst_register_virtual_device(struct scst_dev_type *dev_handler,
 {
 	int res, rc;
 	struct scst_device *dev, *d;
-	bool sysfs_del = false;
 
 	TRACE_ENTRY();
 
@@ -1096,6 +1095,14 @@ int scst_register_virtual_device(struct scst_dev_type *dev_handler,
 		goto out_resume;
 	}
 
+	list_for_each_entry(d, &scst_dev_list, dev_list_entry) {
+		if (strcmp(d->virt_name, dev_name) == 0) {
+			PRINT_ERROR("Device %s already exists", dev_name);
+			res = -EEXIST;
+			goto out_unlock;
+		}
+	}
+
 	res = scst_alloc_device(GFP_KERNEL, &dev);
 	if (res != 0)
 		goto out_unlock;
@@ -1126,33 +1133,15 @@ int scst_register_virtual_device(struct scst_dev_type *dev_handler,
 	}
 
 #ifndef CONFIG_SCST_PROC
-	/*
-	 * We can drop scst_mutex, because we have not yet added the dev in
-	 * scst_dev_list, so it "doesn't exist" yet.
-	 */
-	mutex_unlock(&scst_mutex);
-
 	res = scst_dev_sysfs_create(dev);
 	if (res != 0)
-		goto out_lock_pr_clear_dev;
-
-	mutex_lock(&scst_mutex);
+		goto out_pr_clear_dev;
 #endif
-
-	list_for_each_entry(d, &scst_dev_list, dev_list_entry) {
-		if (strcmp(d->virt_name, dev_name) == 0) {
-			PRINT_ERROR("Device %s already exists", dev_name);
-			res = -EEXIST;
-			sysfs_del = true;
-			goto out_pr_clear_dev;
-		}
-	}
 
 	rc = scst_assign_dev_handler(dev, dev_handler);
 	if (rc != 0) {
 		res = rc;
-		sysfs_del = true;
-		goto out_pr_clear_dev;
+		goto out_sysfs_del;
 	}
 
 	list_add_tail(&dev->dev_list_entry, &scst_dev_list);
@@ -1169,20 +1158,14 @@ out:
 	TRACE_EXIT_RES(res);
 	return res;
 
-#ifndef CONFIG_SCST_PROC
-out_lock_pr_clear_dev:
-	mutex_lock(&scst_mutex);
-#endif
+out_sysfs_del:
+	scst_dev_sysfs_del(dev);
 
 out_pr_clear_dev:
 	scst_pr_clear_dev(dev);
 
 out_free_dev:
-	mutex_unlock(&scst_mutex);
-	if (sysfs_del)
-		scst_dev_sysfs_del(dev);
 	scst_free_device(dev);
-	goto out_resume;
 
 out_unlock:
 	mutex_unlock(&scst_mutex);
