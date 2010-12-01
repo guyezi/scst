@@ -287,12 +287,12 @@ int __scst_register_target_template(struct scst_tgt_template *vtt,
 #ifndef CONFIG_SCST_PROC
 	res = scst_tgtt_sysfs_create(vtt);
 	if (res)
-		goto out;
+		goto out_unlock;
 #else
 	if (!vtt->no_proc_entry) {
 		res = scst_build_proc_target_dir_entries(vtt);
 		if (res < 0)
-			goto out;
+			goto out_unlock;
 	}
 #endif
 
