@@ -468,6 +468,10 @@ struct scst_tgt *scst_register_target(struct scst_tgt_template *vtt,
 	if (rc != 0)
 		goto out;
 
+	rc = mutex_lock_interruptible(&scst_mutex);
+	if (rc)
+		goto out_free_tgt;
+
 	if (target_name != NULL) {
 #ifdef CONFIG_SCST_PROC
 		tgt->default_group_name = kasprintf(GFP_KERNEL, "%s_%s",
@@ -501,11 +505,6 @@ struct scst_tgt *scst_register_target(struct scst_tgt_template *vtt,
 			goto out_free_tgt;
 		}
 		tgt_num++;
-	}
-
-	if (mutex_lock_interruptible(&scst_mutex) != 0) {
-		rc = -EINTR;
-		goto out_free_tgt;
 	}
 
 #ifdef CONFIG_SCST_PROC
@@ -544,9 +543,7 @@ out:
 
 #ifndef CONFIG_SCST_PROC
 out_sysfs_del:
-	mutex_unlock(&scst_mutex);
 	scst_tgt_sysfs_del(tgt);
-	goto out_free_tgt;
 #endif
 
 out_unlock:
