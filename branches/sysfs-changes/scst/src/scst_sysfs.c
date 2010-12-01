@@ -418,19 +418,24 @@ static struct scst_acg *__scst_lookup_acg(const struct scst_tgt *tgt,
 
 /**
  * scst_kobj_to_tgtt() - Look up target template pointer.
- *
- * Must be called from inside a tgtt sysfs .show() or .store() callback
- * function only.
  */
 struct scst_tgt_template *scst_kobj_to_tgtt(struct kobject *kobj)
 {
-	return scst_kobj_to_scst_obj(kobj);
+	return container_of(kobj, struct scst_tgt_template, tgtt_kobj);
 }
 EXPORT_SYMBOL(scst_kobj_to_tgtt);
 
+static void scst_release_tgtt(struct kobject *kobj)
+{
+	/*
+	 * Since target template objects reside in data segments, no memory
+	 * has to be deallocated here.
+	 */
+}
+
 static struct kobj_type tgtt_ktype = {
 	.sysfs_ops = &scst_sysfs_ops,
-	.release = scst_release_kobj,
+	.release = scst_release_tgtt,
 };
 
 #if defined(CONFIG_SCST_DEBUG) || defined(CONFIG_SCST_TRACING)
@@ -587,26 +592,18 @@ kfree:
 int scst_tgtt_sysfs_create(struct scst_tgt_template *tgtt)
 {
 	int res;
-	struct scst_kobj *tgtt_kobj;
 
 	TRACE_ENTRY();
 
-	res = -ENOMEM;
-	tgtt_kobj = scst_create_kobj(tgtt);
-	if (!tgtt_kobj)
-		goto out;
-
-	tgtt->tgtt_kobj = &tgtt_kobj->kobj;
-	res = kobject_init_and_add(tgtt->tgtt_kobj, &tgtt_ktype,
+	res = kobject_init_and_add(&tgtt->tgtt_kobj, &tgtt_ktype,
 			scst_targets_kobj, tgtt->name);
 	if (res) {
 		PRINT_ERROR("Can't add tgtt %s to sysfs", tgtt->name);
-		scst_release_kobj(&tgtt_kobj->kobj);
 		goto out;
 	}
 
 	if (tgtt->add_target != NULL) {
-		res = sysfs_create_file(tgtt->tgtt_kobj,
+		res = sysfs_create_file(&tgtt->tgtt_kobj,
 				&scst_tgtt_mgmt.attr);
 		if (res != 0) {
 			PRINT_ERROR("Can't add mgmt attr for target driver %s",
@@ -616,7 +613,7 @@ int scst_tgtt_sysfs_create(struct scst_tgt_template *tgtt)
 	}
 
 	if (tgtt->tgtt_attrs) {
-		res = sysfs_create_files(tgtt->tgtt_kobj, tgtt->tgtt_attrs);
+		res = sysfs_create_files(&tgtt->tgtt_kobj, tgtt->tgtt_attrs);
 		if (res) {
 			PRINT_ERROR("Can't add attributes for target driver %s",
 				    tgtt->name);
@@ -626,7 +623,7 @@ int scst_tgtt_sysfs_create(struct scst_tgt_template *tgtt)
 
 #if defined(CONFIG_SCST_DEBUG) || defined(CONFIG_SCST_TRACING)
 	if (tgtt->trace_flags != NULL) {
-		res = sysfs_create_file(tgtt->tgtt_kobj,
+		res = sysfs_create_file(&tgtt->tgtt_kobj,
 				&tgtt_trace_attr.attr);
 		if (res != 0) {
 			PRINT_ERROR("Can't add trace_flag for target "
@@ -650,8 +647,8 @@ void scst_tgtt_sysfs_del(struct scst_tgt_template *tgtt)
 {
 	TRACE_ENTRY();
 
-	kobject_del(tgtt->tgtt_kobj);
-	kobject_put(tgtt->tgtt_kobj);
+	kobject_del(&tgtt->tgtt_kobj);
+	kobject_put(&tgtt->tgtt_kobj);
 
 	TRACE_EXIT();
 	return;
@@ -798,7 +795,7 @@ int scst_tgt_sysfs_create(struct scst_tgt *tgt)
 		goto out_nomem;
 	tgt->tgt_kobj = &tgt_kobj->kobj;
 	res = kobject_init_and_add(tgt->tgt_kobj, &tgt_ktype,
-				   tgt->tgtt->tgtt_kobj, tgt->tgt_name);
+				   &tgt->tgtt->tgtt_kobj, tgt->tgt_name);
 	if (res != 0) {
 		PRINT_ERROR("Can't add tgt %s to sysfs", tgt->tgt_name);
 		scst_release_kobj(&tgt_kobj->kobj);

@@ -1039,12 +1039,7 @@ struct scst_tgt_template {
 	/* Device number in /proc */
 	int proc_dev_num;
 #else
-	/*
-	 * Target template kernel object. This object is guaranteed to exist
-	 * as soon as scst_register_target() returned and exists at least as
-	 * long as the target template is present in the target template list.
-	 */
-	struct kobject *tgtt_kobj;
+	struct kobject tgtt_kobj;
 #endif
 
 	/*
@@ -3768,7 +3763,7 @@ struct sysfs_ops *scst_sysfs_get_sysfs_ops(void);
 static inline struct kobject *scst_sysfs_get_tgtt_kobj(
 	struct scst_tgt_template *tgtt)
 {
-	return tgtt->tgtt_kobj;
+	return &tgtt->tgtt_kobj;
 }
 
 struct scst_tgt_template *scst_kobj_to_tgtt(struct kobject *kobj);
