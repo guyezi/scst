@@ -876,14 +876,14 @@ static int scst_register_device(struct scsi_device *scsidp)
 
 	dev->type = scsidp->type;
 
-	dev->virt_name = kmalloc(50, GFP_KERNEL);
+	dev->virt_name = kasprintf(GFP_KERNEL, "%d:%d:%d:%d",
+				   scsidp->host->host_no,
+				   scsidp->channel, scsidp->id, scsidp->lun);
 	if (dev->virt_name == NULL) {
 		PRINT_ERROR("%s", "Unable to alloc device name");
 		res = -ENOMEM;
 		goto out_free_dev;
 	}
-	snprintf(dev->virt_name, 50, "%d:%d:%d:%d", scsidp->host->host_no,
-		scsidp->channel, scsidp->id, scsidp->lun);
 
 	list_for_each_entry(d, &scst_dev_list, dev_list_entry) {
 		if (strcmp(d->virt_name, dev->virt_name) == 0) {
