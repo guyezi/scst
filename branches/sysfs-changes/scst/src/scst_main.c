@@ -477,6 +477,8 @@ struct scst_tgt *scst_register_target(struct scst_tgt_template *vtt,
 	if (rc != 0)
 		goto out;
 
+	kobject_init(&tgt->tgt_kobj, &tgt_ktype);
+
 	rc = mutex_lock_interruptible(&scst_mutex);
 	if (rc)
 		goto out_free_tgt;
@@ -516,16 +518,14 @@ struct scst_tgt *scst_register_target(struct scst_tgt_template *vtt,
 		tgt_num++;
 	}
 
-	kobject_init(&tgt->tgt_kobj, &tgt_ktype);
-
 #ifdef CONFIG_SCST_PROC
 	rc = scst_build_proc_target_entries(tgt);
 	if (rc < 0)
-		goto out_put;
+		goto out_unlock;
 #else
 	rc = scst_tgt_sysfs_create(tgt);
 	if (rc < 0)
-		goto out_put;
+		goto out_unlock;
 
 	tgt->default_acg = scst_alloc_add_acg(tgt, tgt->tgt_name, false);
 	if (tgt->default_acg == NULL)
@@ -557,19 +557,13 @@ out_sysfs_del:
 	scst_tgt_sysfs_del(tgt);
 #endif
 
-out_put:
-	kobject_put(&tgt->tgt_kobj);
-	tgt = NULL;
-
 out_unlock:
 	mutex_unlock(&scst_mutex);
 
 out_free_tgt:
 	/* In case of error tgt_name will be freed in scst_free_tgt() */
-	if (tgt) {
-		scst_free_tgt(tgt);
-		tgt = NULL;
-	}
+	kobject_put(&tgt->tgt_kobj);
+	tgt = NULL;
 	goto out;
 }
 EXPORT_SYMBOL(scst_register_target);
