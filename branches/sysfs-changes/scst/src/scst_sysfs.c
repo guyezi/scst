@@ -333,6 +333,9 @@ static struct scst_dev_type *__scst_lookup_devt(const char *name)
 			    dev_type_list_entry)
 		if (strcmp(dt->name, name) == 0)
 			return dt;
+	list_for_each_entry(dt, &scst_dev_type_list, dev_type_list_entry)
+		if (strcmp(dt->name, name) == 0)
+			return dt;
 
 	TRACE_DBG("devt %s not found", name);
 
@@ -3429,7 +3432,7 @@ static ssize_t scst_mgmt_show(struct kobject *kobj,
 	ssize_t count;
 	static const char help[] =
 /* devices/<dev>/filename */
-"in devices/<dev> set_filename <filename>"
+"in devices/<dev> set_filename <filename>\n"
 /* scst_devt_mgmt or scst_devt_pass_through_mgmt */
 "in handlers/<devt> <devt_cmd>\n"
 /* scst_tgtt_mgmt */
@@ -3660,7 +3663,6 @@ static ssize_t scst_mgmt_store(struct kobject *kobj,
 		res = scst_process_dev_mgmt_store(cmd, dev);
 		break;
 	case DEVICE_TYPE_PATH:
-		BUG_ON(!devt);
 		if (devt->add_device)
 			res = scst_process_devt_mgmt_store(cmd, devt);
 		else
