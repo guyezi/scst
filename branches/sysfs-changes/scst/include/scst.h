@@ -1484,7 +1484,7 @@ struct scst_tgt {
 	/* Name of the default security group ("Default_target_name") */
 	char *default_group_name;
 #else
-	struct kobject *tgt_kobj; /* main targets/target kobject */
+	struct kobject tgt_kobj; /* main targets/target kobject */
 	struct kobject *tgt_sess_kobj; /* target/sessions/ */
 	struct kobject *tgt_luns_kobj; /* target/luns/ */
 	struct kobject *tgt_ini_grp_kobj; /* target/ini_groups/ */
@@ -3775,7 +3775,7 @@ struct scst_tgt_template *scst_kobj_to_tgtt(struct kobject *kobj);
 static inline struct kobject *scst_sysfs_get_tgt_kobj(
 	struct scst_tgt *tgt)
 {
-	return tgt->tgt_kobj;
+	return &tgt->tgt_kobj;
 }
 
 struct scst_tgt *scst_kobj_to_tgt(struct kobject *kobj);

@@ -450,6 +450,15 @@ out_err_up:
 }
 EXPORT_SYMBOL(scst_unregister_target_template);
 
+static void scst_release_target(struct kobject *kobj);
+
+static struct kobj_type tgt_ktype = {
+#ifndef CONFIG_SCST_PROC
+	.sysfs_ops = &scst_sysfs_ops,
+#endif
+	.release = scst_release_target,
+};
+
 /**
  * scst_register_target() - register target
  *
@@ -507,14 +516,16 @@ struct scst_tgt *scst_register_target(struct scst_tgt_template *vtt,
 		tgt_num++;
 	}
 
+	kobject_init(&tgt->tgt_kobj, &tgt_ktype);
+
 #ifdef CONFIG_SCST_PROC
 	rc = scst_build_proc_target_entries(tgt);
 	if (rc < 0)
-		goto out_unlock;
+		goto out_put;
 #else
 	rc = scst_tgt_sysfs_create(tgt);
 	if (rc < 0)
-		goto out_unlock;
+		goto out_put;
 
 	tgt->default_acg = scst_alloc_add_acg(tgt, tgt->tgt_name, false);
 	if (tgt->default_acg == NULL)
@@ -546,13 +557,19 @@ out_sysfs_del:
 	scst_tgt_sysfs_del(tgt);
 #endif
 
+out_put:
+	kobject_put(&tgt->tgt_kobj);
+	tgt = NULL;
+
 out_unlock:
 	mutex_unlock(&scst_mutex);
 
 out_free_tgt:
 	/* In case of error tgt_name will be freed in scst_free_tgt() */
-	scst_free_tgt(tgt);
-	tgt = NULL;
+	if (tgt) {
+		scst_free_tgt(tgt);
+		tgt = NULL;
+	}
 	goto out;
 }
 EXPORT_SYMBOL(scst_register_target);
@@ -636,7 +653,7 @@ again:
 	PRINT_INFO("Target %s for template %s unregistered successfully",
 		tgt->tgt_name, vtt->name);
 
-	scst_free_tgt(tgt);
+	kobject_put(&tgt->tgt_kobj);
 
 	TRACE_DBG("Unregistering tgt %p finished", tgt);
 
@@ -644,6 +661,16 @@ again:
 	return;
 }
 EXPORT_SYMBOL(scst_unregister_target);
+
+static void scst_release_target(struct kobject *kobj)
+{
+	struct scst_tgt *tgt;
+
+	TRACE_ENTRY();
+	tgt = container_of(kobj, struct scst_tgt, tgt_kobj);
+	scst_free_tgt(tgt);
+	TRACE_EXIT();
+}
 
 static int scst_susp_wait(bool interruptible)
 {

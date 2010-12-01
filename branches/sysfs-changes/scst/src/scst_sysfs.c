@@ -299,9 +299,9 @@ static ssize_t scst_store(struct kobject *kobj, struct attribute *attr,
 }
 
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 34))
-static const struct sysfs_ops scst_sysfs_ops = {
+const struct sysfs_ops scst_sysfs_ops = {
 #else
-static struct sysfs_ops scst_sysfs_ops = {
+struct sysfs_ops scst_sysfs_ops = {
 #endif
 	.show = scst_show,
 	.store = scst_store,
@@ -428,7 +428,7 @@ EXPORT_SYMBOL(scst_kobj_to_tgtt);
 static void scst_release_tgtt(struct kobject *kobj)
 {
 	/*
-	 * Since target template objects reside in data segments, no memory
+	 * Since target template objects reside in a data segment, no memory
 	 * has to be deallocated here.
 	 */
 }
@@ -658,11 +658,6 @@ void scst_tgtt_sysfs_del(struct scst_tgt_template *tgtt)
  ** Target directory implementation
  **/
 
-static struct kobj_type tgt_ktype = {
-	.sysfs_ops = &scst_sysfs_ops,
-	.release = scst_release_kobj,
-};
-
 static struct kobj_attribute scst_luns_mgmt =
 	__ATTR(mgmt, S_IRUGO, scst_luns_mgmt_show, NULL);
 
@@ -700,13 +695,10 @@ static struct kobj_attribute scst_acg_cpu_mask =
 
 /**
  * scst_kobj_to_tgt() - Look up target pointer.
- *
- * Must be called from inside a tgt sysfs .show() or .store() callback
- * function only.
  */
 struct scst_tgt *scst_kobj_to_tgt(struct kobject *kobj)
 {
-	return scst_kobj_to_scst_obj(kobj);
+	return container_of(kobj, struct scst_tgt, tgt_kobj);
 }
 EXPORT_SYMBOL(scst_kobj_to_tgt);
 
@@ -786,25 +778,18 @@ static struct kobj_attribute tgt_enable_attr =
 int scst_tgt_sysfs_create(struct scst_tgt *tgt)
 {
 	int res;
-	struct scst_kobj *tgt_kobj;
 
 	TRACE_ENTRY();
 
-	tgt_kobj = scst_create_kobj(tgt);
-	if (!tgt_kobj)
-		goto out_nomem;
-	tgt->tgt_kobj = &tgt_kobj->kobj;
-	res = kobject_init_and_add(tgt->tgt_kobj, &tgt_ktype,
-				   &tgt->tgtt->tgtt_kobj, tgt->tgt_name);
+	res = kobject_add(&tgt->tgt_kobj, &tgt->tgtt->tgtt_kobj, tgt->tgt_name);
 	if (res != 0) {
 		PRINT_ERROR("Can't add tgt %s to sysfs", tgt->tgt_name);
-		scst_release_kobj(&tgt_kobj->kobj);
 		goto out_err;
 	}
 
 	if ((tgt->tgtt->enable_target != NULL) &&
 	    (tgt->tgtt->is_target_enabled != NULL)) {
-		res = sysfs_create_file(tgt->tgt_kobj,
+		res = sysfs_create_file(&tgt->tgt_kobj,
 				&tgt_enable_attr.attr);
 		if (res != 0) {
 			PRINT_ERROR("Can't add attr %s to sysfs",
@@ -813,13 +798,13 @@ int scst_tgt_sysfs_create(struct scst_tgt *tgt)
 		}
 	}
 
-	tgt->tgt_sess_kobj = kobject_create_and_add("sessions", tgt->tgt_kobj);
+	tgt->tgt_sess_kobj = kobject_create_and_add("sessions", &tgt->tgt_kobj);
 	if (tgt->tgt_sess_kobj == NULL) {
 		PRINT_ERROR("Can't create sess kobj for tgt %s", tgt->tgt_name);
 		goto out_nomem;
 	}
 
-	tgt->tgt_luns_kobj = kobject_create_and_add("luns", tgt->tgt_kobj);
+	tgt->tgt_luns_kobj = kobject_create_and_add("luns", &tgt->tgt_kobj);
 	if (tgt->tgt_luns_kobj == NULL) {
 		PRINT_ERROR("Can't create luns kobj for tgt %s", tgt->tgt_name);
 		goto out_nomem;
@@ -833,14 +818,14 @@ int scst_tgt_sysfs_create(struct scst_tgt *tgt)
 	}
 
 	tgt->tgt_ini_grp_kobj = kobject_create_and_add("ini_groups",
-					tgt->tgt_kobj);
+					&tgt->tgt_kobj);
 	if (tgt->tgt_ini_grp_kobj == NULL) {
 		PRINT_ERROR("Can't create ini_grp kobj for tgt %s",
 			tgt->tgt_name);
 		goto out_nomem;
 	}
 
-	res = sysfs_create_file(tgt->tgt_kobj,
+	res = sysfs_create_file(&tgt->tgt_kobj,
 			&scst_rel_tgt_id.attr);
 	if (res != 0) {
 		PRINT_ERROR("Can't add attribute %s for tgt %s",
@@ -848,7 +833,7 @@ int scst_tgt_sysfs_create(struct scst_tgt *tgt)
 		goto out_err;
 	}
 
-	res = sysfs_create_file(tgt->tgt_kobj,
+	res = sysfs_create_file(&tgt->tgt_kobj,
 			&scst_tgt_addr_method.attr);
 	if (res != 0) {
 		PRINT_ERROR("Can't add attribute %s for tgt %s",
@@ -856,7 +841,7 @@ int scst_tgt_sysfs_create(struct scst_tgt *tgt)
 		goto out_err;
 	}
 
-	res = sysfs_create_file(tgt->tgt_kobj,
+	res = sysfs_create_file(&tgt->tgt_kobj,
 			&scst_tgt_io_grouping_type.attr);
 	if (res != 0) {
 		PRINT_ERROR("Can't add attribute %s for tgt %s",
@@ -864,7 +849,7 @@ int scst_tgt_sysfs_create(struct scst_tgt *tgt)
 		goto out_err;
 	}
 
-	res = sysfs_create_file(tgt->tgt_kobj, &scst_tgt_cpu_mask.attr);
+	res = sysfs_create_file(&tgt->tgt_kobj, &scst_tgt_cpu_mask.attr);
 	if (res != 0) {
 		PRINT_ERROR("Can't add attribute %s for tgt %s",
 			scst_tgt_cpu_mask.attr.name, tgt->tgt_name);
@@ -872,7 +857,7 @@ int scst_tgt_sysfs_create(struct scst_tgt *tgt)
 	}
 
 	if (tgt->tgtt->tgt_attrs) {
-		res = sysfs_create_files(tgt->tgt_kobj, tgt->tgtt->tgt_attrs);
+		res = sysfs_create_files(&tgt->tgt_kobj, tgt->tgtt->tgt_attrs);
 		if (res) {
 			PRINT_ERROR("Can't add attributes for tgt %s",
 				    tgt->tgt_name);
@@ -899,12 +884,11 @@ void scst_tgt_sysfs_del(struct scst_tgt *tgt)
 	kobject_del(tgt->tgt_sess_kobj);
 	kobject_del(tgt->tgt_luns_kobj);
 	kobject_del(tgt->tgt_ini_grp_kobj);
-	kobject_del(tgt->tgt_kobj);
+	kobject_del(&tgt->tgt_kobj);
 
 	kobject_put(tgt->tgt_sess_kobj);
 	kobject_put(tgt->tgt_luns_kobj);
 	kobject_put(tgt->tgt_ini_grp_kobj);
-	kobject_put(tgt->tgt_kobj);
 
 	TRACE_EXIT();
 	return;

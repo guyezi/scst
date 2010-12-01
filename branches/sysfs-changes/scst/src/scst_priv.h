@@ -463,6 +463,12 @@ static inline void scst_sgv_sysfs_del(struct sgv_pool *pool) { }
 
 #else /* CONFIG_SCST_PROC */
 
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 34)
+extern const struct sysfs_ops scst_sysfs_ops;
+#else
+extern struct sysfs_ops scst_sysfs_ops;
+#endif
+
 struct scst_kobj *scst_create_kobj(void *scst_obj);
 void scst_release_kobj(struct kobject *kobj);
 void *scst_kobj_to_scst_obj(struct kobject *kobj);
