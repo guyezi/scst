@@ -418,6 +418,12 @@ void scst_unregister_target_template(struct scst_tgt_template *vtt)
 		goto out_err_up;
 	}
 
+#ifdef CONFIG_SCST_PROC
+	scst_cleanup_proc_target_dir_entries(vtt);
+#else
+	scst_tgtt_sysfs_del(vtt);
+#endif
+
 	mutex_lock(&scst_mutex2);
 	list_del(&vtt->scst_template_list_entry);
 	mutex_unlock(&scst_mutex2);
@@ -431,12 +437,6 @@ restart:
 	}
 
 	mutex_unlock(&scst_mutex);
-
-#ifdef CONFIG_SCST_PROC
-	scst_cleanup_proc_target_dir_entries(vtt);
-#else
-	scst_tgtt_sysfs_del(vtt);
-#endif
 
 	PRINT_INFO("Target template %s unregistered successfully", vtt->name);
 
