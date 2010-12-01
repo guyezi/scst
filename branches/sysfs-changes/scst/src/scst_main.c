@@ -283,7 +283,6 @@ int __scst_register_target_template(struct scst_tgt_template *vtt,
 			goto out_unlock;
 		}
 	}
-	mutex_unlock(&scst_mutex);
 
 #ifndef CONFIG_SCST_PROC
 	res = scst_tgtt_sysfs_create(vtt);
@@ -297,7 +296,6 @@ int __scst_register_target_template(struct scst_tgt_template *vtt,
 	}
 #endif
 
-	mutex_lock(&scst_mutex);
 	mutex_lock(&scst_mutex2);
 	list_add_tail(&vtt->scst_template_list_entry, &scst_template_list);
 	mutex_unlock(&scst_mutex2);
