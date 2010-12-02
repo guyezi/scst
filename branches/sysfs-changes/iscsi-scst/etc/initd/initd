@@ -9,7 +9,7 @@ SCST_CMD=/usr/local/sbin/scstadmin
 SCST_CFG=/etc/scst.conf
 
 # Additional modules to load/unload
-ADD_MODULES="scst_vdisk scst"
+ADD_MODULES="scst_disk scst_vdisk scst"
 
 configure_memsize()
 {
