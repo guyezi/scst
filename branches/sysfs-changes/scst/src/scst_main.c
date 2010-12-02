@@ -1394,8 +1394,6 @@ void scst_unregister_dev_driver(struct scst_dev_type *dev_type)
 
 	TRACE_ENTRY();
 
-	BUG_ON(dev_type == &scst_null_devtype);
-
 	scst_suspend_activity(false);
 	mutex_lock(&scst_mutex);
 

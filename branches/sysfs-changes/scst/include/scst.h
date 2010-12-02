@@ -1039,7 +1039,7 @@ struct scst_tgt_template {
 	/* Device number in /proc */
 	int proc_dev_num;
 #else
-	struct kobject tgtt_kobj;
+	struct kobject tgtt_kobj; /* kobject for this struct */
 #endif
 
 	/*
