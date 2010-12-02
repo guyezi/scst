@@ -1178,7 +1178,9 @@ sub addGroup {
 
 	return SCST_C_GRP_ADD_FAIL if (!$io);
 
-	my $cmd = "in " . mkpath(SCST_TARGETS, $driver, $target, SCST_GROUPS) . " create $group\n";
+	my $cmd = "in " . mkpath(SCST_TARGETS, $driver, $target, SCST_GROUPS)
+	    . " create $group\n";
+
 	my $bytes;
 
 	if ($self->{'debug'}) {
@@ -1217,7 +1219,9 @@ sub removeGroup {
 
 	return SCST_C_GRP_REM_FAIL if (!$io);
 
-	my $cmd = "in " . mkpath(SCST_TARGETS, $driver, $target, SCST_GROUPS) . " del $group\n";
+	my $cmd = "in " . mkpath(SCST_TARGETS, $driver, $target, SCST_GROUPS)
+	    . " del $group\n";
+
 	my $bytes;
 
 	if ($self->{'debug'}) {
@@ -1261,7 +1265,11 @@ sub addInitiator {
 
 	return SCST_C_GRP_ADD_INI_FAIL if (!$io);
 
-	my $cmd = "in " . mkpath(SCST_TARGETS, $driver, $target, SCST_GROUPS, $group, SCST_INITIATORS) . " add $initiator\n";
+	my $cmd = "in "
+	    . mkpath(SCST_TARGETS, $driver, $target, SCST_GROUPS, $group,
+		     SCST_INITIATORS)
+	    . " add $initiator\n";
+
 	my $bytes;
 
 	if ($self->{'debug'}) {
@@ -1305,7 +1313,11 @@ sub removeInitiator {
 
 	return SCST_C_GRP_REM_INI_FAIL if (!$io);
 
-	my $cmd = "in " . mkpath(SCST_TARGETS, $driver, $target, SCST_GROUPS, $group, SCST_INITIATORS) . " del $initiator\n";
+	my $cmd = "in "
+	    . mkpath(SCST_TARGETS, $driver, $target, SCST_GROUPS, $group,
+		     SCST_INITIATORS)
+	    . " del $initiator\n";
+
 	my $bytes;
 
 	if ($self->{'debug'}) {
@@ -1358,7 +1370,11 @@ sub moveInitiator {
 
 	return SCST_C_GRP_MOV_INI_FAIL if (!$io);
 
-	my $cmd = "in " . mkpath(SCST_TARGETS, $driver, $target, SCST_GROUPS, $from, SCST_INITIATORS) . " move $initiator $to\n";
+	my $cmd = "in "
+	    . mkpath(SCST_TARGETS, $driver, $target, SCST_GROUPS, $from,
+		     SCST_INITIATORS)
+	    . " move $initiator $to\n";
+
 	my $bytes;
 
 	if ($self->{'debug'}) {
@@ -1397,7 +1413,11 @@ sub clearInitiators {
 
 	return SCST_C_GRP_CLR_INI_FAIL if (!$io);
 
-	my $cmd = "in " . mkpath(SCST_TARGETS, $driver, $target, SCST_GROUPS, $group, SCST_INITIATORS) . " clear\n";
+	my $cmd = "in "
+	    . mkpath(SCST_TARGETS, $driver, $target, SCST_GROUPS, $group,
+		     SCST_INITIATORS)
+	    . " clear\n";
+
 	my $bytes;
 
 	if ($self->{'debug'}) {
@@ -1786,7 +1806,10 @@ sub deviceAttributes {
 				$attributes{$attribute}->{'value'} = undef;
 			} else {
 				my $is_static;
-				if (($attribute eq 'filename') || ($mode & S_IWUSR) >> 6) {
+				if (($attribute eq 'filename')
+				    || ($attribute eq 'threads_num')
+				    || ($attribute eq 'cpu_mask')
+				    || ($mode & S_IWUSR) >> 6) {
 					$is_static = FALSE;
 				} else {
 					$is_static = TRUE;
@@ -2013,7 +2036,9 @@ sub targetAttributes {
 				$attributes{$attribute}->{'value'} = undef;
 			} else {
 				my $is_static;
-				if (($attribute eq 'enabled') || (($mode & S_IWUSR) >> 6)) {
+				if ($attribute eq 'enabled'
+				    || $attribute eq 'cpu_mask'
+				    || (($mode & S_IWUSR) >> 6)) {
 					$is_static = FALSE;
 				} else {
 					$is_static = TRUE;
@@ -2080,16 +2105,20 @@ sub setTargetAttribute {
 	return SCST_C_TGT_ATTRIBUTE_STATIC if ($$attributes{$attribute}->{'static'});
 	my $bytes;
 
-	if ($attribute eq 'enabled') {
+	if ($attribute eq 'enabled' || $attribute eq 'cpu_mask') {
 		my $io = new IO::File mkpath(SCST_ROOT, SCST_MGMT_IO), O_WRONLY;
 
 		return SCST_C_TGT_SETATTR_FAIL if (!$io);
 
-		my $path = mkpath(SCST_TARGETS, $driver, $target);
-		my $cmd = "in $path " . ($value eq '1' ? 'enable' : 'disable');
+		my $cmd = "in " . mkpath(SCST_TARGETS, $driver, $target) . " "
+		    . ($attribute eq 'enabled'
+		       ? ($value eq '1' ? 'enable' : 'disable')
+		       : $attribute eq 'cpu_mask'
+		       ? "set_cpu_mask $value"
+		       : '???');
 
 		if ($self->{'debug'}) {
-			print "DBG($$): $path -> $attribute = $value\n";
+			print "DBG($$): $cmd\n";
 		} else {
 			$bytes = _syswrite($io, $cmd, length($cmd));
 		}
@@ -2158,7 +2187,8 @@ sub groupAttributes {
 				$attributes{$attribute}->{'value'} = undef;
 			} else {
 				my $is_static;
-				if (($mode & S_IWUSR) >> 6) {
+				if (($attribute eq 'cpu_mask')
+				    || (($mode & S_IWUSR) >> 6)) {
 					$is_static = FALSE;
 				} else {
 					$is_static = TRUE;
@@ -2229,22 +2259,40 @@ sub setGroupAttribute {
 	return SCST_C_GRP_BAD_ATTRIBUTES if (!defined($$attributes{$attribute}));
 	return SCST_C_GRP_ATTRIBUTE_STATIC if ($$attributes{$attribute}->{'static'});
 
-	my $path = mkpath(SCST_ROOT, SCST_TARGETS, $driver, $target, SCST_GROUPS,
-	   $group, $attribute);
-
-	my $io = new IO::File $path, O_WRONLY;
-
-	return SCST_C_GRP_SETATTR_FAIL if (!$io);
-
 	my $bytes;
 
-	if ($self->{'debug'}) {
-		print "DBG($$): $path -> $attribute = $value\n";
-	} else {
-		$bytes = _syswrite($io, $value, length($value));
-	}
+	if ($attribute eq 'cpu_mask') {
+		my $io = new IO::File mkpath(SCST_ROOT, SCST_MGMT_IO), O_WRONLY;
 
-	close $io;
+		return SCST_C_GRP_SETATTR_FAIL if (!$io);
+
+		my $cmd = "in " . mkpath(SCST_TARGETS, $driver, $target,
+					 SCST_GROUPS, $group)
+		    . " set_cpu_mask $value";
+
+		if ($self->{'debug'}) {
+			print "DBG($$): $cmd\n";
+		} else {
+			$bytes = _syswrite($io, $cmd, length($cmd));
+		}
+
+		close $io;
+	} else {
+		my $path = mkpath(SCST_ROOT, SCST_TARGETS, $driver, $target, SCST_GROUPS,
+				  $group, $attribute);
+
+		my $io = new IO::File $path, O_WRONLY;
+
+		return SCST_C_GRP_SETATTR_FAIL if (!$io);
+
+		if ($self->{'debug'}) {
+			print "DBG($$): $path -> $attribute = $value\n";
+		} else {
+			$bytes = _syswrite($io, $value, length($value));
+		}
+
+		close $io;
+	}
 
 	return FALSE if ($self->{'debug'} || $bytes);
         return SCST_C_GRP_SETATTR_FAIL;
@@ -2888,7 +2936,8 @@ sub openDevice {
 	}
 
 	$o_string =~ s/\s$//;
-	my $cmd = "in " . mkpath(SCST_HANDLERS, $handler) . " add_device $device $o_string\n";
+	my $cmd = "in " . mkpath(SCST_HANDLERS, $handler)
+	    . " add_device $device $o_string\n";
 
 	my $bytes;
 
@@ -2923,7 +2972,8 @@ sub closeDevice {
 	return SCST_C_DEV_NO_DEVICE if ($rc != TRUE);
 	return $rc if ($rc > 1);
 
-	my $cmd = "in " . mkpath(SCST_HANDLERS, $handler) . " del_device $device\n";
+	my $cmd = "in " . mkpath(SCST_HANDLERS, $handler)
+	    . " del_device $device\n";
 
 	my $bytes;
 
@@ -2954,13 +3004,19 @@ sub setDeviceAttribute {
 	return SCST_C_DEV_BAD_ATTRIBUTES if (!defined($$attributes{$attribute}));
 	return SCST_C_DEV_ATTRIBUTE_STATIC if ($$attributes{$attribute}->{'static'});
 
-	if ($attribute eq "filename") {
+	my $bytes;
+
+	if ($attribute eq 'filename' || $attribute eq 'threads_num') {
 		my $io = new IO::File mkpath(SCST_ROOT, SCST_MGMT_IO), O_WRONLY;
 
 		return SCST_C_DEV_SETATTR_FAIL if (!$io);
 
-		my $cmd = "in " . mkpath(SCST_DEVICES, $device) . " set_filename $value";
-		my $bytes;
+		my $cmd = "in " . mkpath(SCST_DEVICES, $device) . " " .
+		    ($attribute eq 'filename'
+		     ? "set_filename $value"
+		     : $attribute eq 'threads_num'
+		     ? "set_threads_num $value"
+		     : "???");
 
 		if ($self->{'debug'}) {
 			print "DBG($$): set filename of $device to $value\n";
@@ -2977,8 +3033,6 @@ sub setDeviceAttribute {
 		my $io = new IO::File $path, O_WRONLY;
 	
 		return SCST_C_DEV_SETATTR_FAIL if (!$io);
-	
-		my $bytes;
 	
 		if ($self->{'debug'}) {
 			print "DBG($$): $path -> $attribute = $value\n";

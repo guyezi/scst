@@ -55,6 +55,7 @@ enum mgmt_path_type {
 	TARGET_PATH,
 	TARGET_LUNS_PATH,
 	TARGET_INI_GROUPS_PATH,
+	ACG_PATH,
 	ACG_LUNS_PATH,
 	ACG_INITIATOR_GROUPS_PATH,
 };
@@ -148,9 +149,6 @@ static ssize_t scst_tgt_io_grouping_type_store(struct kobject *kobj,
 static ssize_t scst_tgt_cpu_mask_show(struct kobject *kobj,
 				   struct kobj_attribute *attr,
 				   char *buf);
-static ssize_t scst_tgt_cpu_mask_store(struct kobject *kobj,
-				    struct kobj_attribute *attr,
-				    const char *buf, size_t count);
 static ssize_t scst_rel_tgt_id_show(struct kobject *kobj,
 				   struct kobj_attribute *attr,
 				   char *buf);
@@ -172,15 +170,18 @@ static ssize_t scst_acg_io_grouping_type_store(struct kobject *kobj,
 static ssize_t scst_acg_cpu_mask_show(struct kobject *kobj,
 				   struct kobj_attribute *attr,
 				   char *buf);
-static ssize_t scst_acg_cpu_mask_store(struct kobject *kobj,
-				    struct kobj_attribute *attr,
-				    const char *buf, size_t count);
+static int __scst_acg_process_cpu_mask_store(struct scst_tgt *tgt,
+					     struct scst_acg *acg,
+					     cpumask_t *cpu_mask);
 static ssize_t scst_acn_file_show(struct kobject *kobj,
 	struct kobj_attribute *attr, char *buf);
 static int scst_process_devt_mgmt_store(char *buffer,
 					struct scst_dev_type *devt);
 static int scst_process_devt_pass_through_mgmt_store(char *buffer,
 						struct scst_dev_type *devt);
+static ssize_t scst_dev_set_threads_num(struct scst_device *dev, long newtn);
+static ssize_t scst_dev_set_thread_pool_type(struct scst_device *dev,
+				enum scst_dev_type_threads_pool_type newtpt);
 
 #if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 34)
 /**
@@ -671,9 +672,7 @@ static struct kobj_attribute scst_tgt_io_grouping_type =
 	       scst_tgt_io_grouping_type_store);
 
 static struct kobj_attribute scst_tgt_cpu_mask =
-	__ATTR(cpu_mask, S_IRUGO | S_IWUSR,
-	       scst_tgt_cpu_mask_show,
-	       scst_tgt_cpu_mask_store);
+	__ATTR(cpu_mask, S_IRUGO, scst_tgt_cpu_mask_show, NULL);
 
 static struct kobj_attribute scst_rel_tgt_id =
 	__ATTR(rel_tgt_id, S_IRUGO | S_IWUSR, scst_rel_tgt_id_show,
@@ -689,9 +688,7 @@ static struct kobj_attribute scst_acg_io_grouping_type =
 	       scst_acg_io_grouping_type_store);
 
 static struct kobj_attribute scst_acg_cpu_mask =
-	__ATTR(cpu_mask, S_IRUGO | S_IWUSR,
-	       scst_acg_cpu_mask_show,
-	       scst_acg_cpu_mask_store);
+	__ATTR(cpu_mask, S_IRUGO, scst_acg_cpu_mask_show, NULL);
 
 /**
  * scst_kobj_to_tgt() - Look up target pointer.
@@ -756,6 +753,35 @@ out:
 	return res;
 }
 
+static int scst_alloc_and_parse_cpumask(cpumask_t **cpumask, const char *buf,
+					size_t count)
+{
+	int res;
+
+	res = -ENOMEM;
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 28)
+	*cpumask = kmalloc(cpumask_size(), GFP_KERNEL);
+#else
+	*cpumask = kmalloc(sizeof(**cpumask), GFP_KERNEL);
+#endif
+	if (!*cpumask)
+		goto out;
+	/*
+	 * We can't use cpumask_parse_user() here because it expects
+	 * a buffer in user space.
+	 */
+	res = __bitmap_parse(buf, count, 0, cpumask_bits(*cpumask),
+			     nr_cpumask_bits);
+	if (res)
+		goto out_free;
+out:
+	return res;
+out_free:
+	kfree(*cpumask);
+	*cpumask = NULL;
+	goto out;
+}
+
 static int scst_process_tgt_mgmt_store(char *cmd, struct scst_tgt *tgt)
 {
 	int res;
@@ -767,7 +793,20 @@ static int scst_process_tgt_mgmt_store(char *cmd, struct scst_tgt *tgt)
 		res = scst_process_tgt_enable_store(tgt, true);
 	else if (strcmp(cmd, "disable") == 0)
 		res = scst_process_tgt_enable_store(tgt, false);
+	else if (strncmp(cmd, "set_cpu_mask ", 13) == 0) {
+		cpumask_t *cpumask;
 
+		BUG_ON(!tgt->default_acg);
+
+		res = scst_alloc_and_parse_cpumask(&cpumask, cmd + 13,
+						   strlen(cmd + 13));
+		if (res)
+			goto out;
+		res = __scst_acg_process_cpu_mask_store(tgt, tgt->default_acg,
+							cpumask);
+		kfree(cpumask);
+	}
+out:
 	TRACE_EXIT_RES(res);
 	return res;
 }
@@ -916,13 +955,36 @@ static int scst_process_dev_mgmt_store(char *cmd, struct scst_device *dev)
 
 	TRACE_ENTRY();
 
-	res = -EPERM;
-	if (!dev->handler->set_filename)
-		goto out;
 	res = -EINVAL;
-	if (strncmp(cmd, "set_filename ", 13) != 0)
-		goto out;
-	res = dev->handler->set_filename(dev, cmd + 13);
+	if (strncmp(cmd, "set_filename ", 13) == 0) {
+		res = -EPERM;
+		if (!dev->handler->set_filename)
+			goto out;
+		res = dev->handler->set_filename(dev, cmd + 13);
+	} else if (strncmp(cmd, "set_threads_num ", 16) == 0) {
+		long num_threads;
+
+		res = strict_strtol(cmd + 16, 0, &num_threads);
+		if (res) {
+			PRINT_ERROR("Bad thread count %s", cmd + 16);
+			goto out;
+		}
+		if (num_threads < 0) {
+			PRINT_ERROR("Invalid thread count %ld", num_threads);
+			goto out;
+		}
+		res = scst_dev_set_threads_num(dev, num_threads);
+	} else if (strncmp(cmd, "set_thread_pool_type ", 21) == 0) {
+		enum scst_dev_type_threads_pool_type newtpt;
+
+		newtpt = scst_parse_threads_pool_type(cmd + 21,
+						      strlen(cmd + 21));
+		if (newtpt == SCST_THREADS_POOL_TYPE_INVALID) {
+			PRINT_ERROR("Invalid thread pool type %s", cmd + 21);
+			goto out;
+		}
+		res = scst_dev_set_thread_pool_type(dev, newtpt);
+	}
 out:
 	TRACE_EXIT_RES(res);
 	return res;
@@ -1055,47 +1117,27 @@ static ssize_t scst_dev_sysfs_threads_num_show(struct kobject *kobj,
 	return pos;
 }
 
-static ssize_t scst_dev_sysfs_threads_num_store(struct kobject *kobj,
-	struct kobj_attribute *attr, const char *buf, size_t count)
+static ssize_t scst_dev_set_threads_num(struct scst_device *dev, long newtn)
 {
 	int res;
-	struct scst_device *dev;
-	long newtn;
 	bool stop;
 
 	TRACE_ENTRY();
 
-	dev = scst_kobj_to_dev(kobj);
-	res = strict_strtol(buf, 0, &newtn);
-	if (res != 0) {
-		PRINT_ERROR("strict_strtol() for %s failed: %d ", buf, res);
-		goto out;
-	}
-	if (newtn < 0) {
-		PRINT_ERROR("Illegal threads num value %ld", newtn);
-		res = -EINVAL;
-		goto out;
-	}
-
 	res = scst_dev_sysfs_check_threads_data(dev, newtn,
-		dev->threads_pool_type, &stop);
-	if ((res != 0) || stop)
+						dev->threads_pool_type, &stop);
+	if (res || stop)
 		goto out;
 
 	res = scst_process_dev_sysfs_threads_data_store(dev, newtn,
 							dev->threads_pool_type);
-	if (res == 0)
-		res = count;
-
 out:
 	TRACE_EXIT_RES(res);
 	return res;
 }
 
 static struct kobj_attribute dev_threads_num_attr =
-	__ATTR(threads_num, S_IRUGO | S_IWUSR,
-		scst_dev_sysfs_threads_num_show,
-		scst_dev_sysfs_threads_num_store);
+	__ATTR(threads_num, S_IRUGO, scst_dev_sysfs_threads_num_show, NULL);
 
 static ssize_t scst_dev_sysfs_threads_pool_type_show(struct kobject *kobj,
 	struct kobj_attribute *attr, char *buf)
@@ -1136,46 +1178,28 @@ out:
 	return pos;
 }
 
-static ssize_t scst_dev_sysfs_threads_pool_type_store(struct kobject *kobj,
-	struct kobj_attribute *attr, const char *buf, size_t count)
+static ssize_t scst_dev_set_thread_pool_type(struct scst_device *dev,
+				enum scst_dev_type_threads_pool_type newtpt)
 {
 	int res;
-	struct scst_device *dev;
-	enum scst_dev_type_threads_pool_type newtpt;
 	bool stop;
 
 	TRACE_ENTRY();
 
-	dev = scst_kobj_to_dev(kobj);
-
-	newtpt = scst_parse_threads_pool_type(buf, count);
-	if (newtpt == SCST_THREADS_POOL_TYPE_INVALID) {
-		PRINT_ERROR("Illegal threads pool type %s", buf);
-		res = -EINVAL;
-		goto out;
-	}
-
-	TRACE_DBG("buf %s, count %zd, newtpt %d", buf, count, newtpt);
-
 	res = scst_dev_sysfs_check_threads_data(dev, dev->threads_num,
 		newtpt, &stop);
-	if ((res != 0) || stop)
+	if (res || stop)
 		goto out;
-
 	res = scst_process_dev_sysfs_threads_data_store(dev, dev->threads_num,
 							newtpt);
-	if (res == 0)
-		res = count;
-
 out:
 	TRACE_EXIT_RES(res);
 	return res;
 }
 
 static struct kobj_attribute dev_threads_pool_type_attr =
-	__ATTR(threads_pool_type, S_IRUGO | S_IWUSR,
-		scst_dev_sysfs_threads_pool_type_show,
-		scst_dev_sysfs_threads_pool_type_store);
+	__ATTR(threads_pool_type, S_IRUGO,
+	       scst_dev_sysfs_threads_pool_type_show, NULL);
 
 static struct attribute *scst_dev_attrs[] = {
 	&dev_type_attr.attr,
@@ -2094,6 +2118,28 @@ struct scst_acg *scst_kobj_to_acg(struct kobject *kobj)
 }
 EXPORT_SYMBOL(scst_kobj_to_acg);
 
+static int scst_process_acg_mgmt_store(const char *cmd, struct scst_acg *acg)
+{
+	int res;
+
+	TRACE_ENTRY();
+
+	res = -EINVAL;
+	if (strncmp(cmd, "set_cpu_mask ", 13) == 0) {
+		cpumask_t *cpumask;
+
+		res = scst_alloc_and_parse_cpumask(&cpumask, cmd + 13,
+						   strlen(cmd + 13));
+		if (res)
+			goto out;
+		res = __scst_acg_process_cpu_mask_store(acg->tgt, acg, cpumask);
+		kfree(cpumask);
+	}
+out:
+	TRACE_EXIT_RES(res);
+	return res;
+}
+
 static int __scst_process_luns_mgmt_store(char *buffer,
 	struct scst_tgt *tgt, struct scst_acg *acg, bool tgt_kobj)
 {
@@ -2540,15 +2586,15 @@ static ssize_t __scst_acg_cpu_mask_show(struct scst_acg *acg, char *buf)
 {
 	int res;
 
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 28)
-	res = cpumask_scnprintf(buf, SCST_SYSFS_BLOCK_SIZE,
-		acg->acg_cpu_mask);
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 28)
+	res = cpumask_scnprintf(buf, PAGE_SIZE, &acg->acg_cpu_mask);
 #else
-	res = cpumask_scnprintf(buf, SCST_SYSFS_BLOCK_SIZE,
-		&acg->acg_cpu_mask);
+	res = cpumask_scnprintf(buf, PAGE_SIZE, acg->acg_cpu_mask);
 #endif
-	if (!cpus_equal(acg->acg_cpu_mask, default_cpu_mask))
-		res += sprintf(&buf[res], "\n%s\n", SCST_SYSFS_KEY_MARK);
+	res += scnprintf(buf + res, PAGE_SIZE - res, "\n");
+	if (cpus_equal(acg->acg_cpu_mask, default_cpu_mask) == 0)
+		res += scnprintf(buf + res, PAGE_SIZE - res, "%s",
+				 SCST_SYSFS_KEY_MARK "\n");
 
 	return res;
 }
@@ -2618,42 +2664,6 @@ out:
 	return res;
 }
 
-static ssize_t __scst_acg_cpu_mask_store(struct scst_acg *acg,
-	const char *buf, size_t count)
-{
-	int res;
-	cpumask_t *cpu_mask;
-
-	/* cpumask might be too big for stack */
-	res = -ENOMEM;
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 28)
-	cpu_mask = kmalloc(cpumask_size(), GFP_KERNEL);
-#else
-	cpu_mask = kmalloc(sizeof(*cpu_mask), GFP_KERNEL);
-#endif
-	if (!cpu_mask)
-		goto out;
-
-	/*
-	 * We can't use cpumask_parse_user() here, because it expects
-	 * buffer in the user space.
-	 */
-	res = __bitmap_parse(buf, count, 0, cpumask_bits(cpu_mask),
-				nr_cpumask_bits);
-	if (res != 0) {
-		PRINT_ERROR("__bitmap_parse() failed: %d", res);
-		goto out;
-	}
-
-	if (cpus_equal(acg->acg_cpu_mask, *cpu_mask))
-		goto out;
-
-	res = __scst_acg_process_cpu_mask_store(acg->tgt, acg, cpu_mask);
-out:
-	kfree(cpu_mask);
-	return res;
-}
-
 static ssize_t scst_tgt_cpu_mask_show(struct kobject *kobj,
 	struct kobj_attribute *attr, char *buf)
 {
@@ -2665,28 +2675,6 @@ static ssize_t scst_tgt_cpu_mask_show(struct kobject *kobj,
 	acg = tgt->default_acg;
 
 	return __scst_acg_cpu_mask_show(acg, buf);
-}
-
-static ssize_t scst_tgt_cpu_mask_store(struct kobject *kobj,
-	struct kobj_attribute *attr, const char *buf, size_t count)
-{
-	int res;
-	struct scst_acg *acg;
-	struct scst_tgt *tgt;
-
-	tgt = scst_kobj_to_tgt(kobj);
-
-	acg = tgt->default_acg;
-
-	res = __scst_acg_cpu_mask_store(acg, buf, count);
-	if (res != 0)
-		goto out;
-
-	res = count;
-
-out:
-	TRACE_EXIT_RES(res);
-	return res;
 }
 
 void scst_acg_sysfs_del(struct scst_acg *acg)
@@ -2846,25 +2834,6 @@ static ssize_t scst_acg_cpu_mask_show(struct kobject *kobj,
 	acg = scst_kobj_to_acg(kobj);
 
 	return __scst_acg_cpu_mask_show(acg, buf);
-}
-
-static ssize_t scst_acg_cpu_mask_store(struct kobject *kobj,
-	struct kobj_attribute *attr, const char *buf, size_t count)
-{
-	int res;
-	struct scst_acg *acg;
-
-	acg = scst_kobj_to_acg(kobj);
-
-	res = __scst_acg_cpu_mask_store(acg, buf, count);
-	if (res != 0)
-		goto out;
-
-	res = count;
-
-out:
-	TRACE_EXIT_RES(res);
-	return res;
 }
 
 static int scst_process_ini_group_mgmt_store(char *buffer,
@@ -3413,7 +3382,7 @@ static ssize_t scst_mgmt_show(struct kobject *kobj,
 	ssize_t count;
 	static const char help[] =
 /* devices/<dev>/filename */
-"in devices/<dev> set_filename <filename>\n"
+"in devices/<dev> <dev_cmd>\n"
 /* scst_devt_mgmt or scst_devt_pass_through_mgmt */
 "in handlers/<devt> <devt_cmd>\n"
 /* scst_tgtt_mgmt */
@@ -3423,11 +3392,18 @@ static ssize_t scst_mgmt_show(struct kobject *kobj,
 /* scst_luns_mgmt */
 "in targets/<tgtt>/<target>/luns <luns_cmd>\n"
 /* scst_ini_group_mgmt */
-"in targets/<tgtt>/<target>/ini_groups <ini_group_cmd>\n"
+"in targets/<tgtt>/<target>/ini_groups <acg_mgmt_cmd>\n"
+"in targets/<tgtt>/<target>/ini_groups/<acg> <acg_cmd>\n"
 /* scst_acg_luns_mgmt */
 "in targets/<tgtt>/<target>/ini_groups/<acg>/luns <luns_cmd>\n"
 /* scst_acg_ini_mgmt */
 "in targets/<tgtt>/<target>/ini_groups/<acg>/initiators <acg_ini_cmd>\n"
+"\n"
+"dev_cmd syntax:\n"
+"\n"
+"set_filename <filename>\n"
+"set_threads_num <n>\n"
+"set_thread_pool_type <thread_pool_type>\n"
 "\n"
 "devt_cmd syntax:\n"
 "\n"
@@ -3452,12 +3428,13 @@ static ssize_t scst_mgmt_show(struct kobject *kobj,
 "add_target_attribute target_name <attribute> <value>\"\n"
 "del_target_attribute target_name <attribute> <value>\"\n"
 "\n"
-"where parameters is one or more param_name=value pairs separated by ';'\n"
+"where parameters is one or more <name>=<value> pairs separated by ';'\n"
 "\n"
 "tgt_cmd syntax:\n"
 "\n"
 "enable\n"
 "disable\n"
+"set_cpu_mask <mask>\n"
 "\n"
 "luns_cmd syntax:\n"
 "\n"
@@ -3468,18 +3445,21 @@ static ssize_t scst_mgmt_show(struct kobject *kobj,
 "replace VNAME lun [parameters]\n"
 "clear\n"
 "\n"
-"where parameters is either read_only or empty.\n"
+"where parameters is either 'read_only' or 'empty'.\n"
 "\n"
-"ini_group mgmt syntax:\n"
+"acg_mgmt_cmd syntax:\n"
 "\n"
-"create GROUP_NAME\n"
-"del GROUP_NAME\n"
+"create <group_name>\n"
+"del <group_name>\n"
+"\n"
+"acg_cmd syntax:\n"
+"set_cpu_mask <mask>\n"
 "\n"
 "acg_ini_cmd syntax:\n"
 "\n"
-"add INITIATOR_NAME\n"
-"del INITIATOR_NAME\n"
-"move INITIATOR_NAME DEST_GROUP_NAME\n"
+"add <initiator_name>\n"
+"del <initiator_name>\n"
+"move <initiator_name> <dest_group_name>\n"
 "clear\n";
 
 	TRACE_ENTRY();
@@ -3569,12 +3549,15 @@ static enum mgmt_path_type __parse_path(char *path,
 			res = TARGET_INI_GROUPS_PATH;
 			goto out;
 		}
-		if (!comp[5] || (comp[5] && comp[6]))
+		if (comp[5] && comp[6])
 			goto err;
 		*acg = __scst_lookup_acg(*tgt, comp[4]);
 		if (!*acg)
 			goto err;
-		if (strcmp(comp[5], "luns") == 0) {
+		if (!comp[5]) {
+			res = ACG_PATH;
+			goto out;
+		} else if (strcmp(comp[5], "luns") == 0) {
 			res = ACG_LUNS_PATH;
 			goto out;
 		} else if (strcmp(comp[5], "initiators") == 0) {
@@ -3663,12 +3646,13 @@ static ssize_t scst_mgmt_store(struct kobject *kobj,
 	case TARGET_INI_GROUPS_PATH:
 		res = scst_process_ini_group_mgmt_store(cmd, tgt);
 		break;
+	case ACG_PATH:
+		res = scst_process_acg_mgmt_store(cmd, acg);
+		break;
 	case ACG_LUNS_PATH:
-		BUG_ON(!acg);
 		res = __scst_process_luns_mgmt_store(cmd, acg->tgt, acg, false);
 		break;
 	case ACG_INITIATOR_GROUPS_PATH:
-		BUG_ON(!acg);
 		res = scst_process_acg_ini_mgmt_store(cmd, acg->tgt, acg);
 		break;
 	case PATH_NOT_RECOGNIZED:
