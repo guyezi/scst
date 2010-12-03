@@ -1806,9 +1806,10 @@ sub deviceAttributes {
 				$attributes{$attribute}->{'value'} = undef;
 			} else {
 				my $is_static;
-				if (($attribute eq 'filename')
-				    || ($attribute eq 'threads_num')
-				    || ($attribute eq 'cpu_mask')
+				if ($attribute eq 'cpu_mask'
+				    || $attribute eq 'filename'
+				    || $attribute eq 'threads_num'
+				    || $attribute eq 'threads_pool_type'
 				    || ($mode & S_IWUSR) >> 6) {
 					$is_static = FALSE;
 				} else {
@@ -3006,7 +3007,9 @@ sub setDeviceAttribute {
 
 	my $bytes;
 
-	if ($attribute eq 'filename' || $attribute eq 'threads_num') {
+	if ($attribute eq 'filename'
+	    || $attribute eq 'threads_num'
+	    || $attribute eq 'threads_pool_type') {
 		my $io = new IO::File mkpath(SCST_ROOT, SCST_MGMT_IO), O_WRONLY;
 
 		return SCST_C_DEV_SETATTR_FAIL if (!$io);
@@ -3016,6 +3019,8 @@ sub setDeviceAttribute {
 		     ? "set_filename $value"
 		     : $attribute eq 'threads_num'
 		     ? "set_threads_num $value"
+		     : $attribute eq 'threads_pool_type'
+		     ? "set_thread_pool_type $value"
 		     : "???");
 
 		if ($self->{'debug'}) {
