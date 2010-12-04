@@ -6274,26 +6274,6 @@ restart:
 	return res;
 }
 
-static void scst_release_sess(struct kobject *kobj)
-{
-	struct scst_session *sess;
-
-	TRACE_ENTRY();
-
-	sess = container_of(kobj, struct scst_session, sess_kobj);
-	scst_free_session(sess);
-
-	TRACE_EXIT();
-}
-
-static struct kobj_type scst_session_ktype = {
-	.release = scst_release_sess,
-#ifndef CONFIG_SCST_PROC
-	.sysfs_ops = &scst_sysfs_ops,
-	.default_attrs = scst_session_attrs,
-#endif
-};
-
 /**
  * scst_register_session() - register session
  * @tgt:	target
@@ -6352,8 +6332,6 @@ struct scst_session *scst_register_session(struct scst_tgt *tgt, int atomic,
 	if (sess == NULL)
 		goto out;
 
-	kobject_init(&sess->sess_kobj, &scst_session_ktype);
-
 	scst_sess_set_tgt_priv(sess, tgt_priv);
 
 	scst_sess_get(sess); /* one for registered session */
@@ -6379,7 +6357,7 @@ out:
 	return sess;
 
 out_free:
-	kobject_put(&sess->sess_kobj);
+	scst_free_session(sess);
 	sess = NULL;
 	goto out;
 }

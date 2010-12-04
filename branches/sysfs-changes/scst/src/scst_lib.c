@@ -3920,6 +3920,26 @@ static void scst_clear_reservation(struct scst_tgt_dev *tgt_dev)
 	return;
 }
 
+static void scst_release_sess(struct kobject *kobj)
+{
+	struct scst_session *sess;
+
+	TRACE_ENTRY();
+
+	sess = container_of(kobj, struct scst_session, sess_kobj);
+	kmem_cache_free(scst_sess_cachep, sess);
+
+	TRACE_EXIT();
+}
+
+static struct kobj_type scst_session_ktype = {
+	.release = scst_release_sess,
+#ifndef CONFIG_SCST_PROC
+	.sysfs_ops = &scst_sysfs_ops,
+	.default_attrs = scst_session_attrs,
+#endif
+};
+
 struct scst_session *scst_alloc_session(struct scst_tgt *tgt, gfp_t gfp_mask,
 	const char *initiator_name)
 {
@@ -3934,6 +3954,8 @@ struct scst_session *scst_alloc_session(struct scst_tgt *tgt, gfp_t gfp_mask,
 		      "Allocation of scst_session failed");
 		goto out;
 	}
+
+	kobject_init(&sess->sess_kobj, &scst_session_ktype);
 
 	sess->init_phase = SCST_SESS_IPH_INITING;
 	sess->shut_phase = SCST_SESS_SPH_READY;
@@ -3969,7 +3991,7 @@ out:
 	return sess;
 
 out_free:
-	kmem_cache_free(scst_sess_cachep, sess);
+	kobject_put(&sess->sess_kobj);
 	sess = NULL;
 	goto out;
 }
@@ -4014,7 +4036,7 @@ void scst_free_session(struct scst_session *sess)
 	kfree(sess->transport_id);
 	kfree(sess->initiator_name);
 
-	kmem_cache_free(scst_sess_cachep, sess);
+	kobject_put(&sess->sess_kobj);
 
 	TRACE_EXIT();
 	return;
@@ -4046,8 +4068,7 @@ void scst_free_session_callback(struct scst_session *sess)
 		sess->unreg_done_fn(sess);
 		TRACE_DBG("%s", "unreg_done_fn() returned");
 	}
-
-	kobject_put(&sess->sess_kobj);
+	scst_free_session(sess);
 
 	if (c)
 		complete_all(c);
