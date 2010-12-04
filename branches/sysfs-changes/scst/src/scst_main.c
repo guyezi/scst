@@ -887,6 +887,22 @@ void scst_resume_activity(void)
 }
 EXPORT_SYMBOL_GPL(scst_resume_activity);
 
+static void scst_release_dev(struct kobject *kobj)
+{
+	struct scst_device *dev;
+
+	dev = container_of(kobj, struct scst_device, dev_kobj);
+	scst_free_device(dev);
+}
+
+static struct kobj_type scst_dev_ktype = {
+	.release = scst_release_dev,
+#ifndef CONFIG_SCST_PROC
+	.sysfs_ops = &scst_sysfs_ops,
+	.default_attrs = scst_dev_attrs,
+#endif
+};
+
 static int scst_register_device(struct scsi_device *scsidp)
 {
 	int res = 0;
@@ -915,6 +931,8 @@ static int scst_register_device(struct scsi_device *scsidp)
 	res = scst_alloc_device(GFP_KERNEL, &dev);
 	if (res != 0)
 		goto out_unlock;
+
+	kobject_init(&dev->dev_kobj, &scst_dev_ktype);
 
 	dev->type = scsidp->type;
 
@@ -975,7 +993,7 @@ out_del:
 	list_del(&dev->dev_list_entry);
 
 out_free_dev:
-	scst_free_device(dev);
+	kobject_put(&dev->dev_kobj);
 
 out_unlock:
 	mutex_unlock(&scst_mutex);
@@ -1149,6 +1167,8 @@ int scst_register_virtual_device(struct scst_dev_type *dev_handler,
 	if (res != 0)
 		goto out_unlock;
 
+	kobject_init(&dev->dev_kobj, &scst_dev_ktype);
+
 	dev->type = dev_handler->type;
 	dev->scsi_dev = NULL;
 	dev->virt_name = kstrdup(dev_name, GFP_KERNEL);
@@ -1207,7 +1227,7 @@ out_pr_clear_dev:
 	scst_pr_clear_dev(dev);
 
 out_free_dev:
-	scst_free_device(dev);
+	kobject_put(&dev->dev_kobj);
 
 out_unlock:
 	mutex_unlock(&scst_mutex);
@@ -1263,7 +1283,7 @@ void scst_unregister_virtual_device(int id)
 	PRINT_INFO("Detached from virtual device %s (id %d)",
 		dev->virt_name, dev->virt_id);
 
-	scst_free_device(dev);
+	kobject_put(&dev->dev_kobj);
 
 out:
 	TRACE_EXIT();

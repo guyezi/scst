@@ -2268,7 +2268,7 @@ struct scst_device {
 	enum scst_dev_type_threads_pool_type threads_pool_type;
 
 #ifndef CONFIG_SCST_PROC
-	struct kobject *dev_kobj; /* kobject for this struct */
+	struct kobject dev_kobj; /* kobject for this struct */
 	struct kobject *dev_exp_kobj; /* exported groups */
 
 	/* Export number in the dev's sysfs list. Protected by scst_mutex */
@@ -3799,7 +3799,7 @@ struct scst_dev_type *scst_kobj_to_devt(struct kobject *kobj);
 static inline struct kobject *scst_sysfs_get_dev_kobj(
 	struct scst_device *dev)
 {
-	return dev->dev_kobj;
+	return &dev->dev_kobj;
 }
 
 struct scst_device *scst_kobj_to_dev(struct kobject *kobj);
