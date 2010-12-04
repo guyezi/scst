@@ -1255,6 +1255,22 @@ out_unlock:
 }
 EXPORT_SYMBOL_GPL(scst_unregister_virtual_device);
 
+static void scst_release_devt(struct kobject *kobj)
+{
+	/*
+	 * Since device type objects reside in a data segment, no memory
+	 * has to be deallocated here.
+	 */
+}
+
+static struct kobj_type scst_devt_ktype = {
+	.release = scst_release_devt,
+#ifndef CONFIG_SCST_PROC
+	.sysfs_ops = &scst_sysfs_ops,
+	.default_attrs = scst_devt_default_attrs,
+#endif
+};
+
 /**
  * __scst_register_dev_driver() - register pass-through dev handler driver
  * @dev_type:	dev handler template
@@ -1277,16 +1293,18 @@ int __scst_register_dev_driver(struct scst_dev_type *dev_type,
 
 	TRACE_ENTRY();
 
+	kobject_init(&dev_type->devt_kobj, &scst_devt_ktype);
+
 	if (strcmp(version, SCST_INTERFACE_VERSION) != 0) {
 		PRINT_ERROR("Incorrect version of dev handler %s",
 			dev_type->name);
 		res = -EINVAL;
-		goto out;
+		goto out_put;
 	}
 
 	res = scst_dev_handler_check(dev_type);
 	if (res != 0)
-		goto out;
+		goto out_put;
 
 #if !defined(SCSI_EXEC_REQ_FIFO_DEFINED)
 	if (dev_type->exec == NULL) {
@@ -1297,14 +1315,14 @@ int __scst_register_dev_driver(struct scst_dev_type *dev_type,
 			"scst_exec_req_fifo-<kernel-version> or define "
 			"CONFIG_SCST_STRICT_SERIALIZING", dev_type->name);
 		res = -EINVAL;
-		goto out;
+		goto out_put;
 #endif /* !defined(CONFIG_SCST_STRICT_SERIALIZING) */
 #else  /* LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 30) */
 		PRINT_ERROR("Pass-through dev handlers (handler \"%s\") not "
 			"supported. Consider applying on your kernel patch "
 			"scst_exec_req_fifo-<kernel-version>", dev_type->name);
 		res = -EINVAL;
-		goto out;
+		goto out_put;
 #endif /* LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 30) */
 	}
 #endif /* !defined(SCSI_EXEC_REQ_FIFO_DEFINED) */
@@ -1312,7 +1330,7 @@ int __scst_register_dev_driver(struct scst_dev_type *dev_type,
 #ifdef CONFIG_SCST_PROC
 	res = scst_suspend_activity(true);
 	if (res != 0)
-		goto out;
+		goto out_put;
 #endif
 
 	if (mutex_lock_interruptible(&scst_mutex) != 0) {
@@ -1320,7 +1338,7 @@ int __scst_register_dev_driver(struct scst_dev_type *dev_type,
 #ifdef CONFIG_SCST_PROC
 		goto out_resume;
 #else
-		goto out;
+		goto out_put;
 #endif
 	}
 
@@ -1359,11 +1377,11 @@ int __scst_register_dev_driver(struct scst_dev_type *dev_type,
 	mutex_unlock(&scst_mutex);
 	scst_resume_activity();
 #else
-	mutex_unlock(&scst_mutex);
-
 	res = scst_devt_sysfs_create(dev_type);
 	if (res < 0)
-		goto out;
+		goto out_unlock;
+
+	mutex_unlock(&scst_mutex);
 #endif
 
 	PRINT_INFO("Device handler \"%s\" for type %d registered "
@@ -1379,6 +1397,8 @@ out_unlock:
 out_resume:
 	scst_resume_activity();
 #endif
+out_put:
+	kobject_put(&dev_type->devt_kobj);
 	goto out;
 }
 EXPORT_SYMBOL_GPL(__scst_register_dev_driver);
@@ -1427,6 +1447,8 @@ void scst_unregister_dev_driver(struct scst_dev_type *dev_type)
 	mutex_unlock(&scst_mutex);
 	scst_resume_activity();
 
+	kobject_put(&dev_type->devt_kobj);
+
 	PRINT_INFO("Device handler \"%s\" for type %d unloaded",
 		   dev_type->name, dev_type->type);
 
@@ -1459,16 +1481,18 @@ int __scst_register_virtual_dev_driver(struct scst_dev_type *dev_type,
 
 	TRACE_ENTRY();
 
+	kobject_init(&dev_type->devt_kobj, &scst_devt_ktype);
+
 	if (strcmp(version, SCST_INTERFACE_VERSION) != 0) {
 		PRINT_ERROR("Incorrect version of virtual dev handler %s",
 			dev_type->name);
 		res = -EINVAL;
-		goto out;
+		goto out_put;
 	}
 
 	res = scst_dev_handler_check(dev_type);
 	if (res != 0)
-		goto out;
+		goto out_put;
 
 	mutex_lock(&scst_mutex);
 	list_add_tail(&dev_type->dev_type_list_entry, &scst_virtual_dev_type_list);
@@ -1478,12 +1502,12 @@ int __scst_register_virtual_dev_driver(struct scst_dev_type *dev_type,
 	if (!dev_type->no_proc) {
 		res = scst_build_proc_dev_handler_dir_entries(dev_type);
 		if (res < 0)
-			goto out;
+			goto out_put;
 	}
 #else
 	res = scst_devt_sysfs_create(dev_type);
 	if (res < 0)
-		goto out;
+		goto out_put;
 #endif
 
 	if (dev_type->type != -1) {
@@ -1498,6 +1522,9 @@ int __scst_register_virtual_dev_driver(struct scst_dev_type *dev_type,
 out:
 	TRACE_EXIT_RES(res);
 	return res;
+out_put:
+	kobject_put(&dev_type->devt_kobj);
+	goto out;
 }
 EXPORT_SYMBOL_GPL(__scst_register_virtual_dev_driver);
 
@@ -1521,6 +1548,8 @@ void scst_unregister_virtual_dev_driver(struct scst_dev_type *dev_type)
 #endif
 
 	mutex_unlock(&scst_mutex);
+
+	kobject_put(&dev_type->devt_kobj);
 
 	PRINT_INFO("Device handler \"%s\" unloaded", dev_type->name);
 

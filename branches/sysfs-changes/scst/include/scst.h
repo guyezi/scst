@@ -1423,7 +1423,7 @@ struct scst_dev_type {
 	 * returned and as long as this device handler object is present in
 	 * the global device handler list.
 	 */
-	struct kobject *devt_kobj;
+	struct kobject devt_kobj;
 #endif
 };
 
@@ -3787,7 +3787,7 @@ struct scst_tgt *scst_kobj_to_tgt(struct kobject *kobj);
 static inline struct kobject *scst_sysfs_get_devt_kobj(
 	struct scst_dev_type *devt)
 {
-	return devt->devt_kobj;
+	return &devt->devt_kobj;
 }
 
 struct scst_dev_type *scst_kobj_to_devt(struct kobject *kobj);

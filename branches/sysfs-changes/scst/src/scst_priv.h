@@ -468,6 +468,7 @@ extern const struct sysfs_ops scst_sysfs_ops;
 #else
 extern struct sysfs_ops scst_sysfs_ops;
 #endif
+extern struct attribute *scst_devt_default_attrs[];
 
 struct scst_kobj *scst_create_kobj(void *scst_obj);
 void scst_release_kobj(struct kobject *kobj);

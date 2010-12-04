@@ -1216,14 +1216,14 @@ int scst_devt_dev_sysfs_create(struct scst_device *dev)
 		goto out;
 
 	res = sysfs_create_link(dev->dev_kobj,
-				dev->handler->devt_kobj, "handler");
+				&dev->handler->devt_kobj, "handler");
 	if (res != 0) {
 		PRINT_ERROR("Can't create handler link for dev %s",
 			dev->virt_name);
 		goto out;
 	}
 
-	res = sysfs_create_link(dev->handler->devt_kobj,
+	res = sysfs_create_link(&dev->handler->devt_kobj,
 			dev->dev_kobj, dev->virt_name);
 	if (res != 0) {
 		PRINT_ERROR("Can't create handler link for dev %s",
@@ -1280,7 +1280,7 @@ void scst_devt_dev_sysfs_del(struct scst_device *dev)
 		sysfs_remove_files(dev->dev_kobj, dev->handler->dev_attrs);
 	sysfs_remove_file(dev->dev_kobj, &dev_threads_pool_type_attr.attr);
 	sysfs_remove_file(dev->dev_kobj, &dev_threads_num_attr.attr);
-	sysfs_remove_link(dev->handler->devt_kobj, dev->virt_name);
+	sysfs_remove_link(&dev->handler->devt_kobj, dev->virt_name);
 	sysfs_remove_link(dev->dev_kobj, "handler");
 
 out:
@@ -4143,7 +4143,7 @@ static struct kobj_type scst_sysfs_root_ktype = {
 
 struct scst_dev_type *scst_kobj_to_devt(struct kobject *kobj)
 {
-	return scst_kobj_to_scst_obj(kobj);
+	return container_of(kobj, struct scst_dev_type, devt_kobj);
 }
 EXPORT_SYMBOL(scst_kobj_to_devt);
 
@@ -4210,15 +4210,9 @@ static ssize_t scst_devt_type_show(struct kobject *kobj,
 static struct kobj_attribute scst_devt_type_attr =
 	__ATTR(type, S_IRUGO, scst_devt_type_show, NULL);
 
-static struct attribute *scst_devt_default_attrs[] = {
+struct attribute *scst_devt_default_attrs[] = {
 	&scst_devt_type_attr.attr,
 	NULL,
-};
-
-static struct kobj_type scst_devt_ktype = {
-	.sysfs_ops = &scst_sysfs_ops,
-	.release = scst_release_kobj,
-	.default_attrs = scst_devt_default_attrs,
 };
 
 static ssize_t scst_devt_mgmt_show(struct kobject *kobj,
@@ -4425,31 +4419,22 @@ out_syntax_err:
 int scst_devt_sysfs_create(struct scst_dev_type *devt)
 {
 	int res;
-	struct scst_kobj *devt_kobj;
 	struct kobject *parent;
 
 	TRACE_ENTRY();
 
 	if (devt->parent != NULL)
-		parent = devt->parent->devt_kobj;
+		parent = &devt->parent->devt_kobj;
 	else
 		parent = scst_handlers_kobj;
 
-	res = -ENOMEM;
-	devt_kobj = scst_create_kobj(devt);
-	if (!devt_kobj)
-		goto out;
-
-	devt->devt_kobj = &devt_kobj->kobj;
-	res = kobject_init_and_add(devt->devt_kobj, &scst_devt_ktype,
-				   parent, devt->name);
+	res = kobject_add(&devt->devt_kobj, parent, devt->name);
 	if (res) {
 		PRINT_ERROR("Can't add devt %s to sysfs", devt->name);
-		scst_release_kobj(&devt_kobj->kobj);
 		goto out;
 	}
 
-	res = sysfs_create_file(devt->devt_kobj, &scst_devt_mgmt.attr);
+	res = sysfs_create_file(&devt->devt_kobj, &scst_devt_mgmt.attr);
 	if (res != 0) {
 		PRINT_ERROR("Can't add mgmt attr for dev handler %s",
 			devt->name);
@@ -4457,7 +4442,7 @@ int scst_devt_sysfs_create(struct scst_dev_type *devt)
 	}
 
 	if (devt->devt_attrs) {
-		res = sysfs_create_files(devt->devt_kobj, devt->devt_attrs);
+		res = sysfs_create_files(&devt->devt_kobj, devt->devt_attrs);
 		if (res) {
 			PRINT_ERROR("Can't add attributes for dev handler %s",
 				    devt->name);
@@ -4467,7 +4452,7 @@ int scst_devt_sysfs_create(struct scst_dev_type *devt)
 
 #if defined(CONFIG_SCST_DEBUG) || defined(CONFIG_SCST_TRACING)
 	if (devt->trace_flags != NULL) {
-		res = sysfs_create_file(devt->devt_kobj,
+		res = sysfs_create_file(&devt->devt_kobj,
 				&devt_trace_attr.attr);
 		if (res != 0) {
 			PRINT_ERROR("Can't add devt trace_flag for dev "
@@ -4489,10 +4474,7 @@ out_err:
 void scst_devt_sysfs_del(struct scst_dev_type *devt)
 {
 	TRACE_ENTRY();
-
-	kobject_del(devt->devt_kobj);
-	kobject_put(devt->devt_kobj);
-
+	kobject_del(&devt->devt_kobj);
 	TRACE_EXIT();
 }
 
