@@ -2400,7 +2400,7 @@ struct scst_tgt_dev {
 	uint8_t tgt_dev_sense[SCST_SENSE_BUFFERSIZE];
 
 #ifndef CONFIG_SCST_PROC
-	struct kobject *tgt_dev_kobj; /* kobject for this struct */
+	struct kobject tgt_dev_kobj; /* kobject for this struct */
 #endif
 
 #ifdef CONFIG_SCST_MEASURE_LATENCY
@@ -3822,7 +3822,7 @@ struct scst_session *scst_kobj_to_sess(struct kobject *kobj);
 static inline struct kobject *scst_sysfs_get_tgt_dev_kobj(
 	struct scst_tgt_dev *tgt_dev)
 {
-	return tgt_dev->tgt_dev_kobj;
+	return &tgt_dev->tgt_dev_kobj;
 }
 
 struct scst_tgt_dev *scst_kobj_to_tgt_dev(struct kobject *kobj);

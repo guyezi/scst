@@ -3266,6 +3266,22 @@ out_deinit:
 	return;
 }
 
+static void scst_release_tgt_dev(struct kobject *kobj)
+{
+	struct scst_tgt_dev *tgt_dev;
+
+	tgt_dev = container_of(kobj, struct scst_tgt_dev, tgt_dev_kobj);
+	kmem_cache_free(scst_tgtd_cachep, tgt_dev);
+}
+
+static struct kobj_type scst_tgt_dev_ktype = {
+	.release = scst_release_tgt_dev,
+#ifndef CONFIG_SCST_PROC
+	.sysfs_ops = &scst_sysfs_ops,
+	.default_attrs = scst_tgt_dev_attrs,
+#endif
+};
+
 /*
  * scst_mutex supposed to be held, there must not be parallel activity in this
  * session.
@@ -3290,6 +3306,8 @@ static int scst_alloc_add_tgt_dev(struct scst_session *sess,
 		res = -ENOMEM;
 		goto out;
 	}
+
+	kobject_init(&tgt_dev->tgt_dev_kobj, &scst_tgt_dev_ktype);
 
 	tgt_dev->dev = dev;
 	tgt_dev->lun = acg_dev->lun;
@@ -3423,7 +3441,7 @@ out_dec_free:
 
 out_free:
 	scst_free_all_UA(tgt_dev);
-	kmem_cache_free(scst_tgtd_cachep, tgt_dev);
+	kobject_put(&tgt_dev->tgt_dev_kobj);
 	goto out;
 }
 
@@ -3493,7 +3511,7 @@ static void scst_free_tgt_dev(struct scst_tgt_dev *tgt_dev)
 
 	sBUG_ON(!list_empty(&tgt_dev->thr_data_list));
 
-	kmem_cache_free(scst_tgtd_cachep, tgt_dev);
+	kobject_put(&tgt_dev->tgt_dev_kobj);
 
 	TRACE_EXIT();
 	return;

@@ -1339,13 +1339,10 @@ void scst_dev_sysfs_del(struct scst_device *dev)
 
 /**
  * scst_kobj_to_tgt_dev() - Look up target device pointer.
- *
- * Must be called from inside a dev sysfs .show() or .store() callback
- * function only.
  */
 struct scst_tgt_dev *scst_kobj_to_tgt_dev(struct kobject *kobj)
 {
-	return scst_kobj_to_scst_obj(kobj);
+	return container_of(kobj, struct scst_tgt_dev, tgt_dev_kobj);
 }
 EXPORT_SYMBOL(scst_kobj_to_tgt_dev);
 
@@ -1482,7 +1479,7 @@ static struct kobj_attribute tgt_dev_active_commands_attr =
 	__ATTR(active_commands, S_IRUGO,
 		scst_tgt_dev_active_commands_show, NULL);
 
-static struct attribute *scst_tgt_dev_attrs[] = {
+struct attribute *scst_tgt_dev_attrs[] = {
 	&tgt_dev_active_commands_attr.attr,
 #ifdef CONFIG_SCST_MEASURE_LATENCY
 	&tgt_dev_latency_attr.attr,
@@ -1490,33 +1487,17 @@ static struct attribute *scst_tgt_dev_attrs[] = {
 	NULL,
 };
 
-static struct kobj_type scst_tgt_dev_ktype = {
-	.sysfs_ops = &scst_sysfs_ops,
-	.release = scst_release_kobj,
-	.default_attrs = scst_tgt_dev_attrs,
-};
-
 int scst_tgt_dev_sysfs_create(struct scst_tgt_dev *tgt_dev)
 {
-	struct scst_kobj *tgt_dev_kobj;
 	int res = 0;
 
 	TRACE_ENTRY();
 
-	res = -ENOMEM;
-	tgt_dev_kobj = scst_create_kobj(tgt_dev);
-	if (!tgt_dev_kobj)
-		goto out;
-	tgt_dev->tgt_dev_kobj = &tgt_dev_kobj->kobj;
-	tgt_dev_kobj = NULL;
-
-	res = kobject_init_and_add(tgt_dev->tgt_dev_kobj, &scst_tgt_dev_ktype,
-			      &tgt_dev->sess->sess_kobj, "lun%lld",
-			      (unsigned long long)tgt_dev->lun);
+	res = kobject_add(&tgt_dev->tgt_dev_kobj, &tgt_dev->sess->sess_kobj,
+			  "lun%lld", (unsigned long long)tgt_dev->lun);
 	if (res != 0) {
 		PRINT_ERROR("Can't add tgt_dev %lld to sysfs",
 			(unsigned long long)tgt_dev->lun);
-		scst_release_kobj(&tgt_dev_kobj->kobj);
 		goto out;
 	}
 
@@ -1528,10 +1509,7 @@ out:
 void scst_tgt_dev_sysfs_del(struct scst_tgt_dev *tgt_dev)
 {
 	TRACE_ENTRY();
-
-	kobject_del(tgt_dev->tgt_dev_kobj);
-	kobject_put(tgt_dev->tgt_dev_kobj);
-
+	kobject_del(&tgt_dev->tgt_dev_kobj);
 	TRACE_EXIT();
 }
 
