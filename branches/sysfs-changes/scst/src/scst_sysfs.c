@@ -426,19 +426,6 @@ struct scst_tgt_template *scst_kobj_to_tgtt(struct kobject *kobj)
 }
 EXPORT_SYMBOL(scst_kobj_to_tgtt);
 
-static void scst_release_tgtt(struct kobject *kobj)
-{
-	/*
-	 * Since target template objects reside in a data segment, no memory
-	 * has to be deallocated here.
-	 */
-}
-
-static struct kobj_type tgtt_ktype = {
-	.sysfs_ops = &scst_sysfs_ops,
-	.release = scst_release_tgtt,
-};
-
 #if defined(CONFIG_SCST_DEBUG) || defined(CONFIG_SCST_TRACING)
 
 static ssize_t scst_tgtt_trace_level_show(struct kobject *kobj,
@@ -596,8 +583,7 @@ int scst_tgtt_sysfs_create(struct scst_tgt_template *tgtt)
 
 	TRACE_ENTRY();
 
-	res = kobject_init_and_add(&tgtt->tgtt_kobj, &tgtt_ktype,
-			scst_targets_kobj, tgtt->name);
+	res = kobject_add(&tgtt->tgtt_kobj, scst_targets_kobj, tgtt->name);
 	if (res) {
 		PRINT_ERROR("Can't add tgtt %s to sysfs", tgtt->name);
 		goto out;
@@ -647,12 +633,8 @@ out_del:
 void scst_tgtt_sysfs_del(struct scst_tgt_template *tgtt)
 {
 	TRACE_ENTRY();
-
 	kobject_del(&tgtt->tgtt_kobj);
-	kobject_put(&tgtt->tgtt_kobj);
-
 	TRACE_EXIT();
-	return;
 }
 
 /**

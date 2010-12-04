@@ -189,6 +189,21 @@ struct scst_dev_type scst_null_devtype = {
 
 static void __scst_resume_activity(void);
 
+static void scst_release_tgtt(struct kobject *kobj)
+{
+	/*
+	 * Since target template objects reside in a data segment, no memory
+	 * has to be deallocated here.
+	 */
+}
+
+static struct kobj_type tgtt_ktype = {
+	.release = scst_release_tgtt,
+#ifndef CONFIG_SCST_PROC
+	.sysfs_ops = &scst_sysfs_ops,
+#endif
+};
+
 /**
  * __scst_register_target_template() - register target template.
  * @vtt:	target template
@@ -213,31 +228,33 @@ int __scst_register_target_template(struct scst_tgt_template *vtt,
 
 	INIT_LIST_HEAD(&vtt->tgt_list);
 
+	kobject_init(&vtt->tgtt_kobj, &tgtt_ktype);
+
 	if (strcmp(version, SCST_INTERFACE_VERSION) != 0) {
 		PRINT_ERROR("Incorrect version of target %s", vtt->name);
 		res = -EINVAL;
-		goto out;
+		goto out_put;
 	}
 
 	if (!vtt->detect) {
 		PRINT_ERROR("Target driver %s must have "
 			"detect() method.", vtt->name);
 		res = -EINVAL;
-		goto out;
+		goto out_put;
 	}
 
 	if (!vtt->release) {
 		PRINT_ERROR("Target driver %s must have "
 			"release() method.", vtt->name);
 		res = -EINVAL;
-		goto out;
+		goto out_put;
 	}
 
 	if (!vtt->xmit_response) {
 		PRINT_ERROR("Target driver %s must have "
 			"xmit_response() method.", vtt->name);
 		res = -EINVAL;
-		goto out;
+		goto out_put;
 	}
 
 	if (vtt->get_initiator_port_transport_id == NULL)
@@ -249,7 +266,7 @@ int __scst_register_target_template(struct scst_tgt_template *vtt,
 			"target \"%s\"", vtt->threads_num,
 			vtt->name);
 		res = -EINVAL;
-		goto out;
+		goto out_put;
 	}
 
 #ifndef CONFIG_SCST_PROC
@@ -266,7 +283,7 @@ int __scst_register_target_template(struct scst_tgt_template *vtt,
 		PRINT_ERROR("Target driver %s must either define both "
 			"add_target() and del_target(), or none.", vtt->name);
 		res = -EINVAL;
-		goto out;
+		goto out_put;
 	}
 #endif
 
@@ -274,7 +291,7 @@ int __scst_register_target_template(struct scst_tgt_template *vtt,
 		vtt->rdy_to_xfer_atomic = 1;
 
 	if (mutex_lock_interruptible(&scst_mutex) != 0)
-		goto out;
+		goto out_put;
 	list_for_each_entry(t, &scst_template_list, scst_template_list_entry) {
 		if (strcmp(t->name, vtt->name) == 0) {
 			PRINT_ERROR("Target driver %s already registered",
@@ -331,6 +348,8 @@ out_del:
 
 out_unlock:
 	mutex_unlock(&scst_mutex);
+out_put:
+	kobject_put(&vtt->tgtt_kobj);
 	goto out;
 }
 EXPORT_SYMBOL_GPL(__scst_register_target_template);
@@ -437,6 +456,8 @@ restart:
 	}
 
 	mutex_unlock(&scst_mutex);
+
+	kobject_put(&vtt->tgtt_kobj);
 
 	PRINT_INFO("Target template %s unregistered successfully", vtt->name);
 
