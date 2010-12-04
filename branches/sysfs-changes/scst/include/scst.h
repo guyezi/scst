@@ -1613,7 +1613,7 @@ struct scst_session {
 	struct completion *shutdown_compl;
 
 #ifndef CONFIG_SCST_PROC
-	struct kobject *sess_kobj; /* kobject for this struct */
+	struct kobject sess_kobj; /* kobject for this struct */
 
 	/* initiator_name + suffix */
 	const char *unique_session_name;
@@ -3811,7 +3811,7 @@ struct scst_device *scst_kobj_to_dev(struct kobject *kobj);
 static inline struct kobject *scst_sysfs_get_sess_kobj(
 	struct scst_session *sess)
 {
-	return sess->sess_kobj;
+	return &sess->sess_kobj;
 }
 
 struct scst_session *scst_kobj_to_sess(struct kobject *kobj);

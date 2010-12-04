@@ -1511,7 +1511,7 @@ int scst_tgt_dev_sysfs_create(struct scst_tgt_dev *tgt_dev)
 	tgt_dev_kobj = NULL;
 
 	res = kobject_init_and_add(tgt_dev->tgt_dev_kobj, &scst_tgt_dev_ktype,
-			      tgt_dev->sess->sess_kobj, "lun%lld",
+			      &tgt_dev->sess->sess_kobj, "lun%lld",
 			      (unsigned long long)tgt_dev->lun);
 	if (res != 0) {
 		PRINT_ERROR("Can't add tgt_dev %lld to sysfs",
@@ -1847,7 +1847,7 @@ static ssize_t scst_sess_sysfs_initiator_name_show(struct kobject *kobj,
 static struct kobj_attribute session_initiator_name_attr =
 	__ATTR(initiator_name, S_IRUGO, scst_sess_sysfs_initiator_name_show, NULL);
 
-static struct attribute *scst_session_attrs[] = {
+struct attribute *scst_session_attrs[] = {
 	&session_commands_attr.attr,
 	&session_active_commands_attr.attr,
 	&session_initiator_name_attr.attr,
@@ -1855,12 +1855,6 @@ static struct attribute *scst_session_attrs[] = {
 	&session_latency_attr.attr,
 #endif /* CONFIG_SCST_MEASURE_LATENCY */
 	NULL,
-};
-
-static struct kobj_type scst_session_ktype = {
-	.sysfs_ops = &scst_sysfs_ops,
-	.release = scst_release_kobj,
-	.default_attrs = scst_session_attrs,
 };
 
 static int scst_create_sess_luns_link(struct scst_session *sess)
@@ -1873,10 +1867,10 @@ static int scst_create_sess_luns_link(struct scst_session *sess)
 	 */
 
 	if (sess->acg == sess->tgt->default_acg)
-		res = sysfs_create_link(sess->sess_kobj,
+		res = sysfs_create_link(&sess->sess_kobj,
 				sess->tgt->tgt_luns_kobj, "luns");
 	else
-		res = sysfs_create_link(sess->sess_kobj,
+		res = sysfs_create_link(&sess->sess_kobj,
 				sess->acg->luns_kobj, "luns");
 
 	if (res != 0)
@@ -1888,7 +1882,7 @@ static int scst_create_sess_luns_link(struct scst_session *sess)
 
 int scst_recreate_sess_luns_link(struct scst_session *sess)
 {
-	sysfs_remove_link(sess->sess_kobj, "luns");
+	sysfs_remove_link(&sess->sess_kobj, "luns");
 	return scst_create_sess_luns_link(sess);
 }
 
@@ -1896,29 +1890,19 @@ int scst_sess_sysfs_create(struct scst_session *sess)
 {
 	int res = 0;
 	const char *name = sess->unique_session_name;
-	struct scst_kobj *sess_kobj;
 
 	TRACE_ENTRY();
 
 	TRACE_DBG("Adding session %s to sysfs", name);
 
-	sess_kobj = scst_create_kobj(sess);
-	if (!sess_kobj) {
-		res = -ENOMEM;
-		goto out_free;
-	}
-
-	sess->sess_kobj = &sess_kobj->kobj;
-	res = kobject_init_and_add(sess->sess_kobj, &scst_session_ktype,
-				   sess->tgt->tgt_sess_kobj, name);
+	res = kobject_add(&sess->sess_kobj, sess->tgt->tgt_sess_kobj, name);
 	if (res != 0) {
 		PRINT_ERROR("Can't add session %s to sysfs", name);
-		scst_release_kobj(&sess_kobj->kobj);
 		goto out_free;
 	}
 
 	if (sess->tgt->tgtt->sess_attrs) {
-		res = sysfs_create_files(sess->sess_kobj,
+		res = sysfs_create_files(&sess->sess_kobj,
 					 sess->tgt->tgtt->sess_attrs);
 		if (res) {
 			PRINT_ERROR("Can't add attributes for session %s", name);
@@ -1941,15 +1925,8 @@ out_free:
 void scst_sess_sysfs_del(struct scst_session *sess)
 {
 	TRACE_ENTRY();
-
-	TRACE_DBG("Deleting session %s from sysfs",
-		kobject_name(sess->sess_kobj));
-
-	kobject_del(sess->sess_kobj);
-	kobject_put(sess->sess_kobj);
-
+	kobject_del(&sess->sess_kobj);
 	TRACE_EXIT();
-	return;
 }
 
 /**

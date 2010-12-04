@@ -4028,7 +4028,8 @@ void scst_free_session_callback(struct scst_session *sess)
 		sess->unreg_done_fn(sess);
 		TRACE_DBG("%s", "unreg_done_fn() returned");
 	}
-	scst_free_session(sess);
+
+	kobject_put(&sess->sess_kobj);
 
 	if (c)
 		complete_all(c);
