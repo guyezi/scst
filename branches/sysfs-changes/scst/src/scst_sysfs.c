@@ -2582,16 +2582,12 @@ void scst_acg_sysfs_del(struct scst_acg *acg)
 {
 	TRACE_ENTRY();
 
-	if (acg->luns_kobj)
-		kobject_del(acg->luns_kobj);
-	if (acg->initiators_kobj)
-		kobject_del(acg->initiators_kobj);
+	kobject_del(acg->luns_kobj);
+	kobject_del(acg->initiators_kobj);
 	kobject_del(&acg->acg_kobj);
 
-	if (acg->luns_kobj)
-		kobject_put(acg->luns_kobj);
-	if (acg->initiators_kobj)
-		kobject_put(acg->initiators_kobj);
+	kobject_put(acg->luns_kobj);
+	kobject_put(acg->initiators_kobj);
 
 	TRACE_EXIT();
 }
