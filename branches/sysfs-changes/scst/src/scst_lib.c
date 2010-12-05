@@ -2815,6 +2815,23 @@ out:
 	return res;
 }
 
+static void scst_release_acg(struct kobject *kobj)
+{
+	struct scst_acg *acg;
+
+	acg = container_of(kobj, struct scst_acg, acg_kobj);
+	kfree(acg->acg_name);
+	kfree(acg);
+}
+
+static struct kobj_type scst_acg_ktype = {
+	.release = scst_release_acg,
+#ifndef CONFIG_SCST_PROC
+	.sysfs_ops = &scst_sysfs_ops,
+#endif
+};
+
+
 /* The activity supposed to be suspended and scst_mutex held */
 struct scst_acg *scst_alloc_add_acg(struct scst_tgt *tgt,
 	const char *acg_name, bool tgt_acg)
@@ -2828,6 +2845,8 @@ struct scst_acg *scst_alloc_add_acg(struct scst_tgt *tgt,
 		PRINT_ERROR("%s", "Allocation of acg failed");
 		goto out;
 	}
+
+	kobject_init(&acg->acg_kobj, &scst_acg_ktype);
 
 	acg->tgt = tgt;
 	INIT_LIST_HEAD(&acg->acg_dev_list);
@@ -2875,7 +2894,7 @@ out_del:
 #endif
 
 out_free:
-	kfree(acg);
+	kobject_put(&acg->acg_kobj);
 	acg = NULL;
 	goto out;
 }
@@ -2928,8 +2947,7 @@ void scst_del_free_acg(struct scst_acg *acg)
 	sBUG_ON(!list_empty(&acg->acg_dev_list));
 	sBUG_ON(!list_empty(&acg->acn_list));
 
-	kfree(acg->acg_name);
-	kfree(acg);
+	kobject_put(&acg->acg_kobj);
 
 	TRACE_EXIT();
 	return;

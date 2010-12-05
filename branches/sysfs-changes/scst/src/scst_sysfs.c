@@ -2013,13 +2013,10 @@ out_del:
 
 /**
  * scst_kobj_to_acg_dev() - Look up an access control group pointer.
- *
- * Must be called from inside a sysfs .show() or .store() callback function
- * only.
  */
 struct scst_acg *scst_kobj_to_acg(struct kobject *kobj)
 {
-	return scst_kobj_to_scst_obj(kobj);
+	return container_of(kobj, struct scst_acg, acg_kobj);
 }
 EXPORT_SYMBOL(scst_kobj_to_acg);
 
@@ -2586,45 +2583,33 @@ void scst_acg_sysfs_del(struct scst_acg *acg)
 {
 	TRACE_ENTRY();
 
-	kobject_del(acg->luns_kobj);
-	kobject_del(acg->initiators_kobj);
-	kobject_del(acg->acg_kobj);
+	if (acg->luns_kobj)
+		kobject_del(acg->luns_kobj);
+	if (acg->initiators_kobj)
+		kobject_del(acg->initiators_kobj);
+	kobject_del(&acg->acg_kobj);
 
-	kobject_put(acg->luns_kobj);
-	kobject_put(acg->initiators_kobj);
-	kobject_put(acg->acg_kobj);
+	if (acg->luns_kobj)
+		kobject_put(acg->luns_kobj);
+	if (acg->initiators_kobj)
+		kobject_put(acg->initiators_kobj);
 
 	TRACE_EXIT();
 }
 
-static struct kobj_type acg_ktype = {
-	.sysfs_ops = &scst_sysfs_ops,
-	.release = scst_release_kobj,
-};
-
 int scst_acg_sysfs_create(struct scst_tgt *tgt, struct scst_acg *acg)
 {
 	int res = 0;
-	struct scst_kobj *acg_kobj;
 
 	TRACE_ENTRY();
 
-	res = -ENOMEM;
-	acg_kobj = scst_create_kobj(acg);
-	if (!acg_kobj)
-		goto out;
-
-	acg->acg_kobj = &acg_kobj->kobj;
-	acg_kobj = NULL;
-	res = kobject_init_and_add(acg->acg_kobj, &acg_ktype,
-		tgt->tgt_ini_grp_kobj, acg->acg_name);
+	res = kobject_add(&acg->acg_kobj, tgt->tgt_ini_grp_kobj, acg->acg_name);
 	if (res != 0) {
 		PRINT_ERROR("Can't add acg '%s' to sysfs", acg->acg_name);
-		scst_release_kobj(&acg_kobj->kobj);
 		goto out;
 	}
 
-	acg->luns_kobj = kobject_create_and_add("luns", acg->acg_kobj);
+	acg->luns_kobj = kobject_create_and_add("luns", &acg->acg_kobj);
 	if (acg->luns_kobj == NULL) {
 		PRINT_ERROR("Can't create luns kobj for tgt %s",
 			tgt->tgt_name);
@@ -2640,7 +2625,7 @@ int scst_acg_sysfs_create(struct scst_tgt *tgt, struct scst_acg *acg)
 	}
 
 	acg->initiators_kobj = kobject_create_and_add("initiators",
-					acg->acg_kobj);
+					&acg->acg_kobj);
 	if (acg->initiators_kobj == NULL) {
 		PRINT_ERROR("Can't create initiators kobj for tgt %s",
 			tgt->tgt_name);
@@ -2648,21 +2633,21 @@ int scst_acg_sysfs_create(struct scst_tgt *tgt, struct scst_acg *acg)
 		goto out_del;
 	}
 
-	res = sysfs_create_file(acg->acg_kobj, &scst_acg_addr_method.attr);
+	res = sysfs_create_file(&acg->acg_kobj, &scst_acg_addr_method.attr);
 	if (res != 0) {
 		PRINT_ERROR("Can't add tgt attr %s for tgt %s",
 			scst_acg_addr_method.attr.name, tgt->tgt_name);
 		goto out_del;
 	}
 
-	res = sysfs_create_file(acg->acg_kobj, &scst_acg_io_grouping_type.attr);
+	res = sysfs_create_file(&acg->acg_kobj, &scst_acg_io_grouping_type.attr);
 	if (res != 0) {
 		PRINT_ERROR("Can't add tgt attr %s for tgt %s",
 			scst_acg_io_grouping_type.attr.name, tgt->tgt_name);
 		goto out_del;
 	}
 
-	res = sysfs_create_file(acg->acg_kobj, &scst_acg_cpu_mask.attr);
+	res = sysfs_create_file(&acg->acg_kobj, &scst_acg_cpu_mask.attr);
 	if (res != 0) {
 		PRINT_ERROR("Can't add tgt attr %s for tgt %s",
 			scst_acg_cpu_mask.attr.name, tgt->tgt_name);
