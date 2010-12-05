@@ -1940,56 +1940,41 @@ static ssize_t scst_lun_rd_only_show(struct kobject *kobj,
 static struct kobj_attribute lun_options_attr =
 	__ATTR(read_only, S_IRUGO, scst_lun_rd_only_show, NULL);
 
-static struct attribute *lun_attrs[] = {
+struct attribute *scst_lun_attrs[] = {
 	&lun_options_attr.attr,
 	NULL,
-};
-
-static struct kobj_type acg_dev_ktype = {
-	.sysfs_ops = &scst_sysfs_ops,
-	.release = scst_release_kobj,
-	.default_attrs = lun_attrs,
 };
 
 void scst_acg_dev_sysfs_del(struct scst_acg_dev *acg_dev)
 {
 	TRACE_ENTRY();
 
-	if (acg_dev->dev != NULL) {
-		sysfs_remove_link(acg_dev->dev->dev_exp_kobj,
-			acg_dev->acg_dev_link_name);
-		kobject_put(&acg_dev->dev->dev_kobj);
-	}
+	BUG_ON(!acg_dev->dev);
 
-	kobject_del(acg_dev->acg_dev_kobj);
-	kobject_put(acg_dev->acg_dev_kobj);
+	sysfs_remove_link(acg_dev->dev->dev_exp_kobj,
+			  acg_dev->acg_dev_link_name);
+	kobject_put(&acg_dev->dev->dev_kobj);
+
+	kobject_del(&acg_dev->acg_dev_kobj);
 
 	TRACE_EXIT();
-	return;
 }
 
 int scst_acg_dev_sysfs_create(struct scst_acg_dev *acg_dev,
 	struct kobject *parent)
 {
-	struct scst_kobj *acg_dev_kobj;
 	int res;
 
 	TRACE_ENTRY();
 
-	res = -ENOMEM;
-	acg_dev_kobj = scst_create_kobj(acg_dev);
-	if (!acg_dev_kobj)
-		goto out;
+	BUG_ON(!acg_dev->dev);
 
-	acg_dev->acg_dev_kobj = &acg_dev_kobj->kobj;
-	res = kobject_init_and_add(acg_dev->acg_dev_kobj, &acg_dev_ktype,
-				      parent, "%llu", acg_dev->lun);
+	res = kobject_add(&acg_dev->acg_dev_kobj, parent, "%llu", acg_dev->lun);
 	if (res != 0) {
 		PRINT_ERROR("Can't add acg_dev %s/%s/%s/%llu to sysfs",
 			    acg_dev->acg->tgt->tgtt->name,
 			    acg_dev->acg->tgt->tgt_name,
 			    acg_dev->acg->acg_name, acg_dev->lun);
-		scst_release_kobj(&acg_dev_kobj->kobj);
 		goto out;
 	}
 
@@ -1999,14 +1984,14 @@ int scst_acg_dev_sysfs_create(struct scst_acg_dev *acg_dev,
 		"export%u", acg_dev->dev->dev_exported_lun_num++);
 
 	res = sysfs_create_link(acg_dev->dev->dev_exp_kobj,
-			   acg_dev->acg_dev_kobj, acg_dev->acg_dev_link_name);
+			   &acg_dev->acg_dev_kobj, acg_dev->acg_dev_link_name);
 	if (res != 0) {
 		PRINT_ERROR("Can't create acg %s LUN link",
 			acg_dev->acg->acg_name);
 		goto out_del;
 	}
 
-	res = sysfs_create_link(acg_dev->acg_dev_kobj,
+	res = sysfs_create_link(&acg_dev->acg_dev_kobj,
 			&acg_dev->dev->dev_kobj, "device");
 	if (res != 0) {
 		PRINT_ERROR("Can't create acg %s device link",

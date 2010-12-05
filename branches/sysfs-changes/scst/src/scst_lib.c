@@ -2681,11 +2681,27 @@ static void scst_del_free_acg_dev(struct scst_acg_dev *acg_dev, bool del_sysfs)
 	if (del_sysfs)
 		scst_acg_dev_sysfs_del(acg_dev);
 
-	kmem_cache_free(scst_acgd_cachep, acg_dev);
+	kobject_put(&acg_dev->acg_dev_kobj);
 
 	TRACE_EXIT();
 	return;
 }
+
+static void scst_release_acg_dev(struct kobject *kobj)
+{
+	struct scst_acg_dev *acg_dev;
+
+	acg_dev = container_of(kobj, struct scst_acg_dev, acg_dev_kobj);
+	kmem_cache_free(scst_acgd_cachep, acg_dev);
+}
+
+static struct kobj_type acg_dev_ktype = {
+	.release = scst_release_acg_dev,
+#ifndef CONFIG_SCST_PROC
+	.sysfs_ops = &scst_sysfs_ops,
+	.default_attrs = scst_lun_attrs,
+#endif
+};
 
 /* The activity supposed to be suspended and scst_mutex held */
 int scst_acg_add_lun(struct scst_acg *acg, struct kobject *parent,
@@ -2708,6 +2724,9 @@ int scst_acg_add_lun(struct scst_acg *acg, struct kobject *parent,
 		res = -ENOMEM;
 		goto out;
 	}
+
+	kobject_init(&acg_dev->acg_dev_kobj, &acg_dev_ktype);
+
 	acg_dev->rd_only = read_only;
 
 	TRACE_DBG("Adding acg_dev %p to acg_dev_list and dev_acg_dev_list",

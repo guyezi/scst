@@ -472,6 +472,7 @@ extern struct attribute *scst_devt_default_attrs[];
 extern struct attribute *scst_dev_attrs[];
 extern struct attribute *scst_session_attrs[];
 extern struct attribute *scst_tgt_dev_attrs[];
+extern struct attribute *scst_lun_attrs[];
 
 struct scst_kobj *scst_create_kobj(void *scst_obj);
 void scst_release_kobj(struct kobject *kobj);
