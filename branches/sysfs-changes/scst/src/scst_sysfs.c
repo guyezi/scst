@@ -701,7 +701,7 @@ int scst_tgt_sysfs_create(struct scst_tgt *tgt)
 	res = kobject_add(&tgt->tgt_kobj, &tgt->tgtt->tgtt_kobj, tgt->tgt_name);
 	if (res != 0) {
 		PRINT_ERROR("Can't add tgt %s to sysfs", tgt->tgt_name);
-		goto out_err;
+		goto out;
 	}
 
 	if ((tgt->tgtt->enable_target != NULL) &&
