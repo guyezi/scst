@@ -454,7 +454,7 @@ static ssize_t iscsi_sess_show_##name(struct kobject *kobj,			\
 	scst_sess = scst_kobj_to_sess(kobj);					\
 	sess = (struct iscsi_session *) scst_sess_get_tgt_priv(scst_sess);	\
 										\
-	pos = sprintf(buf, "%d	\n", sess->sess_params.name);			\
+	pos = sprintf(buf, "%d\n", sess->sess_params.name);			\
 										\
 	return pos;								\
 }										\
