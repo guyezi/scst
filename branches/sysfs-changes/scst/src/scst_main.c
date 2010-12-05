@@ -1485,14 +1485,16 @@ void scst_unregister_dev_driver(struct scst_dev_type *dev_type)
 
 	list_del(&dev_type->dev_type_list_entry);
 
-#ifdef CONFIG_SCST_PROC
-	scst_cleanup_proc_dev_handler_dir_entries(dev_type);
-#else
+#ifndef CONFIG_SCST_PROC
 	scst_devt_sysfs_del(dev_type);
 #endif
 
 	mutex_unlock(&scst_mutex);
 	scst_resume_activity();
+
+#ifdef CONFIG_SCST_PROC
+	scst_cleanup_proc_dev_handler_dir_entries(dev_type);
+#endif
 
 	kobject_put(&dev_type->devt_kobj);
 
