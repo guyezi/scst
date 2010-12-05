@@ -17,16 +17,19 @@
  *  GNU General Public License for more details.
  *
  *  Locking strategy:
- *  - Only suspend activity or lock scst_mutex inside .show() or .store()
- *    callback function associated with a attributes registered by
- *    scst_sysfs_init() and never from sysfs callback functions invoked for
+ *  - Only suspend activity or lock scst_mutex inside .show() or
+ *    .store() callback function associated with attributes
+ *    registered by scst_sysfs_init(). Never suspend activity or lock
+ *    scst_mutex inside sysfs callback functions invoked for
  *    dynamically created sysfs attributes.
- *  - Dynamic kobject creation and deletion may happen while activity is
- *    suspended and/or scst_mutex is locked. It is even necessary to do that
- *    under lock to avoid races between creation and deletion/recreation.
+ *  - Dynamic kobject creation and deletion may happen while activity
+ *    is suspended and/or scst_mutex is locked. It is even necessary
+ *    to do that under lock to avoid races between kernel object
+ *    creation and deletion/recreation of the same kernel object.
  *
- *  The above scheme avoids locking inversion between the s_active locking
- *  object associated with each kobject and activity suspending / scst_mutex.
+ *  The above scheme avoids locking inversion between the s_active
+ *  locking object associated by sysfs with each kernel object and
+ *  activity suspending and/or scst_mutex.
  */
 
 #include <linux/kobject.h>
@@ -377,8 +380,8 @@ static ssize_t scst_tgtt_trace_level_store(struct kobject *kobj,
 
 	tgtt = scst_kobj_to_tgtt(kobj);
 
-	res = -EINTR;
-	if (mutex_lock_interruptible(&scst_log_mutex) != 0)
+	res = mutex_lock_interruptible(&scst_log_mutex);
+	if (res)
 		goto out;
 
 	res = scst_write_trace(buf, count, tgtt->trace_flags,
@@ -934,10 +937,9 @@ static int scst_process_dev_sysfs_threads_data_store(
 	TRACE_DBG("dev %p, threads_num %d, threads_pool_type %d", dev,
 		threads_num, threads_pool_type);
 
-	if (mutex_lock_interruptible(&scst_mutex) != 0) {
-		res = -EINTR;
+	res = mutex_lock_interruptible(&scst_mutex);
+	if (res)
 		goto out;
-	}
 
 	scst_stop_dev_threads(dev);
 
@@ -1953,10 +1955,9 @@ static int __scst_process_luns_mgmt_store(char *buffer,
 		goto out;
 	}
 
-	if (mutex_lock_interruptible(&scst_mutex) != 0) {
-		res = -EINTR;
+	res = mutex_lock_interruptible(&scst_mutex);
+	if (res)
 		goto out;
-	}
 
 	if ((action != SCST_LUN_ACTION_CLEAR) &&
 	    (action != SCST_LUN_ACTION_DEL)) {
@@ -2253,7 +2254,7 @@ static ssize_t __scst_acg_io_grouping_type_show(struct scst_acg *acg, char *buf)
 static int __scst_acg_process_io_grouping_type_store(struct scst_tgt *tgt,
 	struct scst_acg *acg, int io_grouping_type)
 {
-	int res = 0;
+	int res;
 	struct scst_acg_dev *acg_dev;
 
 	scst_assert_activity_suspended();
@@ -2261,10 +2262,9 @@ static int __scst_acg_process_io_grouping_type_store(struct scst_tgt *tgt,
 	TRACE_DBG("tgt %p, acg %p, io_grouping_type %d", tgt, acg,
 		io_grouping_type);
 
-	if (mutex_lock_interruptible(&scst_mutex) != 0) {
-		res = -EINTR;
+	res = mutex_lock_interruptible(&scst_mutex);
+	if (res)
 		goto out;
-	}
 
 	acg->acg_io_grouping_type = io_grouping_type;
 
@@ -2374,15 +2374,14 @@ static ssize_t __scst_acg_cpu_mask_show(struct scst_acg *acg, char *buf)
 static int __scst_acg_process_cpu_mask_store(struct scst_tgt *tgt,
 	struct scst_acg *acg, cpumask_t *cpu_mask)
 {
-	int res = 0;
+	int res;
 	struct scst_session *sess;
 
 	TRACE_DBG("tgt %p, acg %p", tgt, acg);
 
-	if (mutex_lock_interruptible(&scst_mutex) != 0) {
-		res = -EINTR;
+	res = mutex_lock_interruptible(&scst_mutex);
+	if (res)
 		goto out;
-	}
 
 	cpumask_copy(&acg->acg_cpu_mask, cpu_mask);
 
@@ -2623,10 +2622,9 @@ static int scst_process_ini_group_mgmt_store(char *buffer,
 		goto out;
 	}
 
-	if (mutex_lock_interruptible(&scst_mutex) != 0) {
-		res = -EINTR;
+	res = mutex_lock_interruptible(&scst_mutex);
+	if (res)
 		goto out;
-	}
 
 	while (isspace(*p) && *p != '\0')
 		p++;
@@ -2915,10 +2913,9 @@ static int scst_process_acg_ini_mgmt_store(char *buffer,
 			goto out;
 		}
 
-	if (mutex_lock_interruptible(&scst_mutex) != 0) {
-		res = -EINTR;
+	res = mutex_lock_interruptible(&scst_mutex);
+	if (res)
 		goto out;
-	}
 
 	if (action != SCST_ACG_ACTION_INI_CLEAR)
 		while (isspace(*p) && *p != '\0')
@@ -3372,10 +3369,9 @@ static int scst_process_threads_store(int newtn)
 
 	TRACE_DBG("newtn %d", newtn);
 
-	if (mutex_lock_interruptible(&scst_mutex) != 0) {
-		res = -EINTR;
+	res = mutex_lock_interruptible(&scst_mutex);
+	if (res)
 		goto out;
-	}
 
 	oldtn = scst_main_cmd_threads.nr_threads;
 
@@ -3681,10 +3677,9 @@ static ssize_t scst_main_trace_level_store(struct kobject *kobj,
 
 	TRACE_ENTRY();
 
-	if (mutex_lock_interruptible(&scst_log_mutex) != 0) {
-		res = -EINTR;
+	res = mutex_lock_interruptible(&scst_log_mutex);
+	if (res)
 		goto out;
-	}
 
 	res = scst_write_trace(buf, count, &trace_flag,
 		SCST_DEFAULT_LOG_FLAGS, "scst", scst_local_trace_tbl);
@@ -3844,10 +3839,9 @@ static ssize_t scst_devt_trace_level_store(struct kobject *kobj,
 
 	devt = scst_kobj_to_devt(kobj);
 
-	if (mutex_lock_interruptible(&scst_log_mutex) != 0) {
-		res = -EINTR;
+	res = mutex_lock_interruptible(&scst_log_mutex);
+	if (res)
 		goto out;
-	}
 
 	res = scst_write_trace(buf, count, devt->trace_flags,
 		devt->default_trace_flags, devt->name, devt->trace_tbl);
@@ -4022,10 +4016,9 @@ static int scst_process_devt_pass_through_mgmt_store(char *buffer,
 
 	TRACE_DBG("Dev %ld:%ld:%ld:%ld", host, channel, id, lun);
 
-	if (mutex_lock_interruptible(&scst_mutex) != 0) {
-		res = -EINTR;
+	res = mutex_lock_interruptible(&scst_mutex);
+	if (res)
 		goto out;
-	}
 
 	list_for_each_entry(d, &scst_dev_list, dev_list_entry) {
 		if ((d->virt_id == 0) &&
