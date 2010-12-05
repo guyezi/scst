@@ -3964,6 +3964,12 @@ static void scst_release_sess(struct kobject *kobj)
 	TRACE_ENTRY();
 
 	sess = scst_kobj_to_sess(kobj);
+#ifndef CONFIG_SCST_PROC
+	if (sess->unique_session_name != sess->initiator_name)
+		kfree(sess->unique_session_name);
+#endif
+	kfree(sess->transport_id);
+	kfree(sess->initiator_name);
 	kmem_cache_free(scst_sess_cachep, sess);
 
 	TRACE_EXIT();
@@ -4065,13 +4071,6 @@ void scst_free_session(struct scst_session *sess)
 	 * has been unlocked, because it can be already dead!!
 	 */
 	mutex_unlock(&scst_mutex);
-
-#ifndef CONFIG_SCST_PROC
-	if (sess->unique_session_name != sess->initiator_name)
-		kfree(sess->unique_session_name);
-#endif
-	kfree(sess->transport_id);
-	kfree(sess->initiator_name);
 
 	kobject_put(&sess->sess_kobj);
 
