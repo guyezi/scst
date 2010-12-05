@@ -6207,8 +6207,6 @@ static int scst_init_session(struct scst_session *sess)
 			debug_transport_id_to_initiator_name(
 				sess->transport_id), sess->tgt->rel_tgt_id);
 	}
-failed:
-	mutex_unlock(&scst_mutex);
 
 #ifndef CONFIG_SCST_PROC
 	res = scst_sess_sysfs_create(sess);
@@ -6220,7 +6218,10 @@ failed:
 	 * sess_list to not race with scst_check_reassign_sess()!
 	 */
 	res = scst_sess_alloc_tgt_devs(sess);
+
+failed:
 #endif
+	mutex_unlock(&scst_mutex);
 
 	if (sess->init_result_fn) {
 		TRACE_DBG("Calling init_result_fn(%p)", sess);
