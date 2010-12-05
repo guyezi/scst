@@ -1038,9 +1038,8 @@ struct scst_tgt_template {
 
 	/* Device number in /proc */
 	int proc_dev_num;
-#else
-	struct kobject tgtt_kobj; /* kobject for this struct */
 #endif
+	struct kobject tgtt_kobj; /* kobject for this struct */
 
 	/*
 	 * Optional vendor to be reported via the SCSI inquiry data. If NULL,
@@ -1416,9 +1415,8 @@ struct scst_dev_type {
 #ifdef CONFIG_SCST_PROC
 	/* The pointer to the /proc directory entry */
 	struct proc_dir_entry *proc_dev_type_root;
-#else
-	struct kobject devt_kobj; /* main handlers/driver */
 #endif
+	struct kobject devt_kobj; /* main handlers/driver */
 };
 
 /*
@@ -1474,11 +1472,12 @@ struct scst_tgt {
 
 	uint16_t rel_tgt_id;
 
+	struct kobject tgt_kobj; /* main targets/target kobject */
+
 #ifdef CONFIG_SCST_PROC
 	/* Name of the default security group ("Default_target_name") */
 	char *default_group_name;
 #else
-	struct kobject tgt_kobj; /* main targets/target kobject */
 	struct kobject *tgt_sess_kobj; /* target/sessions/ */
 	struct kobject *tgt_luns_kobj; /* target/luns/ */
 	struct kobject *tgt_ini_grp_kobj; /* target/ini_groups/ */
@@ -1606,9 +1605,9 @@ struct scst_session {
 	/* Used if scst_unregister_session() called in wait mode */
 	struct completion *shutdown_compl;
 
-#ifndef CONFIG_SCST_PROC
 	struct kobject sess_kobj; /* kobject for this struct */
 
+#ifndef CONFIG_SCST_PROC
 	/* initiator_name + suffix */
 	const char *unique_session_name;
 #endif
@@ -2261,8 +2260,9 @@ struct scst_device {
 	/* Threads pool type of the device. Valid only if threads_num > 0. */
 	enum scst_dev_type_threads_pool_type threads_pool_type;
 
-#ifndef CONFIG_SCST_PROC
 	struct kobject dev_kobj; /* kobject for this struct */
+
+#ifndef CONFIG_SCST_PROC
 	struct kobject *dev_exp_kobj; /* exported groups */
 
 	/* Export number in the dev's sysfs list. Protected by scst_mutex */
@@ -2393,9 +2393,7 @@ struct scst_tgt_dev {
 	unsigned short tgt_dev_valid_sense_len;
 	uint8_t tgt_dev_sense[SCST_SENSE_BUFFERSIZE];
 
-#ifndef CONFIG_SCST_PROC
 	struct kobject tgt_dev_kobj; /* kobject for this struct */
-#endif
 
 #ifdef CONFIG_SCST_MEASURE_LATENCY
 	/*
@@ -2429,10 +2427,10 @@ struct scst_acg_dev {
 	/* List entry in acg->acg_dev_list */
 	struct list_head acg_dev_list_entry;
 
-#ifndef CONFIG_SCST_PROC
 	/* kobject for this structure */
 	struct kobject acg_dev_kobj;
 
+#ifndef CONFIG_SCST_PROC
 	/* Name of the link to the corresponding LUN */
 	char acg_dev_link_name[20];
 #endif
@@ -2474,10 +2472,10 @@ struct scst_acg {
 
 	unsigned int tgt_acg:1;
 
-#ifndef CONFIG_SCST_PROC
 	/* kobject for this structure */
 	struct kobject acg_kobj;
 
+#ifndef CONFIG_SCST_PROC
 	struct kobject *luns_kobj;
 	struct kobject *initiators_kobj;
 #endif
@@ -3750,6 +3748,8 @@ const struct sysfs_ops *scst_sysfs_get_sysfs_ops(void);
 struct sysfs_ops *scst_sysfs_get_sysfs_ops(void);
 #endif
 
+#endif /* CONFIG_SCST_PROC */
+
 /*
  * Returns target driver's root sysfs kobject.
  * The driver can create own files/directories/links here.
@@ -3865,8 +3865,6 @@ static inline struct scst_acg_dev *scst_kobj_to_acg_dev(struct kobject *kobj)
 {
 	return container_of(kobj, struct scst_acg_dev, acg_dev_kobj);
 }
-
-#endif /* CONFIG_SCST_PROC */
 
 /* Returns target name */
 static inline const char *scst_get_tgt_name(const struct scst_tgt *tgt)

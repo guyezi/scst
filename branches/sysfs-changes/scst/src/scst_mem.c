@@ -74,9 +74,10 @@ static struct shrinker sgv_shrinker;
  */
 static LIST_HEAD(sgv_pools_list);
 
+static struct kobj_type pool_ktype;
+
 #ifndef CONFIG_SCST_PROC
 static struct kobject *scst_sgv_kobj;
-static struct kobj_type pool_ktype;
 static int scst_sgv_sysfs_create(struct sgv_pool *pool, struct kobject *parent);
 static void scst_sgv_sysfs_del(struct sgv_pool *pool);
 #endif
@@ -1467,9 +1468,11 @@ static int sgv_pool_init(struct sgv_pool *pool, const char *name,
 	list_add_tail(&pool->sgv_pools_list_entry, &sgv_pools_list);
 	spin_unlock_bh(&sgv_pools_lock);
 
+#ifndef CONFIG_SCST_PROC
 	res = scst_sgv_sysfs_create(pool, scst_sgv_kobj);
 	if (res != 0)
 		goto out_del;
+#endif
 
 	res = 0;
 
@@ -1477,10 +1480,12 @@ out:
 	TRACE_EXIT_RES(res);
 	return res;
 
+#ifndef CONFIG_SCST_PROC
 out_del:
 	spin_lock_bh(&sgv_pools_lock);
 	list_del(&pool->sgv_pools_list_entry);
 	spin_unlock_bh(&sgv_pools_lock);
+#endif
 
 out_free:
 	for (i = 0; i < pool->max_caches; i++) {
@@ -1558,7 +1563,9 @@ static void sgv_pool_destroy(struct sgv_pool *pool)
 	spin_unlock_bh(&sgv_pools_lock);
 	mutex_unlock(&sgv_pools_mutex);
 
+#ifndef CONFIG_SCST_PROC
 	scst_sgv_sysfs_del(pool);
+#endif
 
 	kobject_put(&pool->sgv_kobj);
 
@@ -1586,7 +1593,6 @@ void sgv_pool_set_allocator(struct sgv_pool *pool,
 }
 EXPORT_SYMBOL_GPL(sgv_pool_set_allocator);
 
-#ifndef CONFIG_SCST_PROC
 /**
  * sgv_kobj_to_pool() - Convert a kobject pointer to a pool pointer.
  *
@@ -1597,7 +1603,6 @@ static inline struct sgv_pool *sgv_kobj_to_pool(struct kobject *kobj)
 {
 	return container_of(kobj, struct sgv_pool, sgv_kobj);
 }
-#endif /* !defined(CONFIG_SCST_PROC) */
 
 /**
  * sgv_pool_create - creates and initializes an SGV pool
@@ -2029,6 +2034,7 @@ static struct attribute *sgv_attrs[] = {
 	&sgv_stat_attr.attr,
 	NULL,
 };
+#endif
 
 static void scst_release_pool(struct kobject *kobj)
 {
@@ -2058,6 +2064,7 @@ static struct kobj_type pool_ktype = {
 #endif
 };
 
+#ifndef CONFIG_SCST_PROC
 static int scst_sgv_sysfs_create(struct sgv_pool *pool, struct kobject *parent)
 {
 	int res;

@@ -6219,8 +6219,8 @@ static int scst_init_session(struct scst_session *sess)
 	 */
 	res = scst_sess_alloc_tgt_devs(sess);
 
-failed:
 #endif
+failed:
 	mutex_unlock(&scst_mutex);
 
 	if (sess->init_result_fn) {
