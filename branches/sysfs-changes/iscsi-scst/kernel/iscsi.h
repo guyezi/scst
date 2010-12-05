@@ -311,7 +311,6 @@ struct iscsi_conn {
 #ifndef CONFIG_SCST_PROC
 	/* Don't need any protection */
 	struct kobject conn_kobj;
-	struct completion *conn_kobj_release_cmpl;
 #endif /* CONFIG_SCST_PROC */
 };
 

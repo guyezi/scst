@@ -128,16 +128,20 @@ static void iscsi_conn_release(struct kobject *kobj)
 	TRACE_ENTRY();
 
 	conn = container_of(kobj, struct iscsi_conn, conn_kobj);
-	if (conn->conn_kobj_release_cmpl != NULL)
-		complete_all(conn->conn_kobj_release_cmpl);
+
+	if (conn->file) {
+		fput(conn->file);
+		conn->file = NULL;
+	}
+	conn->sock = NULL;
+
+	if (conn->read_iov)
+		free_page((unsigned long)conn->read_iov);
+
+	kfree(conn);
 
 	TRACE_EXIT();
-	return;
 }
-
-struct kobj_type iscsi_conn_ktype = {
-	.release = iscsi_conn_release,
-};
 
 static ssize_t iscsi_get_initiator_ip(struct iscsi_conn *conn,
 	char *buf, int size)
@@ -236,28 +240,11 @@ static struct kobj_attribute iscsi_conn_state_attr =
 
 static void conn_sysfs_del(struct iscsi_conn *conn)
 {
-	int rc;
-	DECLARE_COMPLETION_ONSTACK(c);
-
 	TRACE_ENTRY();
 
-	conn->conn_kobj_release_cmpl = &c;
-
 	kobject_del(&conn->conn_kobj);
-	kobject_put(&conn->conn_kobj);
-
-	rc = wait_for_completion_timeout(conn->conn_kobj_release_cmpl, HZ);
-	if (rc == 0) {
-		PRINT_INFO("Waiting for releasing sysfs entry "
-			"for conn %p (%d refs)...", conn,
-			atomic_read(&conn->conn_kobj.kref.refcount));
-		wait_for_completion(conn->conn_kobj_release_cmpl);
-		PRINT_INFO("Done waiting for releasing sysfs "
-			"entry for conn %p", conn);
-	}
 
 	TRACE_EXIT();
-	return;
 }
 
 static int conn_sysfs_add(struct iscsi_conn *conn)
@@ -288,7 +275,7 @@ restart:
 		}
 	}
 
-	res = kobject_init_and_add(&conn->conn_kobj, &iscsi_conn_ktype,
+	res = kobject_add(&conn->conn_kobj,
 		scst_sysfs_get_sess_kobj(session->scst_sess), addr);
 	if (res != 0) {
 		PRINT_ERROR("Unable create sysfs entries for conn %s",
@@ -803,13 +790,7 @@ int conn_free(struct iscsi_conn *conn)
 
 	list_del(&conn->conn_list_entry);
 
-	fput(conn->file);
-	conn->file = NULL;
-	conn->sock = NULL;
-
-	free_page((unsigned long)conn->read_iov);
-
-	kfree(conn);
+	kobject_put(&conn->conn_kobj);
 
 	if (list_empty(&session->conn_list)) {
 		sBUG_ON(session->sess_reinst_successor != NULL);
@@ -818,6 +799,10 @@ int conn_free(struct iscsi_conn *conn)
 
 	return 0;
 }
+
+struct kobj_type iscsi_conn_ktype = {
+	.release = iscsi_conn_release,
+};
 
 /* target_mutex supposed to be locked */
 static int iscsi_conn_alloc(struct iscsi_session *session,
@@ -831,6 +816,8 @@ static int iscsi_conn_alloc(struct iscsi_session *session,
 		res = -ENOMEM;
 		goto out_err;
 	}
+
+	kobject_init(&conn->conn_kobj, &iscsi_conn_ktype);
 
 	TRACE_MGMT_DBG("Creating connection %p for sid %#Lx, cid %u", conn,
 		       (long long unsigned int)session->sid, info->cid);
@@ -910,13 +897,9 @@ out:
 	return res;
 
 out_fput:
-	fput(conn->file);
-
 out_free_iov:
-	free_page((unsigned long)conn->read_iov);
-
 out_err_free_conn:
-	kfree(conn);
+	kobject_put(&conn->conn_kobj);
 
 out_err:
 	goto out;
