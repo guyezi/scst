@@ -126,10 +126,7 @@ struct sgv_pool {
 
 	struct list_head sgv_pools_list_entry;
 
-	struct kobject *sgv_kobj;
-
-	/* sysfs release completion */
-	struct completion *sgv_kobj_release_cmpl;
+	struct kobject sgv_kobj;
 };
 
 static inline struct scatterlist *sgv_pool_sg(struct sgv_pool_obj *obj)
@@ -142,15 +139,6 @@ void scst_sgv_pools_deinit(void);
 
 #ifdef CONFIG_SCST_PROC
 int sgv_procinfo_show(struct seq_file *seq, void *v);
-#else
-ssize_t sgv_sysfs_stat_show(struct kobject *kobj,
-	struct kobj_attribute *attr, char *buf);
-ssize_t sgv_sysfs_stat_reset(struct kobject *kobj,
-	struct kobj_attribute *attr, const char *buf, size_t count);
-ssize_t sgv_sysfs_global_stat_show(struct kobject *kobj,
-	struct kobj_attribute *attr, char *buf);
-ssize_t sgv_sysfs_global_stat_reset(struct kobject *kobj,
-	struct kobj_attribute *attr, const char *buf, size_t count);
 #endif
 
 void scst_sgv_pool_use_norm(struct scst_tgt_dev *tgt_dev);

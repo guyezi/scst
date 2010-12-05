@@ -65,7 +65,6 @@ static DECLARE_COMPLETION(scst_sysfs_root_release_completion);
 static struct kobject *scst_sysfs_root_kobj;
 static struct kobject *scst_targets_kobj;
 static struct kobject *scst_devices_kobj;
-static struct kobject *scst_sgv_kobj;
 static struct kobject *scst_handlers_kobj;
 
 static const char *scst_dev_handler_types[] = {
@@ -572,7 +571,7 @@ static struct kobject *kobject_create_and_add_kt(struct kobj_type *ktype,
 out:
 	return kobj;
 kfree:
-	kfree(kobj);
+	kobject_put(kobj);
 	kobj = NULL;
 	goto out;
 }
@@ -3186,83 +3185,6 @@ out:
 
 
 /**
- ** SGV directory implementation
- **/
-
-static struct kobj_attribute sgv_stat_attr =
-	__ATTR(stats, S_IRUGO | S_IWUSR, sgv_sysfs_stat_show,
-		sgv_sysfs_stat_reset);
-
-static struct attribute *sgv_attrs[] = {
-	&sgv_stat_attr.attr,
-	NULL,
-};
-
-static struct kobj_type sgv_pool_ktype = {
-	.sysfs_ops = &scst_sysfs_ops,
-	.release = scst_release_kobj,
-	.default_attrs = sgv_attrs,
-};
-
-int scst_sgv_sysfs_create(struct sgv_pool *pool)
-{
-	struct scst_kobj *sgv_kobj;
-	int res;
-
-	TRACE_ENTRY();
-
-	res = -ENOMEM;
-	sgv_kobj = scst_create_kobj(pool);
-	if (!sgv_kobj)
-		goto out;
-
-	pool->sgv_kobj = &sgv_kobj->kobj;
-	res = kobject_init_and_add(pool->sgv_kobj, &sgv_pool_ktype,
-			scst_sgv_kobj, pool->name);
-	if (res) {
-		PRINT_ERROR("Can't add sgv pool %s to sysfs", pool->name);
-		scst_release_kobj(&sgv_kobj->kobj);
-		goto out;
-	}
-
-	res = 0;
-
-out:
-	TRACE_EXIT_RES(res);
-	return res;
-}
-
-void scst_sgv_sysfs_del(struct sgv_pool *pool)
-{
-	TRACE_ENTRY();
-
-	kobject_del(pool->sgv_kobj);
-	kobject_put(pool->sgv_kobj);
-
-	TRACE_EXIT();
-}
-
-static struct kobj_attribute sgv_global_stat_attr =
-	__ATTR(global_stats, S_IRUGO | S_IWUSR, sgv_sysfs_global_stat_show,
-		sgv_sysfs_global_stat_reset);
-
-static struct attribute *sgv_default_attrs[] = {
-	&sgv_global_stat_attr.attr,
-	NULL,
-};
-
-static void scst_sysfs_release(struct kobject *kobj)
-{
-	kfree(kobj);
-}
-
-static struct kobj_type sgv_ktype = {
-	.sysfs_ops = &scst_sysfs_ops,
-	.release = scst_sysfs_release,
-	.default_attrs = sgv_default_attrs,
-};
-
-/**
  ** SCST sysfs root directory implementation
  **/
 
@@ -4601,9 +4523,8 @@ int __init scst_sysfs_init(void)
 	if (!scst_devices_kobj)
 		goto devices_kobj_error;
 
-	scst_sgv_kobj = kobject_create_and_add_kt(&sgv_ktype,
-						  scst_sysfs_root_kobj, "sgv");
-	if (!scst_sgv_kobj)
+	res = scst_add_sgv_kobj(scst_sysfs_root_kobj, "sgv");
+	if (res)
 		goto sgv_kobj_error;
 
 	scst_handlers_kobj = kobject_create_and_add("handlers",
@@ -4619,8 +4540,7 @@ out:
 	kobject_put(scst_handlers_kobj);
 
 handlers_kobj_error:
-	kobject_del(scst_sgv_kobj);
-	kobject_put(scst_sgv_kobj);
+	scst_del_put_sgv_kobj();
 
 sgv_kobj_error:
 	kobject_del(scst_devices_kobj);
@@ -4650,8 +4570,7 @@ void scst_sysfs_cleanup(void)
 	kobject_del(scst_handlers_kobj);
 	kobject_put(scst_handlers_kobj);
 
-	kobject_del(scst_sgv_kobj);
-	kobject_put(scst_sgv_kobj);
+	scst_del_put_sgv_kobj();
 
 	kobject_del(scst_devices_kobj);
 	kobject_put(scst_devices_kobj);

@@ -74,6 +74,13 @@ static struct shrinker sgv_shrinker;
  */
 static LIST_HEAD(sgv_pools_list);
 
+#ifndef CONFIG_SCST_PROC
+static struct kobject *scst_sgv_kobj;
+static struct kobj_type pool_ktype;
+static int scst_sgv_sysfs_create(struct sgv_pool *pool, struct kobject *parent);
+static void scst_sgv_sysfs_del(struct sgv_pool *pool);
+#endif
+
 static inline bool sgv_pool_clustered(const struct sgv_pool *pool)
 {
 	return pool->clustering_type != sgv_no_clustering;
@@ -1398,8 +1405,6 @@ static int sgv_pool_init(struct sgv_pool *pool, const char *name,
 		goto out;
 	}
 
-	memset(pool, 0, sizeof(*pool));
-
 	atomic_set(&pool->big_alloc, 0);
 	atomic_set(&pool->big_pages, 0);
 	atomic_set(&pool->big_merged, 0);
@@ -1462,7 +1467,7 @@ static int sgv_pool_init(struct sgv_pool *pool, const char *name,
 	list_add_tail(&pool->sgv_pools_list_entry, &sgv_pools_list);
 	spin_unlock_bh(&sgv_pools_lock);
 
-	res = scst_sgv_sysfs_create(pool);
+	res = scst_sgv_sysfs_create(pool, scst_sgv_kobj);
 	if (res != 0)
 		goto out_del;
 
@@ -1541,8 +1546,6 @@ EXPORT_SYMBOL_GPL(sgv_pool_flush);
 
 static void sgv_pool_destroy(struct sgv_pool *pool)
 {
-	int i;
-
 	TRACE_ENTRY();
 
 	cancel_delayed_work_sync(&pool->sgv_purge_work);
@@ -1557,13 +1560,7 @@ static void sgv_pool_destroy(struct sgv_pool *pool)
 
 	scst_sgv_sysfs_del(pool);
 
-	for (i = 0; i < pool->max_caches; i++) {
-		if (pool->caches[i])
-			kmem_cache_destroy(pool->caches[i]);
-		pool->caches[i] = NULL;
-	}
-
-	kfree(pool);
+	kobject_put(&pool->sgv_kobj);
 
 	TRACE_EXIT();
 	return;
@@ -1596,9 +1593,9 @@ EXPORT_SYMBOL_GPL(sgv_pool_set_allocator);
  * Must be called from inside an sgv pool sysfs .show() or .store() callback
  * function only.
  */
-static struct sgv_pool *sgv_kobj_to_pool(struct kobject *kobj)
+static inline struct sgv_pool *sgv_kobj_to_pool(struct kobject *kobj)
 {
-	return scst_kobj_to_scst_obj(kobj);
+	return container_of(kobj, struct sgv_pool, sgv_kobj);
 }
 #endif /* !defined(CONFIG_SCST_PROC) */
 
@@ -1662,6 +1659,8 @@ struct sgv_pool *sgv_pool_create(const char *name,
 		goto out_unlock;
 	}
 
+	kobject_init(&pool->sgv_kobj, &pool_ktype);
+
 	rc = sgv_pool_init(pool, name, clustering_type, single_alloc_pages,
 				purge_interval);
 	if (rc != 0)
@@ -1674,7 +1673,7 @@ out_unlock:
 	return pool;
 
 out_free:
-	kfree(pool);
+	kobject_put(&pool->sgv_kobj);
 	goto out_unlock;
 }
 EXPORT_SYMBOL_GPL(sgv_pool_create);
@@ -1893,7 +1892,7 @@ int sgv_procinfo_show(struct seq_file *seq, void *v)
 
 #else /* CONFIG_SCST_PROC */
 
-ssize_t sgv_sysfs_stat_show(struct kobject *kobj,
+static ssize_t sgv_sysfs_stat_show(struct kobject *kobj,
 	struct kobj_attribute *attr, char *buf)
 {
 	struct sgv_pool *pool;
@@ -1949,7 +1948,7 @@ ssize_t sgv_sysfs_stat_show(struct kobject *kobj,
 	return res;
 }
 
-ssize_t sgv_sysfs_stat_reset(struct kobject *kobj,
+static ssize_t sgv_sysfs_stat_reset(struct kobject *kobj,
 	struct kobj_attribute *attr, const char *buf, size_t count)
 {
 	struct sgv_pool *pool;
@@ -1978,7 +1977,7 @@ ssize_t sgv_sysfs_stat_reset(struct kobject *kobj,
 	return count;
 }
 
-ssize_t sgv_sysfs_global_stat_show(struct kobject *kobj,
+static ssize_t sgv_sysfs_global_stat_show(struct kobject *kobj,
 	struct kobj_attribute *attr, char *buf)
 {
 	struct sgv_pool *pool;
@@ -2007,7 +2006,7 @@ ssize_t sgv_sysfs_global_stat_show(struct kobject *kobj,
 	return res;
 }
 
-ssize_t sgv_sysfs_global_stat_reset(struct kobject *kobj,
+static ssize_t sgv_sysfs_global_stat_reset(struct kobject *kobj,
 	struct kobj_attribute *attr, const char *buf, size_t count)
 {
 	TRACE_ENTRY();
@@ -2020,6 +2019,125 @@ ssize_t sgv_sysfs_global_stat_reset(struct kobject *kobj,
 
 	TRACE_EXIT_RES(count);
 	return count;
+}
+
+static struct kobj_attribute sgv_stat_attr =
+	__ATTR(stats, S_IRUGO | S_IWUSR, sgv_sysfs_stat_show,
+		sgv_sysfs_stat_reset);
+
+static struct attribute *sgv_attrs[] = {
+	&sgv_stat_attr.attr,
+	NULL,
+};
+
+static void scst_release_pool(struct kobject *kobj)
+{
+	struct sgv_pool *pool;
+	int i;
+
+	TRACE_ENTRY();
+
+	pool = sgv_kobj_to_pool(kobj); 
+
+	for (i = 0; i < pool->max_caches; i++) {
+		if (pool->caches[i])
+			kmem_cache_destroy(pool->caches[i]);
+		pool->caches[i] = NULL;
+	}
+
+	kfree(pool);
+
+	TRACE_EXIT();
+}
+
+static struct kobj_type pool_ktype = {
+	.release = scst_release_pool,
+#ifndef CONFIG_SCST_PROC
+	.sysfs_ops = &scst_sysfs_ops,
+	.default_attrs = sgv_attrs,
+#endif
+};
+
+static int scst_sgv_sysfs_create(struct sgv_pool *pool, struct kobject *parent)
+{
+	int res;
+
+	TRACE_ENTRY();
+
+	res = kobject_add(&pool->sgv_kobj, parent, pool->name);
+	if (res) {
+		PRINT_ERROR("Can't add sgv pool %s to sysfs", pool->name);
+		goto out;
+	}
+
+out:
+	TRACE_EXIT_RES(res);
+	return res;
+}
+
+static void scst_sgv_sysfs_del(struct sgv_pool *pool)
+{
+	TRACE_ENTRY();
+	kobject_del(&pool->sgv_kobj);
+	TRACE_EXIT();
+}
+
+/**
+ ** SGV directory implementation
+ **/
+
+static struct kobj_attribute sgv_global_stat_attr =
+	__ATTR(global_stats, S_IRUGO | S_IWUSR, sgv_sysfs_global_stat_show,
+		sgv_sysfs_global_stat_reset);
+
+static struct attribute *sgv_default_attrs[] = {
+	&sgv_global_stat_attr.attr,
+	NULL,
+};
+
+static void scst_sysfs_release(struct kobject *kobj)
+{
+	kfree(kobj);
+}
+
+static struct kobj_type sgv_ktype = {
+	.sysfs_ops = &scst_sysfs_ops,
+	.release = scst_sysfs_release,
+	.default_attrs = sgv_default_attrs,
+};
+
+/**
+ * scst_add_sgv_kobj() - Initialize and add the root SGV kernel object.
+ */
+int scst_add_sgv_kobj(struct kobject *parent, const char *name)
+{
+	int res;
+
+	WARN_ON(scst_sgv_kobj);
+	res = -ENOMEM;
+	scst_sgv_kobj = kzalloc(sizeof(*scst_sgv_kobj), GFP_KERNEL);
+	if (!scst_sgv_kobj)
+		goto out;
+	res = kobject_init_and_add(scst_sgv_kobj, &sgv_ktype, parent, name);
+	if (res)
+		goto out_free;
+out:
+	return res;
+out_free:
+	kobject_put(scst_sgv_kobj);
+	scst_sgv_kobj = NULL;
+	goto out;
+}
+
+/**
+ * scst_del_put_sgv_kobj() - Remove the root SGV kernel object.
+ */
+void scst_del_put_sgv_kobj(void)
+{
+	WARN_ON(!scst_sgv_kobj);
+	kobject_del(scst_sgv_kobj);
+	kobject_put(scst_sgv_kobj);
+	scst_sgv_kobj = NULL;
 }
 
 #endif /* CONFIG_SCST_PROC */
