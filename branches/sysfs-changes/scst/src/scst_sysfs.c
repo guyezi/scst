@@ -901,7 +901,7 @@ static int scst_process_dev_sysfs_threads_data_store(
 	struct scst_device *dev, int threads_num,
 	enum scst_dev_type_threads_pool_type threads_pool_type)
 {
-	int res = 0;
+	int res;
 	int oldtn = dev->threads_num;
 	enum scst_dev_type_threads_pool_type oldtt = dev->threads_pool_type;
 
@@ -1154,7 +1154,7 @@ out:
 
 int scst_dev_sysfs_create(struct scst_device *dev)
 {
-	int res = 0;
+	int res;
 
 	TRACE_ENTRY();
 
@@ -1363,7 +1363,7 @@ struct attribute *scst_tgt_dev_attrs[] = {
 
 int scst_tgt_dev_sysfs_create(struct scst_tgt_dev *tgt_dev)
 {
-	int res = 0;
+	int res;
 
 	TRACE_ENTRY();
 
@@ -1734,7 +1734,7 @@ int scst_recreate_sess_luns_link(struct scst_session *sess)
 
 int scst_sess_sysfs_create(struct scst_session *sess)
 {
-	int res = 0;
+	int res;
 	const char *name = sess->unique_session_name;
 
 	TRACE_ENTRY();
@@ -2439,7 +2439,7 @@ void scst_acg_sysfs_del(struct scst_acg *acg)
 
 int scst_acg_sysfs_create(struct scst_tgt *tgt, struct scst_acg *acg)
 {
-	int res = 0;
+	int res;
 
 	TRACE_ENTRY();
 
@@ -2726,7 +2726,7 @@ out:
 static ssize_t scst_rel_tgt_id_store(struct kobject *kobj,
 	struct kobj_attribute *attr, const char *buf, size_t count)
 {
-	int res = 0;
+	int res;
 	struct scst_tgt *tgt;
 	unsigned long rel_tgt_id;
 
