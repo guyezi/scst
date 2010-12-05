@@ -63,8 +63,6 @@ enum mgmt_path_type {
 	ACG_INITIATOR_GROUPS_PATH,
 };
 
-static DECLARE_COMPLETION(scst_sysfs_root_release_completion);
-
 static struct kobject *scst_sysfs_root_kobj;
 static struct kobject *scst_targets_kobj;
 static struct kobject *scst_devices_kobj;
@@ -483,29 +481,6 @@ out_syntax_err:
 
 static struct kobj_attribute scst_tgtt_mgmt =
 	__ATTR(mgmt, S_IRUGO, scst_tgtt_mgmt_show, NULL);
-
-/**
- * kobject_create_and_add_kt() - Create a kernel object and add it to sysfs.
- */
-static struct kobject *kobject_create_and_add_kt(struct kobj_type *ktype,
-				struct kobject *parent, const char *name)
-{
-	struct kobject *kobj;
-
-	BUG_ON(!ktype);
-	BUG_ON(!name);
-	kobj = kzalloc(sizeof(*kobj), GFP_KERNEL);
-	if (!kobj)
-		goto out;
-	if (kobject_init_and_add(kobj, ktype, parent, name))
-		goto kfree;
-out:
-	return kobj;
-kfree:
-	kobject_put(kobj);
-	kobj = NULL;
-	goto out;
-}
 
 int scst_tgtt_sysfs_create(struct scst_tgt_template *tgtt)
 {
@@ -3798,10 +3773,31 @@ static struct attribute *scst_sysfs_root_default_attrs[] = {
 	NULL,
 };
 
+/**
+ * kobject_create_and_add_kt() - Create a kernel object and add it to sysfs.
+ */
+static struct kobject *kobject_create_and_add_kt(struct kobj_type *ktype,
+				struct kobject *parent, const char *name)
+{
+	struct kobject *kobj;
+
+	BUG_ON(!ktype);
+	BUG_ON(!name);
+	kobj = kzalloc(sizeof(*kobj), GFP_KERNEL);
+	if (!kobj)
+		goto out;
+	if (kobject_init_and_add(kobj, ktype, parent, name))
+		goto kfree;
+out:
+	return kobj;
+kfree:
+	kobject_put(kobj);
+	kobj = NULL;
+	goto out;
+}
+
 static void scst_sysfs_root_release(struct kobject *kobj)
 {
-	WARN_ON(kobj != scst_sysfs_root_kobj);
-	complete_all(&scst_sysfs_root_release_completion);
 	kfree(kobj);
 }
 
@@ -4434,18 +4430,6 @@ void scst_sysfs_cleanup(void)
 
 	kobject_del(scst_sysfs_root_kobj);
 	kobject_put(scst_sysfs_root_kobj);
-
-	wait_for_completion(&scst_sysfs_root_release_completion);
-	/*
-	 * There is a race, when in the release() schedule happens just after
-	 * calling complete(), so if we exit and unload scst module immediately,
-	 * there will be oops there. So let's give it a chance to quit
-	 * gracefully. Unfortunately, current kobjects implementation
-	 * doesn't allow better ways to handle it.
-	 */
-#if 0
-	msleep(3000);
-#endif
 
 	PRINT_INFO("%s", "Exiting SCST sysfs hierarchy done");
 
