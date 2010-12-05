@@ -2691,7 +2691,7 @@ static void scst_release_acg_dev(struct kobject *kobj)
 {
 	struct scst_acg_dev *acg_dev;
 
-	acg_dev = container_of(kobj, struct scst_acg_dev, acg_dev_kobj);
+	acg_dev = scst_kobj_to_acg_dev(kobj);
 	kmem_cache_free(scst_acgd_cachep, acg_dev);
 }
 
@@ -2819,7 +2819,7 @@ static void scst_release_acg(struct kobject *kobj)
 {
 	struct scst_acg *acg;
 
-	acg = container_of(kobj, struct scst_acg, acg_kobj);
+	acg = scst_kobj_to_acg(kobj);
 	kfree(acg->acg_name);
 	kfree(acg);
 }
@@ -3307,7 +3307,7 @@ static void scst_release_tgt_dev(struct kobject *kobj)
 {
 	struct scst_tgt_dev *tgt_dev;
 
-	tgt_dev = container_of(kobj, struct scst_tgt_dev, tgt_dev_kobj);
+	tgt_dev = scst_kobj_to_tgt_dev(kobj);
 	kmem_cache_free(scst_tgtd_cachep, tgt_dev);
 }
 
@@ -3963,7 +3963,7 @@ static void scst_release_sess(struct kobject *kobj)
 
 	TRACE_ENTRY();
 
-	sess = container_of(kobj, struct scst_session, sess_kobj);
+	sess = scst_kobj_to_sess(kobj);
 	kmem_cache_free(scst_sess_cachep, sess);
 
 	TRACE_EXIT();

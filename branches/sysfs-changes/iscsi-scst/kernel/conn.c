@@ -127,7 +127,7 @@ static void iscsi_conn_release(struct kobject *kobj)
 
 	TRACE_ENTRY();
 
-	conn = container_of(kobj, struct iscsi_conn, conn_kobj);
+	conn = scst_kobj_to_conn(kobj);
 
 	if (conn->file) {
 		fput(conn->file);
@@ -189,7 +189,7 @@ static ssize_t iscsi_conn_ip_show(struct kobject *kobj,
 
 	TRACE_ENTRY();
 
-	conn = container_of(kobj, struct iscsi_conn, conn_kobj);
+	conn = scst_kobj_to_conn(kobj);
 
 	pos = iscsi_get_initiator_ip(conn, buf, SCST_SYSFS_BLOCK_SIZE);
 
@@ -208,7 +208,7 @@ static ssize_t iscsi_conn_cid_show(struct kobject *kobj,
 
 	TRACE_ENTRY();
 
-	conn = container_of(kobj, struct iscsi_conn, conn_kobj);
+	conn = scst_kobj_to_conn(kobj);
 
 	pos = sprintf(buf, "%u", conn->cid);
 
@@ -227,7 +227,7 @@ static ssize_t iscsi_conn_state_show(struct kobject *kobj,
 
 	TRACE_ENTRY();
 
-	conn = container_of(kobj, struct iscsi_conn, conn_kobj);
+	conn = scst_kobj_to_conn(kobj);
 
 	pos = print_conn_state(buf, SCST_SYSFS_BLOCK_SIZE, conn);
 

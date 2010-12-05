@@ -353,15 +353,6 @@ static struct scst_acg *__scst_lookup_acg(const struct scst_tgt *tgt,
  ** Target Template
  **/
 
-/**
- * scst_kobj_to_tgtt() - Look up target template pointer.
- */
-struct scst_tgt_template *scst_kobj_to_tgtt(struct kobject *kobj)
-{
-	return container_of(kobj, struct scst_tgt_template, tgtt_kobj);
-}
-EXPORT_SYMBOL(scst_kobj_to_tgtt);
-
 #if defined(CONFIG_SCST_DEBUG) || defined(CONFIG_SCST_TRACING)
 
 static ssize_t scst_tgtt_trace_level_show(struct kobject *kobj,
@@ -608,15 +599,6 @@ static struct kobj_attribute scst_acg_io_grouping_type =
 static struct kobj_attribute scst_acg_cpu_mask =
 	__ATTR(cpu_mask, S_IRUGO, scst_acg_cpu_mask_show, NULL);
 
-/**
- * scst_kobj_to_tgt() - Look up target pointer.
- */
-struct scst_tgt *scst_kobj_to_tgt(struct kobject *kobj)
-{
-	return container_of(kobj, struct scst_tgt, tgt_kobj);
-}
-EXPORT_SYMBOL(scst_kobj_to_tgt);
-
 static ssize_t scst_tgt_enable_show(struct kobject *kobj,
 	struct kobj_attribute *attr, char *buf)
 {
@@ -854,18 +836,6 @@ void scst_tgt_sysfs_del(struct scst_tgt *tgt)
 /**
  ** Devices directory implementation
  **/
-
-/**
- * scst_kobj_to_dev() - Look up virtual device pointer.
- *
- * Must be called from inside a dev sysfs .show() or .store() callback
- * function only.
- */
-struct scst_device *scst_kobj_to_dev(struct kobject *kobj)
-{
-	return container_of(kobj, struct scst_device, dev_kobj);
-}
-EXPORT_SYMBOL(scst_kobj_to_dev);
 
 static int scst_process_dev_mgmt_store(char *cmd, struct scst_device *dev)
 {
@@ -1273,15 +1243,6 @@ void scst_dev_sysfs_del(struct scst_device *dev)
  ** Tgt_dev implementation
  **/
 
-/**
- * scst_kobj_to_tgt_dev() - Look up target device pointer.
- */
-struct scst_tgt_dev *scst_kobj_to_tgt_dev(struct kobject *kobj)
-{
-	return container_of(kobj, struct scst_tgt_dev, tgt_dev_kobj);
-}
-EXPORT_SYMBOL(scst_kobj_to_tgt_dev);
-
 #ifdef CONFIG_SCST_MEASURE_LATENCY
 
 static char *scst_io_size_names[] = {
@@ -1452,12 +1413,6 @@ void scst_tgt_dev_sysfs_del(struct scst_tgt_dev *tgt_dev)
 /**
  ** Sessions subdirectory implementation
  **/
-
-struct scst_session *scst_kobj_to_sess(struct kobject *kobj)
-{
-	return container_of(kobj, struct scst_session, sess_kobj);
-}
-EXPORT_SYMBOL(scst_kobj_to_sess);
 
 #ifdef CONFIG_SCST_MEASURE_LATENCY
 
@@ -1847,15 +1802,6 @@ void scst_sess_sysfs_del(struct scst_session *sess)
  ** Target luns directory implementation
  **/
 
-/**
- * scst_kobj_to_acg_dev() - Look up an acg_dev pointer.
- */
-struct scst_acg_dev *scst_kobj_to_acg_dev(struct kobject *kobj)
-{
-	return container_of(kobj, struct scst_acg_dev, acg_dev_kobj);
-}
-EXPORT_SYMBOL(scst_kobj_to_acg_dev);
-
 static ssize_t scst_lun_rd_only_show(struct kobject *kobj,
 				   struct kobj_attribute *attr,
 				   char *buf)
@@ -1943,15 +1889,6 @@ out_del:
 /**
  ** ini_groups directory implementation.
  **/
-
-/**
- * scst_kobj_to_acg_dev() - Look up an access control group pointer.
- */
-struct scst_acg *scst_kobj_to_acg(struct kobject *kobj)
-{
-	return container_of(kobj, struct scst_acg, acg_kobj);
-}
-EXPORT_SYMBOL(scst_kobj_to_acg);
 
 static int scst_process_acg_mgmt_store(const char *cmd, struct scst_acg *acg)
 {
@@ -3882,12 +3819,6 @@ static struct kobj_type scst_sysfs_root_ktype = {
 /**
  ** Dev handlers
  **/
-
-struct scst_dev_type *scst_kobj_to_devt(struct kobject *kobj)
-{
-	return container_of(kobj, struct scst_dev_type, devt_kobj);
-}
-EXPORT_SYMBOL(scst_kobj_to_devt);
 
 #if defined(CONFIG_SCST_DEBUG) || defined(CONFIG_SCST_TRACING)
 

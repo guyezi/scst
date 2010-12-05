@@ -1287,7 +1287,7 @@ struct scst_dev_type {
 	void (*detach_tgt) (struct scst_tgt_dev *tgt_dev);
 
 	/*
-	 * Set the file if storage is provided by a file.
+	 * Set the file path if storage is provided by a file.
 	 *
 	 * OPTIONAL.
 	 */
@@ -1417,13 +1417,7 @@ struct scst_dev_type {
 	/* The pointer to the /proc directory entry */
 	struct proc_dir_entry *proc_dev_type_root;
 #else
-	/*
-	 * Pointer to the kernel object that corresponds to this object. This
-	 * pointer is guaranteed to be valid after scst_register_dev_driver()
-	 * returned and as long as this device handler object is present in
-	 * the global device handler list.
-	 */
-	struct kobject devt_kobj;
+	struct kobject devt_kobj; /* main handlers/driver */
 #endif
 };
 
@@ -3766,7 +3760,10 @@ static inline struct kobject *scst_sysfs_get_tgtt_kobj(
 	return &tgtt->tgtt_kobj;
 }
 
-struct scst_tgt_template *scst_kobj_to_tgtt(struct kobject *kobj);
+static inline struct scst_tgt_template *scst_kobj_to_tgtt(struct kobject *kobj)
+{
+	return container_of(kobj, struct scst_tgt_template, tgtt_kobj);
+}
 
 /*
  * Returns target's root sysfs kobject.
@@ -3778,7 +3775,10 @@ static inline struct kobject *scst_sysfs_get_tgt_kobj(
 	return &tgt->tgt_kobj;
 }
 
-struct scst_tgt *scst_kobj_to_tgt(struct kobject *kobj);
+static inline struct scst_tgt *scst_kobj_to_tgt(struct kobject *kobj)
+{
+	return container_of(kobj, struct scst_tgt, tgt_kobj);
+}
 
 /*
  * Returns device handler's root sysfs kobject.
@@ -3790,7 +3790,10 @@ static inline struct kobject *scst_sysfs_get_devt_kobj(
 	return &devt->devt_kobj;
 }
 
-struct scst_dev_type *scst_kobj_to_devt(struct kobject *kobj);
+static inline struct scst_dev_type *scst_kobj_to_devt(struct kobject *kobj)
+{
+	return container_of(kobj, struct scst_dev_type, devt_kobj);
+}
 
 /*
  * Returns device's root sysfs kobject.
@@ -3802,7 +3805,10 @@ static inline struct kobject *scst_sysfs_get_dev_kobj(
 	return &dev->dev_kobj;
 }
 
-struct scst_device *scst_kobj_to_dev(struct kobject *kobj);
+static inline struct scst_device *scst_kobj_to_dev(struct kobject *kobj)
+{
+	return container_of(kobj, struct scst_device, dev_kobj);
+}
 
 /*
  * Returns session's root sysfs kobject.
@@ -3814,7 +3820,10 @@ static inline struct kobject *scst_sysfs_get_sess_kobj(
 	return &sess->sess_kobj;
 }
 
-struct scst_session *scst_kobj_to_sess(struct kobject *kobj);
+static inline struct scst_session *scst_kobj_to_sess(struct kobject *kobj)
+{
+	return container_of(kobj, struct scst_session, sess_kobj);
+}
 
 /**
  * scst_sysfs_get_tgt_dev_kobj() - Returns tgt_dev kobject pointer.
@@ -3825,7 +3834,10 @@ static inline struct kobject *scst_sysfs_get_tgt_dev_kobj(
 	return &tgt_dev->tgt_dev_kobj;
 }
 
-struct scst_tgt_dev *scst_kobj_to_tgt_dev(struct kobject *kobj);
+static inline struct scst_tgt_dev *scst_kobj_to_tgt_dev(struct kobject *kobj)
+{
+	return container_of(kobj, struct scst_tgt_dev, tgt_dev_kobj);
+}
 
 /**
  * scst_sysfs_get_acg_kobj() - Returns acg kobject pointer.
@@ -3835,7 +3847,10 @@ static inline struct kobject *scst_sysfs_get_acg_kobj(struct scst_acg *acg)
 	return &acg->acg_kobj;
 }
 
-struct scst_acg *scst_kobj_to_acg(struct kobject *kobj);
+static inline struct scst_acg *scst_kobj_to_acg(struct kobject *kobj)
+{
+	return container_of(kobj, struct scst_acg, acg_kobj);
+}
 
 /**
  * scst_sysfs_get_acg_dev_kobj() - Returns acg_dev kobject pointer.
@@ -3846,7 +3861,10 @@ static inline struct kobject *scst_sysfs_get_acg_dev_kobj(
 	return &acg_dev->acg_dev_kobj;
 }
 
-struct scst_acg_dev *scst_kobj_to_acg_dev(struct kobject *kobj);
+static inline struct scst_acg_dev *scst_kobj_to_acg_dev(struct kobject *kobj)
+{
+	return container_of(kobj, struct scst_acg_dev, acg_dev_kobj);
+}
 
 #endif /* CONFIG_SCST_PROC */
 

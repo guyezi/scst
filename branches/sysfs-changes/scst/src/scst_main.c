@@ -682,7 +682,7 @@ static void scst_release_target(struct kobject *kobj)
 	struct scst_tgt *tgt;
 
 	TRACE_ENTRY();
-	tgt = container_of(kobj, struct scst_tgt, tgt_kobj);
+	tgt = scst_kobj_to_tgt(kobj);
 	scst_free_tgt(tgt);
 	TRACE_EXIT();
 }
@@ -891,7 +891,7 @@ static void scst_release_dev(struct kobject *kobj)
 {
 	struct scst_device *dev;
 
-	dev = container_of(kobj, struct scst_device, dev_kobj);
+	dev = scst_kobj_to_dev(kobj);
 	scst_free_device(dev);
 }
 

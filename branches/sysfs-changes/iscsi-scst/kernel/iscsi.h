@@ -321,8 +321,15 @@ struct iscsi_pdu {
 	unsigned int datasize;
 };
 
+#ifdef CONFIG_SCST_PROC
 typedef void (iscsi_show_info_t)(struct seq_file *seq,
 				 struct iscsi_target *target);
+#else
+static inline struct iscsi_conn *scst_kobj_to_conn(struct kobject *kobj)
+{
+	return container_of(kobj, struct iscsi_conn, conn_kobj);
+}
+#endif
 
 /** Commands' states **/
 
