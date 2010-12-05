@@ -212,69 +212,6 @@ static void sysfs_remove_files(struct kobject *kobj,
 #endif
 
 /**
- ** Kernel object that points to an SCST object.
- **/
-
-/**
- * struct scst_kobj - Reference to an SCST object.
- * @kobj:     Kernel object.
- * @scst_obj: Pointer to the associated SCST object.
- *
- * A struct scst_kobj exists at least as long as the SCST object it points
- * at. Before the SCST object is destroyed, the scst_obj pointer is set to
- * NULL and kobject_del() is invoked. Since kobject_del() must wait until any
- * active sysfs .show() or .store() callback functions have finished, it is
- * guaranteed that the corresponding SCST object will only be freed after any
- * active sysfs .show() or .store() callback functions have returned. So SCST
- * objects will not disappear while a .show() or .store() callback is running.
- */
-struct scst_kobj {
-	struct kobject	 kobj;
-	void		*scst_obj;
-};
-
-/**
- * scst_create_kobj() - Allocate and initialize a struct scst_kobj.
- */
-struct scst_kobj *scst_create_kobj(void *scst_obj)
-{
-	struct scst_kobj *scst_kobj;
-
-	scst_kobj = kzalloc(sizeof(*scst_kobj), GFP_KERNEL);
-	if (!scst_kobj)
-		goto out;
-	scst_kobj->scst_obj = scst_obj;
-out:
-	return scst_kobj;
-}
-
-/**
- * scst_release_kobj() - struct scst_kobj kernel object release method.
- */
-void scst_release_kobj(struct kobject *kobj)
-{
-	TRACE_ENTRY();
-	kfree(kobj);
-	TRACE_EXIT();
-}
-
-/**
- * scst_kobj_to_scst_obj() - Convert a kobject pointer into an SCST obj pointer.
- */
-void *scst_kobj_to_scst_obj(struct kobject *kobj)
-{
-	struct scst_kobj *scst_kobj;
-
-	TRACE_ENTRY();
-
-	scst_kobj = container_of(kobj, struct scst_kobj, kobj);
-
-	TRACE_EXIT_HRES(scst_kobj->scst_obj);
-	return scst_kobj->scst_obj;
-}
-
-
-/**
  ** Regular SCST sysfs ops
  **/
 static ssize_t scst_show(struct kobject *kobj, struct attribute *attr,
@@ -1518,7 +1455,7 @@ void scst_tgt_dev_sysfs_del(struct scst_tgt_dev *tgt_dev)
 
 struct scst_session *scst_kobj_to_sess(struct kobject *kobj)
 {
-	return scst_kobj_to_scst_obj(kobj);
+	return container_of(kobj, struct scst_session, sess_kobj);
 }
 EXPORT_SYMBOL(scst_kobj_to_sess);
 
@@ -1912,13 +1849,10 @@ void scst_sess_sysfs_del(struct scst_session *sess)
 
 /**
  * scst_kobj_to_acg_dev() - Look up an acg_dev pointer.
- *
- * Must be called from inside a sysfs .show() or .store() callback function
- * only.
  */
 struct scst_acg_dev *scst_kobj_to_acg_dev(struct kobject *kobj)
 {
-	return scst_kobj_to_scst_obj(kobj);
+	return container_of(kobj, struct scst_acg_dev, acg_dev_kobj);
 }
 EXPORT_SYMBOL(scst_kobj_to_acg_dev);
 

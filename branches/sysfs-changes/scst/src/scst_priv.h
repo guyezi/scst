@@ -468,9 +468,6 @@ extern struct attribute *scst_session_attrs[];
 extern struct attribute *scst_tgt_dev_attrs[];
 extern struct attribute *scst_lun_attrs[];
 
-struct scst_kobj *scst_create_kobj(void *scst_obj);
-void scst_release_kobj(struct kobject *kobj);
-void *scst_kobj_to_scst_obj(struct kobject *kobj);
 int scst_sysfs_init(void);
 void scst_sysfs_cleanup(void);
 int scst_tgtt_sysfs_create(struct scst_tgt_template *tgtt);
