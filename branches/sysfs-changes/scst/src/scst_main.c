@@ -306,11 +306,15 @@ int __scst_register_target_template(struct scst_tgt_template *vtt,
 	if (res)
 		goto out_unlock;
 #else
+	mutex_unlock(&scst_mutex);
+
 	if (!vtt->no_proc_entry) {
 		res = scst_build_proc_target_dir_entries(vtt);
 		if (res < 0)
 			goto out_unlock;
 	}
+
+	mutex_lock(&scst_mutex);
 #endif
 
 	mutex_lock(&scst_mutex2);
@@ -437,12 +441,6 @@ void scst_unregister_target_template(struct scst_tgt_template *vtt)
 		goto out_err_up;
 	}
 
-#ifdef CONFIG_SCST_PROC
-	scst_cleanup_proc_target_dir_entries(vtt);
-#else
-	scst_tgtt_sysfs_del(vtt);
-#endif
-
 	mutex_lock(&scst_mutex2);
 	list_del(&vtt->scst_template_list_entry);
 	mutex_unlock(&scst_mutex2);
@@ -455,7 +453,15 @@ restart:
 		goto restart;
 	}
 
+#ifndef CONFIG_SCST_PROC
+	scst_tgtt_sysfs_del(vtt);
+#endif
+
 	mutex_unlock(&scst_mutex);
+
+#ifdef CONFIG_SCST_PROC
+	scst_cleanup_proc_target_dir_entries(vtt);
+#endif
 
 	kobject_put(&vtt->tgtt_kobj);
 
