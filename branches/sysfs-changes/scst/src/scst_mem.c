@@ -2043,7 +2043,7 @@ static void scst_release_pool(struct kobject *kobj)
 
 	TRACE_ENTRY();
 
-	pool = sgv_kobj_to_pool(kobj); 
+	pool = sgv_kobj_to_pool(kobj);
 
 	for (i = 0; i < pool->max_caches; i++) {
 		if (pool->caches[i])
