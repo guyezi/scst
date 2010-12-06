@@ -4435,6 +4435,10 @@ void scst_sysfs_cleanup(void)
 	kobject_del(scst_sysfs_root_kobj);
 	kobject_put(scst_sysfs_root_kobj);
 
+	/*
+	 * Wait until the root object has been released and hence all child
+	 * objects have been deleted from the sysfs hierarchy.
+	 */
 	wait_for_completion(&scst_sysfs_root_release_completion);
 	/*
 	 * Wait until the release method of the sysfs root object has returned.
