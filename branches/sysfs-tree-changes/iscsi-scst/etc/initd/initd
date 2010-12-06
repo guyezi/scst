@@ -1,0 +1,94 @@
+#!/bin/bash
+#
+# Start the iSCSI-SCST Target.
+#
+
+PATH=/sbin:/bin:/usr/sbin:/usr/bin:/usr/local/sbin:/usr/local/bin
+MEM_SIZE=1048576
+SCST_CMD=/usr/local/sbin/scstadmin
+SCST_CFG=/etc/scst.conf
+
+# Additional modules to load/unload
+ADD_MODULES="scst_disk scst_vdisk scst"
+
+configure_memsize()
+{
+    if [ -e /proc/sys/net/core/wmem_max ]; then
+        echo ${MEM_SIZE} > /proc/sys/net/core/wmem_max
+    fi
+
+    if [ -e /proc/sys/net/core/rmem_max ]; then
+        echo ${MEM_SIZE} > /proc/sys/net/core/rmem_max
+    fi
+
+    if [ -e /proc/sys/net/core/wmem_default ]; then
+        echo ${MEM_SIZE} > /proc/sys/net/core/wmem_default
+    fi
+
+    if [ -e /proc/sys/net/core/rmem_default ]; then
+        echo ${MEM_SIZE} > /proc/sys/net/core/rmem_default
+    fi
+
+    if [ -e /proc/sys/net/ipv4/tcp_mem ]; then
+        echo "${MEM_SIZE} ${MEM_SIZE} ${MEM_SIZE}" > /proc/sys/net/ipv4/tcp_mem
+    fi
+
+    if [ -e  /proc/sys/net/ipv4/tcp_rmem ]; then
+        echo "${MEM_SIZE} ${MEM_SIZE} ${MEM_SIZE}" > /proc/sys/net/ipv4/tcp_rmem
+    fi
+
+    if [ -e /proc/sys/net/ipv4/tcp_wmem ]; then
+        echo "${MEM_SIZE} ${MEM_SIZE} ${MEM_SIZE}" > /proc/sys/net/ipv4/tcp_wmem
+    fi
+}
+
+start_server()
+{
+#	configure_memsize
+
+	modprobe iscsi-scst || return $?
+	for module in ${ADD_MODULES}; do
+		modprobe ${module} || return $?
+	done
+
+        find /sys/kernel/scst_tgt -name trace_level | while read f; do
+	    #echo add entryexit >$f
+	    #echo add debug >$f
+	    :
+	done
+
+	/usr/local/sbin/iscsi-scstd
+
+	$SCST_CMD -config $SCST_CFG || return $?
+}
+
+stop_server()
+{
+	killall iscsi-scstd
+	if [ -e /sys/module/iscsi_scst ]; then
+		rmmod -w iscsi-scst || return $?
+	fi
+	for m in ${ADD_MODULES}; do
+		if [ -e /sys/module/$m ]; then
+			rmmod $m || return $?
+		fi
+	done
+}
+
+case "$1" in
+	start)
+		start_server || exit $?
+		;;
+	stop)
+		stop_server || exit $?
+		;;
+	restart)
+		stop_server || exit $?
+		start_server || exit $?
+		;;
+	*)
+		echo "Usage: {start|stop}" >&2
+		exit 1
+		;;
+esac
+
