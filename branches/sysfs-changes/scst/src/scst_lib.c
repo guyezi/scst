@@ -3965,8 +3965,7 @@ static void scst_release_sess(struct kobject *kobj)
 
 	sess = scst_kobj_to_sess(kobj);
 #ifndef CONFIG_SCST_PROC
-	if (sess->unique_session_name != sess->initiator_name)
-		kfree(sess->unique_session_name);
+	kfree(sess->unique_session_name);
 #endif
 	kfree(sess->transport_id);
 	kfree(sess->initiator_name);

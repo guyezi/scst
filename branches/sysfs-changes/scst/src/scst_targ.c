@@ -6130,18 +6130,23 @@ bool scst_initiator_has_luns(struct scst_tgt *tgt, const char *initiator_name)
 EXPORT_SYMBOL_GPL(scst_initiator_has_luns);
 
 #ifndef CONFIG_SCST_PROC
-static bool scst_generate_unique_name(struct scst_session *sess)
+static int scst_generate_unique_name(struct scst_session *sess)
 {
-	bool res = false;
+	int res;
 	struct scst_session *s;
 	const char *const name = sess->initiator_name;
-	const char *unique_name = name;
+	const char *unique_name;
 	int n = 1;
 
 	TRACE_ENTRY();
 
-	BUG_ON(!name);
+	BUG_ON(!sess->initiator_name);
 	BUG_ON(sess->unique_session_name);
+
+	res = -ENOMEM;
+	unique_name = kstrdup(name, GFP_KERNEL);
+	if (!unique_name)
+		goto out;
 
 restart:
 	list_for_each_entry(s, &sess->tgt->sess_list, sess_list_entry) {
@@ -6151,20 +6156,15 @@ restart:
 		    strcmp(unique_name, s->unique_session_name) != 0)
 			continue;
 		TRACE_DBG("Found duplicate session name %s", unique_name);
-		if (unique_name != name)
-			kfree(unique_name);
+		kfree(unique_name);
 		unique_name = kasprintf(GFP_KERNEL, "%s_%d", name, n);
-		if (!unique_name) {
-			PRINT_ERROR("Unable to allocate memory for the"
-				    " unique session name %s_%d",
-				    name, n);
+		if (!unique_name)
 			goto out;
-		}
 		n++;
 		goto restart;
 	}
 	sess->unique_session_name = unique_name;
-	res = true;
+	res = 0;
 out:
 	return res;
 }
@@ -6189,7 +6189,9 @@ static int scst_init_session(struct scst_session *sess)
 	list_add_tail(&sess->acg_sess_list_entry, &sess->acg->acg_sess_list);
 
 #ifndef CONFIG_SCST_PROC
-	scst_generate_unique_name(sess);
+	res = scst_generate_unique_name(sess);
+	if (res)
+		goto failed;
 #endif
 	TRACE_DBG("Adding sess %p to tgt->sess_list", sess);
 	list_add_tail(&sess->sess_list_entry, &sess->tgt->sess_list);
