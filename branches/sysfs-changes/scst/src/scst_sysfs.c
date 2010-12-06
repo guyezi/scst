@@ -63,6 +63,8 @@ enum mgmt_path_type {
 	ACG_INITIATOR_GROUPS_PATH,
 };
 
+static DECLARE_COMPLETION(scst_sysfs_root_release_completion);
+
 static struct kobject *scst_sysfs_root_kobj;
 static struct kobject *scst_targets_kobj;
 static struct kobject *scst_devices_kobj;
@@ -3798,6 +3800,8 @@ kfree:
 
 static void scst_sysfs_root_release(struct kobject *kobj)
 {
+	WARN_ON(kobj != scst_sysfs_root_kobj);
+	complete_all(&scst_sysfs_root_release_completion);
 	kfree(kobj);
 }
 
@@ -4430,6 +4434,12 @@ void scst_sysfs_cleanup(void)
 
 	kobject_del(scst_sysfs_root_kobj);
 	kobject_put(scst_sysfs_root_kobj);
+
+	wait_for_completion(&scst_sysfs_root_release_completion);
+	/*
+	 * Wait until the release method of the sysfs root object has returned.
+	 */
+	msleep(20);
 
 	PRINT_INFO("%s", "Exiting SCST sysfs hierarchy done");
 
