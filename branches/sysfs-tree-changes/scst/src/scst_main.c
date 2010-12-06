@@ -189,7 +189,7 @@ struct scst_dev_type scst_null_devtype = {
 
 static void __scst_resume_activity(void);
 
-static void scst_release_tgtt(struct kobject *kobj)
+static void scst_release_tgtt(struct device *dev)
 {
 	/*
 	 * Since target template objects reside in a data segment, no memory
@@ -197,10 +197,12 @@ static void scst_release_tgtt(struct kobject *kobj)
 	 */
 }
 
-static struct kobj_type tgtt_ktype = {
-	.release = scst_release_tgtt,
-#ifndef CONFIG_SCST_PROC
-	.sysfs_ops = &scst_sysfs_ops,
+static struct class scst_tgtt_class = {
+	.name		= "target_driver",
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
+	.release	= scst_release_tgtt,
+#else
+	.dev_release	= scst_release_tgtt,
 #endif
 };
 
@@ -228,33 +230,31 @@ int __scst_register_target_template(struct scst_tgt_template *vtt,
 
 	INIT_LIST_HEAD(&vtt->tgt_list);
 
-	kobject_init(&vtt->tgtt_kobj, &tgtt_ktype);
-
 	if (strcmp(version, SCST_INTERFACE_VERSION) != 0) {
 		PRINT_ERROR("Incorrect version of target %s", vtt->name);
 		res = -EINVAL;
-		goto out_put;
+		goto out;
 	}
 
 	if (!vtt->detect) {
 		PRINT_ERROR("Target driver %s must have "
 			"detect() method.", vtt->name);
 		res = -EINVAL;
-		goto out_put;
+		goto out;
 	}
 
 	if (!vtt->release) {
 		PRINT_ERROR("Target driver %s must have "
 			"release() method.", vtt->name);
 		res = -EINVAL;
-		goto out_put;
+		goto out;
 	}
 
 	if (!vtt->xmit_response) {
 		PRINT_ERROR("Target driver %s must have "
 			"xmit_response() method.", vtt->name);
 		res = -EINVAL;
-		goto out_put;
+		goto out;
 	}
 
 	if (vtt->get_initiator_port_transport_id == NULL)
@@ -266,7 +266,7 @@ int __scst_register_target_template(struct scst_tgt_template *vtt,
 			"target \"%s\"", vtt->threads_num,
 			vtt->name);
 		res = -EINVAL;
-		goto out_put;
+		goto out;
 	}
 
 #ifndef CONFIG_SCST_PROC
@@ -283,7 +283,7 @@ int __scst_register_target_template(struct scst_tgt_template *vtt,
 		PRINT_ERROR("Target driver %s must either define both "
 			"add_target() and del_target(), or none.", vtt->name);
 		res = -EINVAL;
-		goto out_put;
+		goto out;
 	}
 #endif
 
@@ -291,7 +291,7 @@ int __scst_register_target_template(struct scst_tgt_template *vtt,
 		vtt->rdy_to_xfer_atomic = 1;
 
 	if (mutex_lock_interruptible(&scst_mutex) != 0)
-		goto out_put;
+		goto out;
 	list_for_each_entry(t, &scst_template_list, scst_template_list_entry) {
 		if (strcmp(t->name, vtt->name) == 0) {
 			PRINT_ERROR("Target driver %s already registered",
@@ -301,17 +301,39 @@ int __scst_register_target_template(struct scst_tgt_template *vtt,
 		}
 	}
 
+	vtt->tgtt_dev.class = &scst_tgtt_class;
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
+	vtt->tgtt_dev.dev = NULL;
+#else
+	vtt->tgtt_dev.parent = NULL;
+#endif
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
+	snprintf(vtt->tgtt_dev.class_id, BUS_ID_SIZE, "%s", vtt->name);
+#elif LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 30)
+	snprintf(vtt->tgtt_dev.bus_id, BUS_ID_SIZE, "%s", vtt->name);
+#else
+	dev_set_name(&vtt->tgtt_dev, "%s", vtt->name);
+#endif
+
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
+	res = class_device_register(&vtt->tgtt_dev);
+#else
+	res = device_register(&vtt->tgtt_dev);
+#endif
+	if (res)
+		goto out_unlock;
+
 #ifndef CONFIG_SCST_PROC
 	res = scst_tgtt_sysfs_create(vtt);
 	if (res)
-		goto out_unlock;
+		goto out_unregister;
 #else
 	mutex_unlock(&scst_mutex);
 
 	if (!vtt->no_proc_entry) {
 		res = scst_build_proc_target_dir_entries(vtt);
 		if (res < 0)
-			goto out_unlock;
+			goto out_unregister;
 	}
 
 	mutex_lock(&scst_mutex);
@@ -350,10 +372,15 @@ out_del:
 	list_del(&vtt->scst_template_list_entry);
 	mutex_unlock(&scst_mutex2);
 
+out_unregister:
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
+	class_device_unregister(&vtt->tgtt_dev);
+#else
+	device_unregister(&vtt->tgtt_dev);
+#endif
+
 out_unlock:
 	mutex_unlock(&scst_mutex);
-out_put:
-	kobject_put(&vtt->tgtt_kobj);
 	goto out;
 }
 EXPORT_SYMBOL_GPL(__scst_register_target_template);
@@ -441,6 +468,12 @@ void scst_unregister_target_template(struct scst_tgt_template *vtt)
 		goto out_err_up;
 	}
 
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
+	class_device_unregister(&vtt->tgtt_dev);
+#else
+	device_unregister(&vtt->tgtt_dev);
+#endif
+
 	mutex_lock(&scst_mutex2);
 	list_del(&vtt->scst_template_list_entry);
 	mutex_unlock(&scst_mutex2);
@@ -463,8 +496,6 @@ restart:
 	scst_cleanup_proc_target_dir_entries(vtt);
 #endif
 
-	kobject_put(&vtt->tgtt_kobj);
-
 	PRINT_INFO("Target template %s unregistered successfully", vtt->name);
 
 out:
@@ -477,13 +508,15 @@ out_err_up:
 }
 EXPORT_SYMBOL(scst_unregister_target_template);
 
-static void scst_release_target(struct kobject *kobj);
+static void scst_release_target(struct device *dev);
 
-static struct kobj_type tgt_ktype = {
-#ifndef CONFIG_SCST_PROC
-	.sysfs_ops = &scst_sysfs_ops,
+static struct class scst_tgt_class = {
+	.name		= "storage_target",
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
+	.release	= scst_release_target,
+#else
+	.dev_release	= scst_release_target,
 #endif
-	.release = scst_release_target,
 };
 
 /**
@@ -503,8 +536,6 @@ struct scst_tgt *scst_register_target(struct scst_tgt_template *vtt,
 	rc = scst_alloc_tgt(vtt, &tgt);
 	if (rc != 0)
 		goto out;
-
-	kobject_init(&tgt->tgt_kobj, &tgt_ktype);
 
 	rc = mutex_lock_interruptible(&scst_mutex);
 	if (rc)
@@ -545,14 +576,36 @@ struct scst_tgt *scst_register_target(struct scst_tgt_template *vtt,
 		tgt_num++;
 	}
 
+	tgt->tgt_dev.class = &scst_tgt_class;
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
+	tgt->tgt_dev.dev = &tgt->tgtt->tgtt_dev;
+#else
+	tgt->tgt_dev.parent = &tgt->tgtt->tgtt_dev;
+#endif
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
+	snprintf(tgt->tgt_dev.class_id, BUS_ID_SIZE, "%s", tgt->tgt_name);
+#elif LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 30)
+	snprintf(tgt->tgt_dev.bus_id, BUS_ID_SIZE, "%s", tgt->tgt_name);
+#else
+	dev_set_name(&tgt->tgt_dev, "%s", tgt->tgt_name);
+#endif
+
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
+	rc = class_device_register(&tgt->tgt_dev);
+#else
+	rc = device_register(&tgt->tgt_dev);
+#endif
+	if (rc)
+		goto out_unlock;
+
 #ifdef CONFIG_SCST_PROC
 	rc = scst_build_proc_target_entries(tgt);
 	if (rc < 0)
-		goto out_unlock;
+		goto out_unregister;
 #else
 	rc = scst_tgt_sysfs_create(tgt);
 	if (rc < 0)
-		goto out_unlock;
+		goto out_unregister;
 
 	tgt->default_acg = scst_alloc_add_acg(tgt, tgt->tgt_name, false);
 	if (tgt->default_acg == NULL)
@@ -584,13 +637,23 @@ out_sysfs_del:
 	scst_tgt_sysfs_del(tgt);
 #endif
 
+out_unregister:
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
+	class_device_unregister(&tgt->tgt_dev);
+#else
+	device_unregister(&tgt->tgt_dev);
+#endif
+	tgt = NULL;
+
 out_unlock:
 	mutex_unlock(&scst_mutex);
 
 out_free_tgt:
 	/* In case of error tgt_name will be freed in scst_free_tgt() */
-	kobject_put(&tgt->tgt_kobj);
-	tgt = NULL;
+	if (tgt) {
+		scst_free_tgt(tgt);
+		tgt = NULL;
+	}
 	goto out;
 }
 EXPORT_SYMBOL(scst_register_target);
@@ -674,7 +737,7 @@ again:
 	PRINT_INFO("Target %s for template %s unregistered successfully",
 		tgt->tgt_name, vtt->name);
 
-	kobject_put(&tgt->tgt_kobj);
+	scst_free_tgt(tgt);
 
 	TRACE_DBG("Unregistering tgt %p finished", tgt);
 
@@ -683,12 +746,12 @@ again:
 }
 EXPORT_SYMBOL(scst_unregister_target);
 
-static void scst_release_target(struct kobject *kobj)
+static void scst_release_target(struct device *dev)
 {
 	struct scst_tgt *tgt;
 
 	TRACE_ENTRY();
-	tgt = scst_kobj_to_tgt(kobj);
+	tgt = scst_dev_to_tgt(dev);
 	scst_free_tgt(tgt);
 	TRACE_EXIT();
 }
@@ -1302,7 +1365,7 @@ out_unlock:
 }
 EXPORT_SYMBOL_GPL(scst_unregister_virtual_device);
 
-static void scst_release_devt(struct kobject *kobj)
+static void scst_release_devt(struct device *kobj)
 {
 	/*
 	 * Since device type objects reside in a data segment, no memory
@@ -1310,11 +1373,14 @@ static void scst_release_devt(struct kobject *kobj)
 	 */
 }
 
-static struct kobj_type scst_devt_ktype = {
-	.release = scst_release_devt,
-#ifndef CONFIG_SCST_PROC
-	.sysfs_ops = &scst_sysfs_ops,
-	.default_attrs = scst_devt_default_attrs,
+static struct class scst_devt_class = {
+	.name			= "device_type",
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
+	.release		= scst_release_devt,
+	.class_dev_attrs	= scst_devt_default_attrs,
+#else
+	.dev_release		= scst_release_devt,
+	.dev_attrs		= scst_devt_default_attrs,
 #endif
 };
 
@@ -1340,18 +1406,16 @@ int __scst_register_dev_driver(struct scst_dev_type *dev_type,
 
 	TRACE_ENTRY();
 
-	kobject_init(&dev_type->devt_kobj, &scst_devt_ktype);
-
 	if (strcmp(version, SCST_INTERFACE_VERSION) != 0) {
 		PRINT_ERROR("Incorrect version of dev handler %s",
 			dev_type->name);
 		res = -EINVAL;
-		goto out_put;
+		goto out;
 	}
 
 	res = scst_dev_handler_check(dev_type);
 	if (res != 0)
-		goto out_put;
+		goto out;
 
 #if !defined(SCSI_EXEC_REQ_FIFO_DEFINED)
 	if (dev_type->exec == NULL) {
@@ -1362,14 +1426,14 @@ int __scst_register_dev_driver(struct scst_dev_type *dev_type,
 			"scst_exec_req_fifo-<kernel-version> or define "
 			"CONFIG_SCST_STRICT_SERIALIZING", dev_type->name);
 		res = -EINVAL;
-		goto out_put;
+		goto out;
 #endif /* !defined(CONFIG_SCST_STRICT_SERIALIZING) */
 #else  /* LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 30) */
 		PRINT_ERROR("Pass-through dev handlers (handler \"%s\") not "
 			"supported. Consider applying on your kernel patch "
 			"scst_exec_req_fifo-<kernel-version>", dev_type->name);
 		res = -EINVAL;
-		goto out_put;
+		goto out;
 #endif /* LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 30) */
 	}
 #endif /* !defined(SCSI_EXEC_REQ_FIFO_DEFINED) */
@@ -1377,7 +1441,7 @@ int __scst_register_dev_driver(struct scst_dev_type *dev_type,
 #ifdef CONFIG_SCST_PROC
 	res = scst_suspend_activity(true);
 	if (res != 0)
-		goto out_put;
+		goto out;
 #endif
 
 	if (mutex_lock_interruptible(&scst_mutex) != 0) {
@@ -1385,7 +1449,7 @@ int __scst_register_dev_driver(struct scst_dev_type *dev_type,
 #ifdef CONFIG_SCST_PROC
 		goto out_resume;
 #else
-		goto out_put;
+		goto out;
 #endif
 	}
 
@@ -1401,13 +1465,36 @@ int __scst_register_dev_driver(struct scst_dev_type *dev_type,
 	if (exist)
 		goto out_unlock;
 
+	dev_type->devt_dev.class = &scst_devt_class;
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
+	dev_type->devt_dev.dev = NULL;
+#else
+	dev_type->devt_dev.parent = NULL;
+#endif
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
+	snprintf(dev_type->devt_dev.class_id, BUS_ID_SIZE, "%s",
+		 dev_type->name);
+#elif LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 30)
+	snprintf(dev_type->devt_dev.bus_id, BUS_ID_SIZE, "%s", dev_type->name);
+#else
+	dev_set_name(&dev_type->devt_dev, "%s", dev_type->name);
+#endif
+
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
+	res = class_device_register(&dev_type->devt_dev);
+#else
+	res = device_register(&dev_type->devt_dev);
+#endif
+	if (res)
+		goto out_unlock;
+
 	list_add_tail(&dev_type->dev_type_list_entry, &scst_dev_type_list);
 
 #ifdef CONFIG_SCST_PROC
 	if (!dev_type->no_proc) {
 		res = scst_build_proc_dev_handler_dir_entries(dev_type);
 		if (res < 0)
-			goto out_unlock;
+			goto out_unregister;
 	}
 
 	/*
@@ -1426,7 +1513,7 @@ int __scst_register_dev_driver(struct scst_dev_type *dev_type,
 #else
 	res = scst_devt_sysfs_create(dev_type);
 	if (res < 0)
-		goto out_unlock;
+		goto out_unregister;
 
 	mutex_unlock(&scst_mutex);
 #endif
@@ -1438,14 +1525,15 @@ out:
 	TRACE_EXIT_RES(res);
 	return res;
 
+out_unregister:
+	device_unregister(&dev_type->devt_dev);
+
 out_unlock:
 	mutex_unlock(&scst_mutex);
 #ifdef CONFIG_SCST_PROC
 out_resume:
 	scst_resume_activity();
 #endif
-out_put:
-	kobject_put(&dev_type->devt_kobj);
 	goto out;
 }
 EXPORT_SYMBOL_GPL(__scst_register_dev_driver);
@@ -1489,14 +1577,14 @@ void scst_unregister_dev_driver(struct scst_dev_type *dev_type)
 	scst_devt_sysfs_del(dev_type);
 #endif
 
+	device_unregister(&dev_type->devt_dev);
+
 	mutex_unlock(&scst_mutex);
 	scst_resume_activity();
 
 #ifdef CONFIG_SCST_PROC
 	scst_cleanup_proc_dev_handler_dir_entries(dev_type);
 #endif
-
-	kobject_put(&dev_type->devt_kobj);
 
 	PRINT_INFO("Device handler \"%s\" for type %d unloaded",
 		   dev_type->name, dev_type->type);
@@ -1530,34 +1618,61 @@ int __scst_register_virtual_dev_driver(struct scst_dev_type *dev_type,
 
 	TRACE_ENTRY();
 
-	kobject_init(&dev_type->devt_kobj, &scst_devt_ktype);
-
 	if (strcmp(version, SCST_INTERFACE_VERSION) != 0) {
 		PRINT_ERROR("Incorrect version of virtual dev handler %s",
 			dev_type->name);
 		res = -EINVAL;
-		goto out_put;
+		goto out;
 	}
 
 	res = scst_dev_handler_check(dev_type);
 	if (res != 0)
-		goto out_put;
+		goto out;
 
 	mutex_lock(&scst_mutex);
+
+	dev_type->devt_dev.class = &scst_devt_class;
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
+	dev_type->devt_dev.dev = dev_type->parent
+		? scst_sysfs_get_devt_dev(dev_type->parent) : NULL;
+#else
+	dev_type->devt_dev.parent = dev_type->parent
+		? scst_sysfs_get_devt_dev(dev_type->parent) : NULL;
+#endif
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
+	snprintf(dev_type->devt_dev.class_id, BUS_ID_SIZE, "%s",
+		 dev_type->name);
+#elif LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 30)
+	snprintf(dev_type->devt_dev.bus_id, BUS_ID_SIZE, "%s", dev_type->name);
+#else
+	dev_set_name(&dev_type->devt_dev, "%s", dev_type->name);
+#endif
+
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
+	res = class_device_register(&dev_type->devt_dev);
+#else
+	res = device_register(&dev_type->devt_dev);
+#endif
+	if (res)
+		goto out_unlock;
+
 	list_add_tail(&dev_type->dev_type_list_entry, &scst_virtual_dev_type_list);
-	mutex_unlock(&scst_mutex);
 
 #ifdef CONFIG_SCST_PROC
-	if (!dev_type->no_proc) {
+	res = 0;
+	mutex_unlock(&scst_mutex);
+	if (!dev_type->no_proc)
 		res = scst_build_proc_dev_handler_dir_entries(dev_type);
-		if (res < 0)
-			goto out_put;
-	}
+	mutex_lock(&scst_mutex);
+	if (res < 0)
+		goto out_unregister;
 #else
 	res = scst_devt_sysfs_create(dev_type);
 	if (res < 0)
-		goto out_put;
+		goto out_unregister;
 #endif
+
+	mutex_unlock(&scst_mutex);
 
 	if (dev_type->type != -1) {
 		PRINT_INFO("Virtual device handler %s for type %d "
@@ -1571,8 +1686,14 @@ int __scst_register_virtual_dev_driver(struct scst_dev_type *dev_type,
 out:
 	TRACE_EXIT_RES(res);
 	return res;
-out_put:
-	kobject_put(&dev_type->devt_kobj);
+out_unregister:
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
+	class_device_unregister(&dev_type->devt_dev);
+#else
+	device_unregister(&dev_type->devt_dev);
+#endif
+out_unlock:
+	mutex_unlock(&scst_mutex);
 	goto out;
 }
 EXPORT_SYMBOL_GPL(__scst_register_virtual_dev_driver);
@@ -1586,6 +1707,12 @@ void scst_unregister_virtual_dev_driver(struct scst_dev_type *dev_type)
 
 	mutex_lock(&scst_mutex);
 
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
+	class_device_unregister(&dev_type->devt_dev);
+#else
+	device_unregister(&dev_type->devt_dev);
+#endif
+
 	/* Disable sysfs mgmt calls (e.g. addition of new devices) */
 	list_del(&dev_type->dev_type_list_entry);
 
@@ -1597,8 +1724,6 @@ void scst_unregister_virtual_dev_driver(struct scst_dev_type *dev_type)
 #endif
 
 	mutex_unlock(&scst_mutex);
-
-	kobject_put(&dev_type->devt_kobj);
 
 	PRINT_INFO("Device handler \"%s\" unloaded", dev_type->name);
 
@@ -2342,9 +2467,21 @@ static int __init init_scst(void)
 		goto out_destroy_sense_mempool;
 	}
 
-	res = scst_sysfs_init();
-	if (res != 0)
+	res = class_register(&scst_tgtt_class);
+	if (res)
 		goto out_destroy_aen_mempool;
+
+	res = class_register(&scst_tgt_class);
+	if (res)
+		goto out_unregister_tgtt_class;
+
+	res = class_register(&scst_devt_class);
+	if (res)
+		goto out_unregister_tgt_class;
+
+	res = scst_sysfs_init();
+	if (res)
+		goto out_unregister_devt_class;
 
 	if (scst_max_cmd_mem == 0) {
 		struct sysinfo si;
@@ -2435,6 +2572,15 @@ out_free_acg:
 out_destroy_sgv_pool:
 	scst_sgv_pools_deinit();
 
+out_unregister_devt_class:
+	class_unregister(&scst_devt_class);
+
+out_unregister_tgt_class:
+	class_unregister(&scst_tgt_class);
+
+out_unregister_tgtt_class:
+	class_unregister(&scst_tgtt_class);
+
 out_sysfs_cleanup:
 	scst_sysfs_cleanup();
 
@@ -2508,6 +2654,12 @@ static void __exit exit_scst(void)
 #endif
 
 	scst_sgv_pools_deinit();
+
+	class_unregister(&scst_devt_class);
+
+	class_unregister(&scst_tgt_class);
+
+	class_unregister(&scst_tgtt_class);
 
 	scst_sysfs_cleanup();
 

@@ -995,10 +995,10 @@ struct scst_tgt_template {
 
 #ifndef CONFIG_SCST_PROC
 	/* sysfs attributes, if any */
-	const struct attribute **tgtt_attrs;
+	const struct device_attribute **tgtt_attrs;
 
 	/* sysfs target attributes, if any */
-	const struct attribute **tgt_attrs;
+	const struct device_attribute **tgt_attrs;
 
 	/* sysfs session attributes, if any */
 	const struct attribute **sess_attrs;
@@ -1039,7 +1039,7 @@ struct scst_tgt_template {
 	/* Device number in /proc */
 	int proc_dev_num;
 #endif
-	struct kobject tgtt_kobj; /* kobject for this struct */
+	struct device tgtt_dev;
 
 	/*
 	 * Optional vendor to be reported via the SCSI inquiry data. If NULL,
@@ -1393,7 +1393,7 @@ struct scst_dev_type {
 	const char *dev_optional_attributes;
 
 	/* sysfs attributes, if any */
-	const struct attribute **devt_attrs;
+	const struct device_attribute **devt_attrs;
 
 	/* sysfs device attributes, if any */
 	const struct attribute **dev_attrs;
@@ -1412,11 +1412,12 @@ struct scst_dev_type {
 	/* list entry in scst_(virtual_)dev_type_list */
 	struct list_head dev_type_list_entry;
 
+	struct device devt_dev;
+
 #ifdef CONFIG_SCST_PROC
 	/* The pointer to the /proc directory entry */
 	struct proc_dir_entry *proc_dev_type_root;
 #endif
-	struct kobject devt_kobj; /* main handlers/driver */
 };
 
 /*
@@ -1472,7 +1473,7 @@ struct scst_tgt {
 
 	uint16_t rel_tgt_id;
 
-	struct kobject tgt_kobj; /* main targets/target kobject */
+	struct device tgt_dev;
 
 #ifdef CONFIG_SCST_PROC
 	/* Name of the default security group ("Default_target_name") */
@@ -3750,49 +3751,58 @@ struct sysfs_ops *scst_sysfs_get_sysfs_ops(void);
 
 #endif /* CONFIG_SCST_PROC */
 
-/*
- * Returns target driver's root sysfs kobject.
- * The driver can create own files/directories/links here.
- */
+static inline struct device *scst_sysfs_get_tgtt_dev(
+	struct scst_tgt_template *tgtt)
+{
+	return &tgtt->tgtt_dev;
+}
+
 static inline struct kobject *scst_sysfs_get_tgtt_kobj(
 	struct scst_tgt_template *tgtt)
 {
-	return &tgtt->tgtt_kobj;
+	return &tgtt->tgtt_dev.kobj;
 }
 
-static inline struct scst_tgt_template *scst_kobj_to_tgtt(struct kobject *kobj)
+static inline struct scst_tgt_template *scst_dev_to_tgtt(struct device *dev)
 {
-	return container_of(kobj, struct scst_tgt_template, tgtt_kobj);
+	return container_of(dev, struct scst_tgt_template, tgtt_dev);
 }
 
-/*
- * Returns target's root sysfs kobject.
- * The driver can create own files/directories/links here.
- */
-static inline struct kobject *scst_sysfs_get_tgt_kobj(
-	struct scst_tgt *tgt)
+static inline struct device *scst_sysfs_get_tgt_dev(struct scst_tgt *tgt)
 {
-	return &tgt->tgt_kobj;
+	return &tgt->tgt_dev;
 }
 
-static inline struct scst_tgt *scst_kobj_to_tgt(struct kobject *kobj)
+static inline struct kobject *scst_sysfs_get_tgt_kobj(struct scst_tgt *tgt)
 {
-	return container_of(kobj, struct scst_tgt, tgt_kobj);
+	return &tgt->tgt_dev.kobj;
 }
 
-/*
- * Returns device handler's root sysfs kobject.
- * The driver can create own files/directories/links here.
- */
+static inline struct scst_tgt *scst_dev_to_tgt(struct device *dev)
+{
+	return container_of(dev, struct scst_tgt, tgt_dev);
+}
+
+static inline struct device *scst_sysfs_get_devt_dev(
+	struct scst_dev_type *devt)
+{
+	return &devt->devt_dev;
+}
+
 static inline struct kobject *scst_sysfs_get_devt_kobj(
 	struct scst_dev_type *devt)
 {
-	return &devt->devt_kobj;
+	return &devt->devt_dev.kobj;
+}
+
+static inline struct scst_dev_type *scst_dev_to_devt(struct device *dev)
+{
+	return container_of(dev, struct scst_dev_type, devt_dev);
 }
 
 static inline struct scst_dev_type *scst_kobj_to_devt(struct kobject *kobj)
 {
-	return container_of(kobj, struct scst_dev_type, devt_kobj);
+	return scst_dev_to_devt(container_of(kobj, struct device, kobj));
 }
 
 /*

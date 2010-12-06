@@ -136,26 +136,26 @@ static int scst_write_trace(const char *buf, size_t length,
 static ssize_t scst_luns_mgmt_show(struct kobject *kobj,
 				   struct kobj_attribute *attr,
 				   char *buf);
-static ssize_t scst_tgt_addr_method_show(struct kobject *kobj,
-				   struct kobj_attribute *attr,
+static ssize_t scst_tgt_addr_method_show(struct device *dev,
+					 struct device_attribute *attr,
+					 char *buf);
+static ssize_t scst_tgt_addr_method_store(struct device *dev,
+					  struct device_attribute *attr,
+					  const char *buf, size_t count);
+static ssize_t scst_tgt_io_grouping_type_show(struct device *dev,
+					      struct device_attribute *attr,
+					      char *buf);
+static ssize_t scst_tgt_io_grouping_type_store(struct device *dev,
+					       struct device_attribute *attr,
+					       const char *buf, size_t count);
+static ssize_t scst_tgt_cpu_mask_show(struct device *dev,
+				      struct device_attribute *attr,
+				      char *buf);
+static ssize_t scst_rel_tgt_id_show(struct device *dev,
+				   struct device_attribute *attr,
 				   char *buf);
-static ssize_t scst_tgt_addr_method_store(struct kobject *kobj,
-				    struct kobj_attribute *attr,
-				    const char *buf, size_t count);
-static ssize_t scst_tgt_io_grouping_type_show(struct kobject *kobj,
-				   struct kobj_attribute *attr,
-				   char *buf);
-static ssize_t scst_tgt_io_grouping_type_store(struct kobject *kobj,
-				    struct kobj_attribute *attr,
-				    const char *buf, size_t count);
-static ssize_t scst_tgt_cpu_mask_show(struct kobject *kobj,
-				   struct kobj_attribute *attr,
-				   char *buf);
-static ssize_t scst_rel_tgt_id_show(struct kobject *kobj,
-				   struct kobj_attribute *attr,
-				   char *buf);
-static ssize_t scst_rel_tgt_id_store(struct kobject *kobj,
-				    struct kobj_attribute *attr,
+static ssize_t scst_rel_tgt_id_store(struct device *dev,
+				    struct device_attribute *attr,
 				    const char *buf, size_t count);
 static ssize_t scst_acg_addr_method_show(struct kobject *kobj,
 				   struct kobj_attribute *attr,
@@ -211,6 +211,31 @@ static void sysfs_remove_files(struct kobject *kobj,
 
 	for (i = 0; ptr[i]; i++)
 		sysfs_remove_file(kobj, ptr[i]);
+}
+#endif
+
+static int device_create_files(struct device *dev,
+			       const struct device_attribute **ptr)
+{
+	int err = 0;
+	int i;
+
+	for (i = 0; ptr[i] && !err; i++)
+		err = device_create_file(dev, ptr[i]);
+	if (err)
+		while (--i >= 0)
+			device_remove_file(dev, ptr[i]);
+	return err;
+}
+
+#if 0
+static void device_remove_files(struct device *dev,
+				const struct device_attribute **ptr)
+{
+	int i;
+
+	for (i = 0; ptr[i]; i++)
+		device_remove_file(dev, ptr[i]);
 }
 #endif
 
@@ -358,27 +383,27 @@ static struct scst_acg *__scst_lookup_acg(const struct scst_tgt *tgt,
 
 #if defined(CONFIG_SCST_DEBUG) || defined(CONFIG_SCST_TRACING)
 
-static ssize_t scst_tgtt_trace_level_show(struct kobject *kobj,
-	struct kobj_attribute *attr, char *buf)
+static ssize_t scst_tgtt_trace_level_show(struct device *dev,
+	struct device_attribute *attr, char *buf)
 {
 	struct scst_tgt_template *tgtt;
 
-	tgtt = scst_kobj_to_tgtt(kobj);
+	tgtt = scst_dev_to_tgtt(dev);
 
 	return scst_trace_level_show(tgtt->trace_tbl,
 		tgtt->trace_flags ? *tgtt->trace_flags : 0, buf,
 		tgtt->trace_tbl_help);
 }
 
-static ssize_t scst_tgtt_trace_level_store(struct kobject *kobj,
-	struct kobj_attribute *attr, const char *buf, size_t count)
+static ssize_t scst_tgtt_trace_level_store(struct device *dev,
+	struct device_attribute *attr, const char *buf, size_t count)
 {
 	int res;
 	struct scst_tgt_template *tgtt;
 
 	TRACE_ENTRY();
 
-	tgtt = scst_kobj_to_tgtt(kobj);
+	tgtt = scst_dev_to_tgtt(dev);
 
 	res = mutex_lock_interruptible(&scst_log_mutex);
 	if (res)
@@ -394,35 +419,34 @@ out:
 	return res;
 }
 
-static struct kobj_attribute tgtt_trace_attr =
+static struct device_attribute tgtt_trace_attr =
 	__ATTR(trace_level, S_IRUGO | S_IWUSR,
 	       scst_tgtt_trace_level_show, scst_tgtt_trace_level_store);
 
 #endif /* #if defined(CONFIG_SCST_DEBUG) || defined(CONFIG_SCST_TRACING) */
 
-static ssize_t scst_tgtt_mgmt_show(struct kobject *kobj,
-	struct kobj_attribute *attr, char *buf)
+static ssize_t scst_tgtt_mgmt_show(struct device *dev,
+				   struct device_attribute *attr, char *buf)
 {
-	static const char help[] = "%s%s%s%s%s%s%s%s";
 	struct scst_tgt_template *tgtt;
+	ssize_t res;
 
-	tgtt = scst_kobj_to_tgtt(kobj);
+	tgtt = scst_dev_to_tgtt(dev);
 
-	return scnprintf(buf, SCST_SYSFS_BLOCK_SIZE, help,
-		(tgtt->add_target_parameters != NULL) ?
-			"The following parameters available: " : "",
-		(tgtt->add_target_parameters != NULL) ?
-			tgtt->add_target_parameters : "",
-		(tgtt->tgtt_optional_attributes != NULL) ?
-			"The following target driver attributes available: " : "",
-		(tgtt->tgtt_optional_attributes != NULL) ?
-			tgtt->tgtt_optional_attributes : "",
-		(tgtt->tgtt_optional_attributes != NULL) ? "\n" : "",
-		(tgtt->tgt_optional_attributes != NULL) ?
-			"The following target attributes available: " : "",
-		(tgtt->tgt_optional_attributes != NULL) ?
-			tgtt->tgt_optional_attributes : "",
-		(tgtt->tgt_optional_attributes != NULL) ? "\n" : "");
+	res = 0;
+	if (tgtt->add_target_parameters)
+		res += scnprintf(buf + res, PAGE_SIZE - res, 
+				 "The following parameters available: %s\n",
+				 tgtt->add_target_parameters);
+	if (tgtt->tgtt_optional_attributes)
+		res += scnprintf(buf + res, PAGE_SIZE - res,
+		       "The following target driver attributes available: %s\n",
+				 tgtt->tgtt_optional_attributes);
+	if (tgtt->tgt_optional_attributes)
+		res += scnprintf(buf + res, PAGE_SIZE - res,
+			      "The following target attributes available: %s\n",
+				 tgtt->tgt_optional_attributes);
+	return res;
 }
 
 static int scst_process_tgtt_mgmt_store(char *buffer,
@@ -481,7 +505,7 @@ out_syntax_err:
 	goto out;
 }
 
-static struct kobj_attribute scst_tgtt_mgmt =
+static struct device_attribute scst_tgtt_mgmt_attr =
 	__ATTR(mgmt, S_IRUGO, scst_tgtt_mgmt_show, NULL);
 
 int scst_tgtt_sysfs_create(struct scst_tgt_template *tgtt)
@@ -490,15 +514,9 @@ int scst_tgtt_sysfs_create(struct scst_tgt_template *tgtt)
 
 	TRACE_ENTRY();
 
-	res = kobject_add(&tgtt->tgtt_kobj, scst_targets_kobj, tgtt->name);
-	if (res) {
-		PRINT_ERROR("Can't add tgtt %s to sysfs", tgtt->name);
-		goto out;
-	}
-
 	if (tgtt->add_target != NULL) {
-		res = sysfs_create_file(&tgtt->tgtt_kobj,
-				&scst_tgtt_mgmt.attr);
+		res = device_create_file(scst_sysfs_get_tgtt_dev(tgtt),
+					 &scst_tgtt_mgmt_attr);
 		if (res != 0) {
 			PRINT_ERROR("Can't add mgmt attr for target driver %s",
 				tgtt->name);
@@ -507,7 +525,8 @@ int scst_tgtt_sysfs_create(struct scst_tgt_template *tgtt)
 	}
 
 	if (tgtt->tgtt_attrs) {
-		res = sysfs_create_files(&tgtt->tgtt_kobj, tgtt->tgtt_attrs);
+		res = device_create_files(scst_sysfs_get_tgtt_dev(tgtt),
+					  tgtt->tgtt_attrs);
 		if (res) {
 			PRINT_ERROR("Can't add attributes for target driver %s",
 				    tgtt->name);
@@ -517,8 +536,8 @@ int scst_tgtt_sysfs_create(struct scst_tgt_template *tgtt)
 
 #if defined(CONFIG_SCST_DEBUG) || defined(CONFIG_SCST_TRACING)
 	if (tgtt->trace_flags != NULL) {
-		res = sysfs_create_file(&tgtt->tgtt_kobj,
-				&tgtt_trace_attr.attr);
+		res = device_create_file(scst_sysfs_get_tgtt_dev(tgtt),
+					 &tgtt_trace_attr);
 		if (res != 0) {
 			PRINT_ERROR("Can't add trace_flag for target "
 				"driver %s", tgtt->name);
@@ -540,7 +559,6 @@ out_del:
 void scst_tgtt_sysfs_del(struct scst_tgt_template *tgtt)
 {
 	TRACE_ENTRY();
-	kobject_del(&tgtt->tgtt_kobj);
 	TRACE_EXIT();
 }
 
@@ -551,21 +569,29 @@ void scst_tgtt_sysfs_del(struct scst_tgt_template *tgtt)
 static struct kobj_attribute scst_luns_mgmt =
 	__ATTR(mgmt, S_IRUGO, scst_luns_mgmt_show, NULL);
 
-static struct kobj_attribute scst_tgt_addr_method =
+static struct device_attribute scst_tgt_addr_method =
 	__ATTR(addr_method, S_IRUGO | S_IWUSR, scst_tgt_addr_method_show,
 	       scst_tgt_addr_method_store);
 
-static struct kobj_attribute scst_tgt_io_grouping_type =
+static struct device_attribute scst_tgt_io_grouping_type =
 	__ATTR(io_grouping_type, S_IRUGO | S_IWUSR,
 	       scst_tgt_io_grouping_type_show,
 	       scst_tgt_io_grouping_type_store);
 
-static struct kobj_attribute scst_tgt_cpu_mask =
+static struct device_attribute scst_tgt_cpu_mask =
 	__ATTR(cpu_mask, S_IRUGO, scst_tgt_cpu_mask_show, NULL);
 
-static struct kobj_attribute scst_rel_tgt_id =
+static struct device_attribute scst_rel_tgt_id =
 	__ATTR(rel_tgt_id, S_IRUGO | S_IWUSR, scst_rel_tgt_id_show,
 	       scst_rel_tgt_id_store);
+
+static const struct device_attribute *scst_tgt_attr[] = {
+	&scst_rel_tgt_id,
+	&scst_tgt_addr_method,
+	&scst_tgt_io_grouping_type,
+	&scst_tgt_cpu_mask,
+	NULL
+};
 
 static struct kobj_attribute scst_acg_addr_method =
 	__ATTR(addr_method, S_IRUGO | S_IWUSR, scst_acg_addr_method_show,
@@ -579,8 +605,8 @@ static struct kobj_attribute scst_acg_io_grouping_type =
 static struct kobj_attribute scst_acg_cpu_mask =
 	__ATTR(cpu_mask, S_IRUGO, scst_acg_cpu_mask_show, NULL);
 
-static ssize_t scst_tgt_enable_show(struct kobject *kobj,
-	struct kobj_attribute *attr, char *buf)
+static ssize_t scst_tgt_enable_show(struct device *dev,
+	struct device_attribute *attr, char *buf)
 {
 	struct scst_tgt *tgt;
 	int res;
@@ -588,7 +614,7 @@ static ssize_t scst_tgt_enable_show(struct kobject *kobj,
 
 	TRACE_ENTRY();
 
-	tgt = scst_kobj_to_tgt(kobj);
+	tgt = scst_dev_to_tgt(dev);
 
 	enabled = tgt->tgtt->is_target_enabled(tgt);
 
@@ -691,7 +717,7 @@ out:
 	return res;
 }
 
-static struct kobj_attribute tgt_enable_attr =
+static struct device_attribute tgt_enable_attr =
 	__ATTR(enabled, S_IRUGO, scst_tgt_enable_show, NULL);
 
 int scst_tgt_sysfs_create(struct scst_tgt *tgt)
@@ -700,16 +726,10 @@ int scst_tgt_sysfs_create(struct scst_tgt *tgt)
 
 	TRACE_ENTRY();
 
-	res = kobject_add(&tgt->tgt_kobj, &tgt->tgtt->tgtt_kobj, tgt->tgt_name);
-	if (res != 0) {
-		PRINT_ERROR("Can't add tgt %s to sysfs", tgt->tgt_name);
-		goto out;
-	}
-
 	if ((tgt->tgtt->enable_target != NULL) &&
 	    (tgt->tgtt->is_target_enabled != NULL)) {
-		res = sysfs_create_file(&tgt->tgt_kobj,
-				&tgt_enable_attr.attr);
+		res = device_create_file(scst_sysfs_get_tgt_dev(tgt),
+					 &tgt_enable_attr);
 		if (res != 0) {
 			PRINT_ERROR("Can't add attr %s to sysfs",
 				tgt_enable_attr.attr.name);
@@ -717,13 +737,15 @@ int scst_tgt_sysfs_create(struct scst_tgt *tgt)
 		}
 	}
 
-	tgt->tgt_sess_kobj = kobject_create_and_add("sessions", &tgt->tgt_kobj);
+	tgt->tgt_sess_kobj = kobject_create_and_add("sessions",
+					scst_sysfs_get_tgt_kobj(tgt));
 	if (tgt->tgt_sess_kobj == NULL) {
 		PRINT_ERROR("Can't create sess kobj for tgt %s", tgt->tgt_name);
 		goto out_nomem;
 	}
 
-	tgt->tgt_luns_kobj = kobject_create_and_add("luns", &tgt->tgt_kobj);
+	tgt->tgt_luns_kobj = kobject_create_and_add("luns",
+					scst_sysfs_get_tgt_kobj(tgt));
 	if (tgt->tgt_luns_kobj == NULL) {
 		PRINT_ERROR("Can't create luns kobj for tgt %s", tgt->tgt_name);
 		goto out_nomem;
@@ -737,46 +759,23 @@ int scst_tgt_sysfs_create(struct scst_tgt *tgt)
 	}
 
 	tgt->tgt_ini_grp_kobj = kobject_create_and_add("ini_groups",
-					&tgt->tgt_kobj);
+					scst_sysfs_get_tgt_kobj(tgt));
 	if (tgt->tgt_ini_grp_kobj == NULL) {
 		PRINT_ERROR("Can't create ini_grp kobj for tgt %s",
 			tgt->tgt_name);
 		goto out_nomem;
 	}
 
-	res = sysfs_create_file(&tgt->tgt_kobj,
-			&scst_rel_tgt_id.attr);
-	if (res != 0) {
-		PRINT_ERROR("Can't add attribute %s for tgt %s",
-			scst_rel_tgt_id.attr.name, tgt->tgt_name);
-		goto out_err;
-	}
-
-	res = sysfs_create_file(&tgt->tgt_kobj,
-			&scst_tgt_addr_method.attr);
-	if (res != 0) {
-		PRINT_ERROR("Can't add attribute %s for tgt %s",
-			scst_tgt_addr_method.attr.name, tgt->tgt_name);
-		goto out_err;
-	}
-
-	res = sysfs_create_file(&tgt->tgt_kobj,
-			&scst_tgt_io_grouping_type.attr);
-	if (res != 0) {
-		PRINT_ERROR("Can't add attribute %s for tgt %s",
-			scst_tgt_io_grouping_type.attr.name, tgt->tgt_name);
-		goto out_err;
-	}
-
-	res = sysfs_create_file(&tgt->tgt_kobj, &scst_tgt_cpu_mask.attr);
-	if (res != 0) {
-		PRINT_ERROR("Can't add attribute %s for tgt %s",
-			scst_tgt_cpu_mask.attr.name, tgt->tgt_name);
+	res = device_create_files(scst_sysfs_get_tgt_dev(tgt), scst_tgt_attr);
+	if (res) {
+		PRINT_ERROR("Can't add generic attributes for tgt %s",
+			    tgt->tgt_name);
 		goto out_err;
 	}
 
 	if (tgt->tgtt->tgt_attrs) {
-		res = sysfs_create_files(&tgt->tgt_kobj, tgt->tgtt->tgt_attrs);
+		res = device_create_files(scst_sysfs_get_tgt_dev(tgt),
+					  tgt->tgtt->tgt_attrs);
 		if (res) {
 			PRINT_ERROR("Can't add attributes for tgt %s",
 				    tgt->tgt_name);
@@ -803,7 +802,6 @@ void scst_tgt_sysfs_del(struct scst_tgt *tgt)
 	kobject_del(tgt->tgt_sess_kobj);
 	kobject_del(tgt->tgt_luns_kobj);
 	kobject_del(tgt->tgt_ini_grp_kobj);
-	kobject_del(&tgt->tgt_kobj);
 
 	kobject_put(tgt->tgt_sess_kobj);
 	kobject_put(tgt->tgt_luns_kobj);
@@ -1083,18 +1081,19 @@ int scst_devt_dev_sysfs_create(struct scst_device *dev)
 		goto out;
 
 	res = sysfs_create_link(&dev->dev_kobj,
-				&dev->handler->devt_kobj, "handler");
+				scst_sysfs_get_devt_kobj(dev->handler),
+				"handler");
 	if (res != 0) {
 		PRINT_ERROR("Can't create handler link for dev %s",
-			dev->virt_name);
+			    dev->virt_name);
 		goto out;
 	}
 
-	res = sysfs_create_link(&dev->handler->devt_kobj,
-			&dev->dev_kobj, dev->virt_name);
+	res = sysfs_create_link(scst_sysfs_get_devt_kobj(dev->handler),
+				&dev->dev_kobj, dev->virt_name);
 	if (res != 0) {
 		PRINT_ERROR("Can't create handler link for dev %s",
-			dev->virt_name);
+			    dev->virt_name);
 		goto out_err;
 	}
 
@@ -1147,7 +1146,8 @@ void scst_devt_dev_sysfs_del(struct scst_device *dev)
 		sysfs_remove_files(&dev->dev_kobj, dev->handler->dev_attrs);
 	sysfs_remove_file(&dev->dev_kobj, &dev_threads_pool_type_attr.attr);
 	sysfs_remove_file(&dev->dev_kobj, &dev_threads_num_attr.attr);
-	sysfs_remove_link(&dev->handler->devt_kobj, dev->virt_name);
+	sysfs_remove_link(scst_sysfs_get_devt_kobj(dev->handler),
+			  dev->virt_name);
 	sysfs_remove_link(&dev->dev_kobj, "handler");
 
 out:
@@ -2172,27 +2172,27 @@ static ssize_t __scst_acg_addr_method_store(struct scst_acg *acg,
 	return res;
 }
 
-static ssize_t scst_tgt_addr_method_show(struct kobject *kobj,
-	struct kobj_attribute *attr, char *buf)
+static ssize_t scst_tgt_addr_method_show(struct device *dev,
+	struct device_attribute *attr, char *buf)
 {
 	struct scst_acg *acg;
 	struct scst_tgt *tgt;
 
-	tgt = scst_kobj_to_tgt(kobj);
+	tgt = scst_dev_to_tgt(dev);
 
 	acg = tgt->default_acg;
 
 	return __scst_acg_addr_method_show(acg, buf);
 }
 
-static ssize_t scst_tgt_addr_method_store(struct kobject *kobj,
-	struct kobj_attribute *attr, const char *buf, size_t count)
+static ssize_t scst_tgt_addr_method_store(struct device *dev,
+	struct device_attribute *attr, const char *buf, size_t count)
 {
 	int res;
 	struct scst_acg *acg;
 	struct scst_tgt *tgt;
 
-	tgt = scst_kobj_to_tgt(kobj);
+	tgt = scst_dev_to_tgt(dev);
 
 	acg = tgt->default_acg;
 
@@ -2296,27 +2296,27 @@ out:
 	return res;
 }
 
-static ssize_t scst_tgt_io_grouping_type_show(struct kobject *kobj,
-	struct kobj_attribute *attr, char *buf)
+static ssize_t scst_tgt_io_grouping_type_show(struct device *dev,
+	struct device_attribute *attr, char *buf)
 {
 	struct scst_acg *acg;
 	struct scst_tgt *tgt;
 
-	tgt = scst_kobj_to_tgt(kobj);
+	tgt = scst_dev_to_tgt(dev);
 
 	acg = tgt->default_acg;
 
 	return __scst_acg_io_grouping_type_show(acg, buf);
 }
 
-static ssize_t scst_tgt_io_grouping_type_store(struct kobject *kobj,
-	struct kobj_attribute *attr, const char *buf, size_t count)
+static ssize_t scst_tgt_io_grouping_type_store(struct device *dev,
+	struct device_attribute *attr, const char *buf, size_t count)
 {
 	int res;
 	struct scst_acg *acg;
 	struct scst_tgt *tgt;
 
-	tgt = scst_kobj_to_tgt(kobj);
+	tgt = scst_dev_to_tgt(dev);
 
 	acg = tgt->default_acg;
 
@@ -2412,13 +2412,13 @@ out:
 	return res;
 }
 
-static ssize_t scst_tgt_cpu_mask_show(struct kobject *kobj,
-	struct kobj_attribute *attr, char *buf)
+static ssize_t scst_tgt_cpu_mask_show(struct device *dev,
+	struct device_attribute *attr, char *buf)
 {
 	struct scst_acg *acg;
 	struct scst_tgt *tgt;
 
-	tgt = scst_kobj_to_tgt(kobj);
+	tgt = scst_dev_to_tgt(dev);
 
 	acg = tgt->default_acg;
 
@@ -2668,15 +2668,15 @@ out:
 #undef SCST_LUN_ACTION_DEL
 }
 
-static ssize_t scst_rel_tgt_id_show(struct kobject *kobj,
-	struct kobj_attribute *attr, char *buf)
+static ssize_t scst_rel_tgt_id_show(struct device *dev,
+				    struct device_attribute *attr, char *buf)
 {
 	struct scst_tgt *tgt;
 	int res;
 
 	TRACE_ENTRY();
 
-	tgt = scst_kobj_to_tgt(kobj);
+	tgt = scst_dev_to_tgt(dev);
 
 	res = sprintf(buf, "%d\n%s", tgt->rel_tgt_id,
 		(tgt->rel_tgt_id != 0) ? SCST_SYSFS_KEY_MARK "\n" : "");
@@ -2725,8 +2725,8 @@ out:
 	return res;
 }
 
-static ssize_t scst_rel_tgt_id_store(struct kobject *kobj,
-	struct kobj_attribute *attr, const char *buf, size_t count)
+static ssize_t scst_rel_tgt_id_store(struct device *dev,
+	struct device_attribute *attr, const char *buf, size_t count)
 {
 	int res;
 	struct scst_tgt *tgt;
@@ -2736,7 +2736,7 @@ static ssize_t scst_rel_tgt_id_store(struct kobject *kobj,
 
 	BUG_ON(!buf);
 
-	tgt = scst_kobj_to_tgt(kobj);
+	tgt = scst_dev_to_tgt(dev);
 
 	res = strict_strtoul(buf, 0, &rel_tgt_id);
 	if (res != 0) {
@@ -3817,27 +3817,27 @@ static struct kobj_type scst_sysfs_root_ktype = {
 
 #if defined(CONFIG_SCST_DEBUG) || defined(CONFIG_SCST_TRACING)
 
-static ssize_t scst_devt_trace_level_show(struct kobject *kobj,
-	struct kobj_attribute *attr, char *buf)
+static ssize_t scst_devt_trace_level_show(struct device *dev,
+	struct device_attribute *attr, char *buf)
 {
 	struct scst_dev_type *devt;
 
-	devt = scst_kobj_to_devt(kobj);
+	devt = scst_dev_to_devt(dev);
 
 	return scst_trace_level_show(devt->trace_tbl,
 		devt->trace_flags ? *devt->trace_flags : 0, buf,
 		devt->trace_tbl_help);
 }
 
-static ssize_t scst_devt_trace_level_store(struct kobject *kobj,
-	struct kobj_attribute *attr, const char *buf, size_t count)
+static ssize_t scst_devt_trace_level_store(struct device *dev,
+	struct device_attribute *attr, const char *buf, size_t count)
 {
 	int res;
 	struct scst_dev_type *devt;
 
 	TRACE_ENTRY();
 
-	devt = scst_kobj_to_devt(kobj);
+	devt = scst_dev_to_devt(dev);
 
 	res = mutex_lock_interruptible(&scst_log_mutex);
 	if (res)
@@ -3853,19 +3853,19 @@ out:
 	return res;
 }
 
-static struct kobj_attribute devt_trace_attr =
+static struct device_attribute devt_trace_attr =
 	__ATTR(trace_level, S_IRUGO | S_IWUSR,
 	       scst_devt_trace_level_show, scst_devt_trace_level_store);
 
 #endif /* #if defined(CONFIG_SCST_DEBUG) || defined(CONFIG_SCST_TRACING) */
 
-static ssize_t scst_devt_type_show(struct kobject *kobj,
-	struct kobj_attribute *attr, char *buf)
+static ssize_t scst_devt_type_show(struct device *dev,
+	struct device_attribute *attr, char *buf)
 {
 	int pos;
 	struct scst_dev_type *devt;
 
-	devt = scst_kobj_to_devt(kobj);
+	devt = scst_dev_to_devt(dev);
 
 	pos = sprintf(buf, "%d - %s\n", devt->type,
 		(unsigned)devt->type > ARRAY_SIZE(scst_dev_handler_types) ?
@@ -3874,37 +3874,33 @@ static ssize_t scst_devt_type_show(struct kobject *kobj,
 	return pos;
 }
 
-static struct kobj_attribute scst_devt_type_attr =
-	__ATTR(type, S_IRUGO, scst_devt_type_show, NULL);
-
-struct attribute *scst_devt_default_attrs[] = {
-	&scst_devt_type_attr.attr,
-	NULL,
+struct device_attribute scst_devt_default_attrs[] = {
+	__ATTR(type, S_IRUGO, scst_devt_type_show, NULL),
+	__ATTR_NULL
 };
 
-static ssize_t scst_devt_mgmt_show(struct kobject *kobj,
-	struct kobj_attribute *attr, char *buf)
+static ssize_t scst_devt_mgmt_show(struct device *dev,
+				   struct device_attribute *attr, char *buf)
 {
-	static const char help[] = "%s%s%s%s%s%s%s%s";
 	struct scst_dev_type *devt;
+	ssize_t res;
 
-	devt = scst_kobj_to_devt(kobj);
+	devt = scst_dev_to_devt(dev);
 
-	return scnprintf(buf, SCST_SYSFS_BLOCK_SIZE, help,
-		(devt->add_device_parameters != NULL) ?
-			"The following parameters available: " : "",
-		(devt->add_device_parameters != NULL) ?
-			devt->add_device_parameters : "",
-		(devt->devt_optional_attributes != NULL) ?
-			"The following dev handler attributes available: " : "",
-		(devt->devt_optional_attributes != NULL) ?
-			devt->devt_optional_attributes : "",
-		(devt->devt_optional_attributes != NULL) ? "\n" : "",
-		(devt->dev_optional_attributes != NULL) ?
-			"The following device attributes available: " : "",
-		(devt->dev_optional_attributes != NULL) ?
-			devt->dev_optional_attributes : "",
-		(devt->dev_optional_attributes != NULL) ? "\n" : "");
+	res = 0;
+	if (devt->add_device_parameters)
+		res += scnprintf(buf + res, PAGE_SIZE - res,
+				 "The following parameters available: %s\n",
+				 devt->add_device_parameters);
+	if (devt->devt_optional_attributes)
+		res += scnprintf(buf + res, PAGE_SIZE - res,
+			"The following dev handler attributes available: %s\n",
+				 devt->devt_optional_attributes);
+	if (devt->dev_optional_attributes)
+		res += scnprintf(buf + res, PAGE_SIZE - res,
+			"The following device attributes available: %s\n",
+			devt->dev_optional_attributes);
+	return res;
 }
 
 static int scst_process_devt_mgmt_store(char *buffer,
@@ -3963,7 +3959,7 @@ out_syntax_err:
 	goto out;
 }
 
-static struct kobj_attribute scst_devt_mgmt =
+static struct device_attribute scst_devt_mgmt =
 	__ATTR(mgmt, S_IRUGO, scst_devt_mgmt_show, NULL);
 
 static int scst_process_devt_pass_through_mgmt_store(char *buffer,
@@ -4085,30 +4081,26 @@ out_syntax_err:
 int scst_devt_sysfs_create(struct scst_dev_type *devt)
 {
 	int res;
-	struct kobject *parent;
 
 	TRACE_ENTRY();
 
-	if (devt->parent != NULL)
-		parent = &devt->parent->devt_kobj;
-	else
-		parent = scst_handlers_kobj;
+	res = sysfs_create_link(scst_devices_kobj,
+				scst_sysfs_get_devt_kobj(devt),
+				devt->name);
+	if (res)
+		goto out_err;
 
-	res = kobject_add(&devt->devt_kobj, parent, devt->name);
+	res = device_create_file(scst_sysfs_get_devt_dev(devt),
+				 &scst_devt_mgmt);
 	if (res) {
-		PRINT_ERROR("Can't add devt %s to sysfs", devt->name);
-		goto out;
-	}
-
-	res = sysfs_create_file(&devt->devt_kobj, &scst_devt_mgmt.attr);
-	if (res != 0) {
 		PRINT_ERROR("Can't add mgmt attr for dev handler %s",
-			devt->name);
+			    devt->name);
 		goto out_err;
 	}
 
 	if (devt->devt_attrs) {
-		res = sysfs_create_files(&devt->devt_kobj, devt->devt_attrs);
+		res = device_create_files(scst_sysfs_get_devt_dev(devt),
+					  devt->devt_attrs);
 		if (res) {
 			PRINT_ERROR("Can't add attributes for dev handler %s",
 				    devt->name);
@@ -4117,10 +4109,10 @@ int scst_devt_sysfs_create(struct scst_dev_type *devt)
 	}
 
 #if defined(CONFIG_SCST_DEBUG) || defined(CONFIG_SCST_TRACING)
-	if (devt->trace_flags != NULL) {
-		res = sysfs_create_file(&devt->devt_kobj,
-				&devt_trace_attr.attr);
-		if (res != 0) {
+	if (devt->trace_flags) {
+		res = device_create_file(scst_sysfs_get_devt_dev(devt),
+					 &devt_trace_attr);
+		if (res) {
 			PRINT_ERROR("Can't add devt trace_flag for dev "
 				"handler %s", devt->name);
 			goto out_err;
@@ -4140,7 +4132,7 @@ out_err:
 void scst_devt_sysfs_del(struct scst_dev_type *devt)
 {
 	TRACE_ENTRY();
-	kobject_del(&devt->devt_kobj);
+	sysfs_remove_link(scst_devices_kobj, devt->name);
 	TRACE_EXIT();
 }
 

@@ -343,8 +343,8 @@ static const char *scst_local_info(struct Scsi_Host *shp)
  ** Tgtt attributes
  **/
 
-static ssize_t scst_local_version_show(struct kobject *kobj,
-	struct kobj_attribute *attr, char *buf)
+static ssize_t scst_local_version_show(struct device *dev,
+	struct device_attribute *attr, char *buf)
 {
 	sprintf(buf, "%s/%s\n", SCST_LOCAL_VERSION, scst_local_version_date);
 
@@ -364,11 +364,11 @@ static ssize_t scst_local_version_show(struct kobject *kobj,
 	return strlen(buf);
 }
 
-static struct kobj_attribute scst_local_version_attr =
+static struct device_attribute scst_local_version_attr =
 	__ATTR(version, S_IRUGO, scst_local_version_show, NULL);
 
-static ssize_t scst_local_stats_show(struct kobject *kobj,
-	struct kobj_attribute *attr, char *buf)
+static ssize_t scst_local_stats_show(struct device *dev,
+	struct device_attribute *attr, char *buf)
 
 {
 	return sprintf(buf, "Aborts: %d, Device Resets: %d, Target Resets: %d",
@@ -376,12 +376,12 @@ static ssize_t scst_local_stats_show(struct kobject *kobj,
 		atomic_read(&num_target_resets));
 }
 
-static struct kobj_attribute scst_local_stats_attr =
+static struct device_attribute scst_local_stats_attr =
 	__ATTR(stats, S_IRUGO, scst_local_stats_show, NULL);
 
-static const struct attribute *scst_local_tgtt_attrs[] = {
-	&scst_local_version_attr.attr,
-	&scst_local_stats_attr.attr,
+static const struct device_attribute *scst_local_tgtt_attrs[] = {
+	&scst_local_version_attr,
+	&scst_local_stats_attr,
 	NULL,
 };
 
@@ -389,14 +389,14 @@ static const struct attribute *scst_local_tgtt_attrs[] = {
  ** Tgt attributes
  **/
 
-static ssize_t scst_local_scsi_transport_version_show(struct kobject *kobj,
-	struct kobj_attribute *attr, char *buf)
+static ssize_t scst_local_scsi_transport_version_show(struct device *dev,
+	struct device_attribute *attr, char *buf)
 {
 	struct scst_tgt *scst_tgt;
 	struct scst_local_tgt *tgt;
 	ssize_t res = -ENOENT;
 
-	scst_tgt = scst_kobj_to_tgt(kobj);
+	scst_tgt = scst_dev_to_tgt(dev);
 
 	if (down_read_trylock(&scst_local_exit_rwsem) == 0)
 		goto out;
@@ -417,15 +417,15 @@ out:
 	return res;
 }
 
-static ssize_t scst_local_scsi_transport_version_store(struct kobject *kobj,
-	struct kobj_attribute *attr, const char *buffer, size_t size)
+static ssize_t scst_local_scsi_transport_version_store(struct device *dev,
+	struct device_attribute *attr, const char *buffer, size_t size)
 {
 	ssize_t res = -ENOENT;
 	struct scst_tgt *scst_tgt;
 	struct scst_local_tgt *tgt;
 	unsigned long val;
 
-	scst_tgt = scst_kobj_to_tgt(kobj);
+	scst_tgt = scst_dev_to_tgt(dev);
 
 	if (down_read_trylock(&scst_local_exit_rwsem) == 0)
 		goto out;
@@ -450,19 +450,19 @@ out:
 	return res;
 }
 
-static struct kobj_attribute scst_local_scsi_transport_version_attr =
+static struct device_attribute scst_local_scsi_transport_version_attr =
 	__ATTR(scsi_transport_version, S_IRUGO | S_IWUSR,
 		scst_local_scsi_transport_version_show,
 		scst_local_scsi_transport_version_store);
 
-static ssize_t scst_local_phys_transport_version_show(struct kobject *kobj,
-	struct kobj_attribute *attr, char *buf)
+static ssize_t scst_local_phys_transport_version_show(struct device *dev,
+	struct device_attribute *attr, char *buf)
 {
 	struct scst_tgt *scst_tgt;
 	struct scst_local_tgt *tgt;
 	ssize_t res = -ENOENT;
 
-	scst_tgt = scst_kobj_to_tgt(kobj);
+	scst_tgt = scst_dev_to_tgt(dev);
 
 	if (down_read_trylock(&scst_local_exit_rwsem) == 0)
 		goto out;
@@ -481,15 +481,15 @@ out:
 	return res;
 }
 
-static ssize_t scst_local_phys_transport_version_store(struct kobject *kobj,
-	struct kobj_attribute *attr, const char *buffer, size_t size)
+static ssize_t scst_local_phys_transport_version_store(struct device *dev,
+	struct device_attribute *attr, const char *buffer, size_t size)
 {
 	ssize_t res = -ENOENT;
 	struct scst_tgt *scst_tgt;
 	struct scst_local_tgt *tgt;
 	unsigned long val;
 
-	scst_tgt = scst_kobj_to_tgt(kobj);
+	scst_tgt = scst_dev_to_tgt(dev);
 
 	if (down_read_trylock(&scst_local_exit_rwsem) == 0)
 		goto out;
@@ -514,14 +514,14 @@ out:
 	return res;
 }
 
-static struct kobj_attribute scst_local_phys_transport_version_attr =
+static struct device_attribute scst_local_phys_transport_version_attr =
 	__ATTR(phys_transport_version, S_IRUGO | S_IWUSR,
 		scst_local_phys_transport_version_show,
 		scst_local_phys_transport_version_store);
 
-static const struct attribute *scst_local_tgt_attrs[] = {
-	&scst_local_scsi_transport_version_attr.attr,
-	&scst_local_phys_transport_version_attr.attr,
+static const struct device_attribute *scst_local_tgt_attrs[] = {
+	&scst_local_scsi_transport_version_attr,
+	&scst_local_phys_transport_version_attr,
 	NULL,
 };
 

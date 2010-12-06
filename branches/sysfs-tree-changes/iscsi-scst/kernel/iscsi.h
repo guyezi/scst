@@ -574,7 +574,7 @@ extern void req_add_to_write_timeout_list(struct iscsi_cmnd *req);
 #ifdef CONFIG_SCST_PROC
 extern const struct seq_operations iscsi_seq_op;
 #else
-extern const struct attribute *iscsi_tgt_attrs[];
+extern const struct device_attribute *iscsi_tgt_attrs[];
 extern int iscsi_enable_target(struct scst_tgt *scst_tgt, bool enable);
 extern bool iscsi_is_target_enabled(struct scst_tgt *scst_tgt);
 extern ssize_t iscsi_sysfs_send_event(uint32_t tid,
@@ -597,7 +597,7 @@ extern void target_del_all(void);
 extern int iscsi_procfs_init(void);
 extern void iscsi_procfs_exit(void);
 #else
-extern const struct attribute *iscsi_attrs[];
+extern const struct device_attribute *iscsi_attrs[];
 extern int iscsi_add_attr(struct iscsi_target *target,
 	const struct iscsi_kern_attr *user_info);
 extern void __iscsi_del_attr(struct iscsi_target *target,

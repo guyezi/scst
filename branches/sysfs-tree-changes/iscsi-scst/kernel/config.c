@@ -237,8 +237,8 @@ err:
 /* Protected by target_mgmt_mutex */
 static LIST_HEAD(iscsi_attrs_list);
 
-static ssize_t iscsi_version_show(struct kobject *kobj,
-	struct kobj_attribute *attr, char *buf)
+static ssize_t iscsi_version_show(struct device *dev,
+	struct device_attribute *attr, char *buf)
 {
 	TRACE_ENTRY();
 
@@ -264,11 +264,11 @@ static ssize_t iscsi_version_show(struct kobject *kobj,
 	return strlen(buf);
 }
 
-static struct kobj_attribute iscsi_version_attr =
+static struct device_attribute iscsi_version_attr =
 	__ATTR(version, S_IRUGO, iscsi_version_show, NULL);
 
-static ssize_t iscsi_open_state_show(struct kobject *kobj,
-	struct kobj_attribute *attr, char *buf)
+static ssize_t iscsi_open_state_show(struct device *dev,
+	struct device_attribute *attr, char *buf)
 {
 	switch (ctr_open_state) {
 	case ISCSI_CTR_OPEN_STATE_CLOSED:
@@ -288,12 +288,12 @@ static ssize_t iscsi_open_state_show(struct kobject *kobj,
 	return strlen(buf);
 }
 
-static struct kobj_attribute iscsi_open_state_attr =
+static struct device_attribute iscsi_open_state_attr =
 	__ATTR(open_state, S_IRUGO, iscsi_open_state_show, NULL);
 
-const struct attribute *iscsi_attrs[] = {
-	&iscsi_version_attr.attr,
-	&iscsi_open_state_attr.attr,
+const struct device_attribute *iscsi_attrs[] = {
+	&iscsi_version_attr,
+	&iscsi_open_state_attr,
 	NULL,
 };
 

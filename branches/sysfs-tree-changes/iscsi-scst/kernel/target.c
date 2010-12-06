@@ -450,8 +450,8 @@ const struct seq_operations iscsi_seq_op = {
 
 #else /* CONFIG_SCST_PROC */
 
-static ssize_t iscsi_tgt_tid_show(struct kobject *kobj,
-	struct kobj_attribute *attr, char *buf)
+static ssize_t iscsi_tgt_tid_show(struct device *dev,
+	struct device_attribute *attr, char *buf)
 {
 	int pos;
 	struct scst_tgt *scst_tgt;
@@ -459,7 +459,7 @@ static ssize_t iscsi_tgt_tid_show(struct kobject *kobj,
 
 	TRACE_ENTRY();
 
-	scst_tgt = scst_kobj_to_tgt(kobj);
+	scst_tgt = scst_dev_to_tgt(dev);
 	tgt = (struct iscsi_target *)scst_tgt_get_tgt_priv(scst_tgt);
 
 	pos = sprintf(buf, "%u\n", tgt->tid);
@@ -468,11 +468,11 @@ static ssize_t iscsi_tgt_tid_show(struct kobject *kobj,
 	return pos;
 }
 
-static struct kobj_attribute iscsi_tgt_attr_tid =
+static struct device_attribute iscsi_tgt_attr_tid =
 	__ATTR(tid, S_IRUGO, iscsi_tgt_tid_show, NULL);
 
-const struct attribute *iscsi_tgt_attrs[] = {
-	&iscsi_tgt_attr_tid.attr,
+const struct device_attribute *iscsi_tgt_attrs[] = {
+	&iscsi_tgt_attr_tid,
 	NULL,
 };
 
