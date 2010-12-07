@@ -430,7 +430,7 @@ static ssize_t scst_tgtt_mgmt_show(struct device *device,
 
 	res = 0;
 	if (tgtt->add_target_parameters)
-		res += scnprintf(buf + res, PAGE_SIZE - res, 
+		res += scnprintf(buf + res, PAGE_SIZE - res,
 				 "The following parameters available: %s\n",
 				 tgtt->add_target_parameters);
 	if (tgtt->tgtt_optional_attributes)
