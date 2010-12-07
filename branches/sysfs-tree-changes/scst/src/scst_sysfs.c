@@ -66,9 +66,7 @@ enum mgmt_path_type {
 static DECLARE_COMPLETION(scst_sysfs_root_release_completion);
 
 static struct kobject *scst_sysfs_root_kobj;
-static struct kobject *scst_targets_kobj;
 static struct kobject *scst_devices_kobj;
-static struct kobject *scst_handlers_kobj;
 
 static const char *scst_dev_handler_types[] = {
 	"Direct-access device (e.g., magnetic disk)",
@@ -3037,20 +3035,20 @@ static ssize_t scst_mgmt_show(struct kobject *kobj,
 /* devices/<dev>/filename */
 "in devices/<dev> <dev_cmd>\n"
 /* scst_devt_mgmt or scst_devt_pass_through_mgmt */
-"in handlers/<devt> <devt_cmd>\n"
+"in device_driver/<devt> <devt_cmd>\n"
 /* scst_tgtt_mgmt */
-"in targets/<tgtt> <tgtt_cmd>\n"
+"in target_driver/<tgtt> <tgtt_cmd>\n"
 /* scst_tgt_mgmt */
-"in targets/<tgtt>/<target>/luns <tgt_cmd>\n"
+"in target_driver/<tgtt>/<target>/luns <tgt_cmd>\n"
 /* scst_luns_mgmt */
-"in targets/<tgtt>/<target>/luns <luns_cmd>\n"
+"in target_driver/<tgtt>/<target>/luns <luns_cmd>\n"
 /* scst_ini_group_mgmt */
-"in targets/<tgtt>/<target>/ini_groups <acg_mgmt_cmd>\n"
-"in targets/<tgtt>/<target>/ini_groups/<acg> <acg_cmd>\n"
+"in target_driver/<tgtt>/<target>/ini_groups <acg_mgmt_cmd>\n"
+"in target_driver/<tgtt>/<target>/ini_groups/<acg> <acg_cmd>\n"
 /* scst_acg_luns_mgmt */
-"in targets/<tgtt>/<target>/ini_groups/<acg>/luns <luns_cmd>\n"
+"in target_driver/<tgtt>/<target>/ini_groups/<acg>/luns <luns_cmd>\n"
 /* scst_acg_ini_mgmt */
-"in targets/<tgtt>/<target>/ini_groups/<acg>/initiators <acg_ini_cmd>\n"
+"in target_driver/<tgtt>/<target>/ini_groups/<acg>/initiators <acg_ini_cmd>\n"
 "\n"
 "dev_cmd syntax:\n"
 "\n"
@@ -3172,13 +3170,13 @@ static enum mgmt_path_type __parse_path(char *path,
 			goto err;
 		res = DEVICE_PATH;
 		goto out;
-	} else if (strcmp(comp[0], "handlers") == 0 && !comp[2]) {
+	} else if (strcmp(comp[0], "device_driver") == 0 && !comp[2]) {
 		*devt = __scst_lookup_devt(comp[1]);
 		if (!*devt)
 			goto err;
 		res = DEVICE_TYPE_PATH;
 		goto out;
-	} else if (strcmp(comp[0], "targets") == 0) {
+	} else if (strcmp(comp[0], "target_driver") == 0) {
 		*tgtt = __scst_lookup_tgtt(comp[1]);
 		if (!*tgtt)
 			goto err;
@@ -4359,11 +4357,6 @@ int __init scst_sysfs_init(void)
 	if (!scst_sysfs_root_kobj)
 		goto sysfs_root_kobj_error;
 
-	scst_targets_kobj = kobject_create_and_add("targets",
-						   scst_sysfs_root_kobj);
-	if (!scst_targets_kobj)
-		goto targets_kobj_error;
-
 	scst_devices_kobj = kobject_create_and_add("devices",
 						   scst_sysfs_root_kobj);
 	if (!scst_devices_kobj)
@@ -4373,19 +4366,10 @@ int __init scst_sysfs_init(void)
 	if (res)
 		goto sgv_kobj_error;
 
-	scst_handlers_kobj = kobject_create_and_add("handlers",
-						    scst_sysfs_root_kobj);
-	if (!scst_handlers_kobj)
-		goto handlers_kobj_error;
-
 out:
 	TRACE_EXIT_RES(res);
 	return res;
 
-	kobject_del(scst_handlers_kobj);
-	kobject_put(scst_handlers_kobj);
-
-handlers_kobj_error:
 	scst_del_put_sgv_kobj();
 
 sgv_kobj_error:
@@ -4393,10 +4377,6 @@ sgv_kobj_error:
 	kobject_put(scst_devices_kobj);
 
 devices_kobj_error:
-	kobject_del(scst_targets_kobj);
-	kobject_put(scst_targets_kobj);
-
-targets_kobj_error:
 	kobject_del(scst_sysfs_root_kobj);
 	kobject_put(scst_sysfs_root_kobj);
 
@@ -4413,16 +4393,10 @@ void scst_sysfs_cleanup(void)
 
 	PRINT_INFO("%s", "Exiting SCST sysfs hierarchy...");
 
-	kobject_del(scst_handlers_kobj);
-	kobject_put(scst_handlers_kobj);
-
 	scst_del_put_sgv_kobj();
 
 	kobject_del(scst_devices_kobj);
 	kobject_put(scst_devices_kobj);
-
-	kobject_del(scst_targets_kobj);
-	kobject_put(scst_targets_kobj);
 
 	kobject_del(scst_sysfs_root_kobj);
 	kobject_put(scst_sysfs_root_kobj);

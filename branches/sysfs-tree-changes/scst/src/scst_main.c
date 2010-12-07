@@ -511,7 +511,7 @@ EXPORT_SYMBOL(scst_unregister_target_template);
 static void scst_release_target(struct device *dev);
 
 static struct class scst_tgt_class = {
-	.name		= "storage_target",
+	.name		= "target_instance",
 #if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
 	.release	= scst_release_target,
 #else
@@ -964,6 +964,19 @@ static void scst_release_dev(struct kobject *kobj)
 	scst_free_device(dev);
 }
 
+#if 0
+static struct class scst_dev_class = {
+	.name			= "target_device",
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
+	.release		= scst_release_dev,
+	.class_dev_attrs	= scst_dev_attrs,
+#else
+	.dev_release		= scst_release_dev,
+	.dev_attrs		= scst_dev_attrs,
+#endif
+};
+#endif
+
 static struct kobj_type scst_dev_ktype = {
 	.release = scst_release_dev,
 #ifndef CONFIG_SCST_PROC
@@ -1374,7 +1387,7 @@ static void scst_release_devt(struct device *kobj)
 }
 
 static struct class scst_devt_class = {
-	.name			= "device_type",
+	.name			= "device_driver",
 #if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
 	.release		= scst_release_devt,
 	.class_dev_attrs	= scst_devt_default_attrs,
@@ -2479,6 +2492,12 @@ static int __init init_scst(void)
 	if (res)
 		goto out_unregister_tgt_class;
 
+#if 0
+	res = class_register(&scst_dev_class);
+	if (res)
+		goto out_unregister_devt_class;
+#endif
+
 	res = scst_sysfs_init();
 	if (res)
 		goto out_unregister_devt_class;
@@ -2572,6 +2591,11 @@ out_free_acg:
 out_destroy_sgv_pool:
 	scst_sgv_pools_deinit();
 
+#if 0
+out_unregister_dev_class:
+	class_unregister(&scst_dev_class);
+#endif
+
 out_unregister_devt_class:
 	class_unregister(&scst_devt_class);
 
@@ -2655,10 +2679,11 @@ static void __exit exit_scst(void)
 
 	scst_sgv_pools_deinit();
 
+#if 0
+	class_unregister(&scst_dev_class);
+#endif
 	class_unregister(&scst_devt_class);
-
 	class_unregister(&scst_tgt_class);
-
 	class_unregister(&scst_tgtt_class);
 
 	scst_sysfs_cleanup();

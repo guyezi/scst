@@ -22,11 +22,11 @@ FALSE            => 0,
 SCST_ROOT        => '/sys/kernel/scst_tgt',
 
 # Root-level
-SCST_HANDLERS    => '/sys/class/device_type',
-IN_SCST_HANDLERS => 'handlers',
+SCST_HANDLERS    => '/sys/class/device_driver',
+IN_SCST_HANDLERS => 'device_driver',
 SCST_DEVICES     => 'devices',
 SCST_TARGETS     => '/sys/class/target_driver',
-IN_SCST_TARGETS  => 'targets',
+IN_SCST_TARGETS  => 'target_driver',
 SCST_SGV         => 'sgv',
 SCST_QUEUE_RES   => 'last_sysfs_mgmt_res',
 
