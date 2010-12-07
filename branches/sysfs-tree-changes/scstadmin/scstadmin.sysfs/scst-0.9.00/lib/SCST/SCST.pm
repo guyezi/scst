@@ -418,10 +418,9 @@ sub targets {
 	}
 
 	foreach my $target (readdir($tHandle)) {
-		next if ($target eq '.' || $target eq '..'
-			 || $target eq 'power' || $target eq 'subsystem');
+		next if ($target eq '.' || $target eq '..');
 
-		if (-d mkpath(SCST_TARGETS, $driver, $target)) {
+		if (-d mkpath(SCST_TARGETS, $driver, $target, 'sessions')) {
 			push @targets, $target;
 		}
 	}
@@ -1711,10 +1710,9 @@ sub devices {
 	}
 
 	foreach my $device (readdir($dHandle)) {
-		next if ($device eq '.' || $device eq '..' || $device eq 'power'
-			 || $device eq 'subsystem');
+		next if ($device eq '.' || $device eq '..');
 
-                if (-d mkpath(SCST_ROOT, SCST_DEVICES, $device)) {
+                if (-d mkpath(SCST_ROOT, SCST_DEVICES, $device, 'handler')) {
 			push @devices, $device;
 		}							
 	}
