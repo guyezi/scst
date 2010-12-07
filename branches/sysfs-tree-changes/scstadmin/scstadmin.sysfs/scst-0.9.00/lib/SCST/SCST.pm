@@ -29,7 +29,6 @@ IN_SCST_DEVICES  => 'target_device',
 SCST_TARGETS     => '/sys/class/target_driver',
 IN_SCST_TARGETS  => 'target_driver',
 SCST_SGV         => 'sgv',
-SCST_QUEUE_RES   => 'last_sysfs_mgmt_res',
 
 # Target specific
 SCST_GROUPS      => 'ini_groups',
@@ -3550,42 +3549,11 @@ sub _syswrite {
 	my $length = shift;
 	my $now = time();
 
-	my $res_file =  mkpath(SCST_ROOT, SCST_QUEUE_RES);
-
 	my $bytes = syswrite($io, $cmd, $length);
 
 	if (!defined($bytes)) {
-		if ($! == EAGAIN) {
-			my $res = new IO::File $res_file, O_RDONLY;
-
-			if (!$res) {
-				cluck("FATAL: Failed opening $res_file: $!");
-				return undef;
-			}
-
-			my $wait = TRUE;
-			my $result;
-
-			while ($wait && (($now + $TIMEOUT) > time())) {
-				sysread($res, $result, 8);
-				$wait = FALSE if ($! != EAGAIN);
-				sleep 1;
-			}
-
-			if ($wait) {
-				my $_cmd = $cmd; chomp $_cmd;
-				cluck("Timeout while waiting for command '$_cmd' to complete");
-				$bytes = undef;
-			} else {
-				$bytes = length($cmd) if ($result == 0);
-			}
-
-			close $res;
-		} elsif ($! == EBUSY) {
-			return -1;
-		}
+		return $!;
 	}
-
 	return $bytes;
 }
 

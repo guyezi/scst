@@ -3704,19 +3704,6 @@ static ssize_t scst_version_show(struct kobject *kobj,
 	return strlen(buf);
 }
 
-static ssize_t scst_last_sysfs_mgmt_res_show(struct kobject *kobj,
-	struct kobj_attribute *attr, char *buf)
-{
-	int res;
-
-	TRACE_ENTRY();
-
-	res = sprintf(buf, "%d\n", 0);
-
-	TRACE_EXIT_RES(res);
-	return res;
-}
-
 static struct kobj_attribute scst_mgmt_attr =
 	__ATTR(mgmt, S_IRUGO | S_IWUSR, scst_mgmt_show, scst_mgmt_store);
 
@@ -3737,10 +3724,6 @@ static struct kobj_attribute scst_trace_level_attr =
 static struct kobj_attribute scst_version_attr =
 	__ATTR(version, S_IRUGO, scst_version_show, NULL);
 
-static struct kobj_attribute scst_last_sysfs_mgmt_res_attr =
-	__ATTR(last_sysfs_mgmt_res, S_IRUGO,
-		scst_last_sysfs_mgmt_res_show, NULL);
-
 static struct attribute *scst_sysfs_root_default_attrs[] = {
 	&scst_mgmt_attr.attr,
 	&scst_threads_attr.attr,
@@ -3749,7 +3732,6 @@ static struct attribute *scst_sysfs_root_default_attrs[] = {
 	&scst_trace_level_attr.attr,
 #endif
 	&scst_version_attr.attr,
-	&scst_last_sysfs_mgmt_res_attr.attr,
 	NULL,
 };
 
