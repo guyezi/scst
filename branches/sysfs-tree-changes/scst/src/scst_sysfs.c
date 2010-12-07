@@ -65,7 +65,7 @@ enum mgmt_path_type {
 
 static DECLARE_COMPLETION(scst_sysfs_root_release_completion);
 
-static struct kobject *scst_sysfs_root_kobj;
+static struct device *scst_device;
 
 static const char *scst_dev_handler_types[] = {
 	"Direct-access device (e.g., magnetic disk)",
@@ -133,25 +133,25 @@ static int scst_write_trace(const char *buf, size_t length,
 static ssize_t scst_luns_mgmt_show(struct kobject *kobj,
 				   struct kobj_attribute *attr,
 				   char *buf);
-static ssize_t scst_tgt_addr_method_show(struct device *dev,
+static ssize_t scst_tgt_addr_method_show(struct device *device,
 					 struct device_attribute *attr,
 					 char *buf);
-static ssize_t scst_tgt_addr_method_store(struct device *dev,
+static ssize_t scst_tgt_addr_method_store(struct device *device,
 					  struct device_attribute *attr,
 					  const char *buf, size_t count);
-static ssize_t scst_tgt_io_grouping_type_show(struct device *dev,
+static ssize_t scst_tgt_io_grouping_type_show(struct device *device,
 					      struct device_attribute *attr,
 					      char *buf);
-static ssize_t scst_tgt_io_grouping_type_store(struct device *dev,
+static ssize_t scst_tgt_io_grouping_type_store(struct device *device,
 					       struct device_attribute *attr,
 					       const char *buf, size_t count);
-static ssize_t scst_tgt_cpu_mask_show(struct device *dev,
+static ssize_t scst_tgt_cpu_mask_show(struct device *device,
 				      struct device_attribute *attr,
 				      char *buf);
-static ssize_t scst_rel_tgt_id_show(struct device *dev,
+static ssize_t scst_rel_tgt_id_show(struct device *device,
 				   struct device_attribute *attr,
 				   char *buf);
-static ssize_t scst_rel_tgt_id_store(struct device *dev,
+static ssize_t scst_rel_tgt_id_store(struct device *device,
 				    struct device_attribute *attr,
 				    const char *buf, size_t count);
 static ssize_t scst_acg_addr_method_show(struct kobject *kobj,
@@ -378,19 +378,19 @@ static struct scst_acg *__scst_lookup_acg(const struct scst_tgt *tgt,
 
 #if defined(CONFIG_SCST_DEBUG) || defined(CONFIG_SCST_TRACING)
 
-static ssize_t scst_tgtt_trace_level_show(struct device *dev,
+static ssize_t scst_tgtt_trace_level_show(struct device *device,
 	struct device_attribute *attr, char *buf)
 {
 	struct scst_tgt_template *tgtt;
 
-	tgtt = scst_dev_to_tgtt(dev);
+	tgtt = scst_dev_to_tgtt(device);
 
 	return scst_trace_level_show(tgtt->trace_tbl,
 		tgtt->trace_flags ? *tgtt->trace_flags : 0, buf,
 		tgtt->trace_tbl_help);
 }
 
-static ssize_t scst_tgtt_trace_level_store(struct device *dev,
+static ssize_t scst_tgtt_trace_level_store(struct device *device,
 	struct device_attribute *attr, const char *buf, size_t count)
 {
 	int res;
@@ -398,7 +398,7 @@ static ssize_t scst_tgtt_trace_level_store(struct device *dev,
 
 	TRACE_ENTRY();
 
-	tgtt = scst_dev_to_tgtt(dev);
+	tgtt = scst_dev_to_tgtt(device);
 
 	res = mutex_lock_interruptible(&scst_log_mutex);
 	if (res)
@@ -420,13 +420,13 @@ static struct device_attribute tgtt_trace_attr =
 
 #endif /* #if defined(CONFIG_SCST_DEBUG) || defined(CONFIG_SCST_TRACING) */
 
-static ssize_t scst_tgtt_mgmt_show(struct device *dev,
+static ssize_t scst_tgtt_mgmt_show(struct device *device,
 				   struct device_attribute *attr, char *buf)
 {
 	struct scst_tgt_template *tgtt;
 	ssize_t res;
 
-	tgtt = scst_dev_to_tgtt(dev);
+	tgtt = scst_dev_to_tgtt(device);
 
 	res = 0;
 	if (tgtt->add_target_parameters)
@@ -600,7 +600,7 @@ static struct kobj_attribute scst_acg_io_grouping_type =
 static struct kobj_attribute scst_acg_cpu_mask =
 	__ATTR(cpu_mask, S_IRUGO, scst_acg_cpu_mask_show, NULL);
 
-static ssize_t scst_tgt_enable_show(struct device *dev,
+static ssize_t scst_tgt_enable_show(struct device *device,
 	struct device_attribute *attr, char *buf)
 {
 	struct scst_tgt *tgt;
@@ -609,7 +609,7 @@ static ssize_t scst_tgt_enable_show(struct device *dev,
 
 	TRACE_ENTRY();
 
-	tgt = scst_dev_to_tgt(dev);
+	tgt = scst_dev_to_tgt(device);
 
 	enabled = tgt->tgtt->is_target_enabled(tgt);
 
@@ -2150,27 +2150,27 @@ static ssize_t __scst_acg_addr_method_store(struct scst_acg *acg,
 	return res;
 }
 
-static ssize_t scst_tgt_addr_method_show(struct device *dev,
+static ssize_t scst_tgt_addr_method_show(struct device *device,
 	struct device_attribute *attr, char *buf)
 {
 	struct scst_acg *acg;
 	struct scst_tgt *tgt;
 
-	tgt = scst_dev_to_tgt(dev);
+	tgt = scst_dev_to_tgt(device);
 
 	acg = tgt->default_acg;
 
 	return __scst_acg_addr_method_show(acg, buf);
 }
 
-static ssize_t scst_tgt_addr_method_store(struct device *dev,
+static ssize_t scst_tgt_addr_method_store(struct device *device,
 	struct device_attribute *attr, const char *buf, size_t count)
 {
 	int res;
 	struct scst_acg *acg;
 	struct scst_tgt *tgt;
 
-	tgt = scst_dev_to_tgt(dev);
+	tgt = scst_dev_to_tgt(device);
 
 	acg = tgt->default_acg;
 
@@ -2274,27 +2274,27 @@ out:
 	return res;
 }
 
-static ssize_t scst_tgt_io_grouping_type_show(struct device *dev,
+static ssize_t scst_tgt_io_grouping_type_show(struct device *device,
 	struct device_attribute *attr, char *buf)
 {
 	struct scst_acg *acg;
 	struct scst_tgt *tgt;
 
-	tgt = scst_dev_to_tgt(dev);
+	tgt = scst_dev_to_tgt(device);
 
 	acg = tgt->default_acg;
 
 	return __scst_acg_io_grouping_type_show(acg, buf);
 }
 
-static ssize_t scst_tgt_io_grouping_type_store(struct device *dev,
+static ssize_t scst_tgt_io_grouping_type_store(struct device *device,
 	struct device_attribute *attr, const char *buf, size_t count)
 {
 	int res;
 	struct scst_acg *acg;
 	struct scst_tgt *tgt;
 
-	tgt = scst_dev_to_tgt(dev);
+	tgt = scst_dev_to_tgt(device);
 
 	acg = tgt->default_acg;
 
@@ -2390,13 +2390,13 @@ out:
 	return res;
 }
 
-static ssize_t scst_tgt_cpu_mask_show(struct device *dev,
+static ssize_t scst_tgt_cpu_mask_show(struct device *device,
 	struct device_attribute *attr, char *buf)
 {
 	struct scst_acg *acg;
 	struct scst_tgt *tgt;
 
-	tgt = scst_dev_to_tgt(dev);
+	tgt = scst_dev_to_tgt(device);
 
 	acg = tgt->default_acg;
 
@@ -2646,7 +2646,7 @@ out:
 #undef SCST_LUN_ACTION_DEL
 }
 
-static ssize_t scst_rel_tgt_id_show(struct device *dev,
+static ssize_t scst_rel_tgt_id_show(struct device *device,
 				    struct device_attribute *attr, char *buf)
 {
 	struct scst_tgt *tgt;
@@ -2654,7 +2654,7 @@ static ssize_t scst_rel_tgt_id_show(struct device *dev,
 
 	TRACE_ENTRY();
 
-	tgt = scst_dev_to_tgt(dev);
+	tgt = scst_dev_to_tgt(device);
 
 	res = sprintf(buf, "%d\n%s", tgt->rel_tgt_id,
 		(tgt->rel_tgt_id != 0) ? SCST_SYSFS_KEY_MARK "\n" : "");
@@ -2703,7 +2703,7 @@ out:
 	return res;
 }
 
-static ssize_t scst_rel_tgt_id_store(struct device *dev,
+static ssize_t scst_rel_tgt_id_store(struct device *device,
 	struct device_attribute *attr, const char *buf, size_t count)
 {
 	int res;
@@ -2714,7 +2714,7 @@ static ssize_t scst_rel_tgt_id_store(struct device *dev,
 
 	BUG_ON(!buf);
 
-	tgt = scst_dev_to_tgt(dev);
+	tgt = scst_dev_to_tgt(device);
 
 	res = strict_strtoul(buf, 0, &rel_tgt_id);
 	if (res != 0) {
@@ -3007,8 +3007,8 @@ out:
  ** SCST sysfs root directory implementation
  **/
 
-static ssize_t scst_mgmt_show(struct kobject *kobj,
-	struct kobj_attribute *attr, char *buf)
+static ssize_t scst_mgmt_show(struct device *device,
+			      struct device_attribute *attr, char *buf)
 {
 	ssize_t count;
 	static const char help[] =
@@ -3202,8 +3202,8 @@ err:
 	return res;
 }
 
-static ssize_t scst_mgmt_store(struct kobject *kobj,
-	struct kobj_attribute *attr, const char *buf, size_t count)
+static ssize_t scst_mgmt_store(struct device *device,
+	struct device_attribute *attr, const char *buf, size_t count)
 {
 	ssize_t res;
 	char *buffer, *path, *path_end, *cmd;
@@ -3300,8 +3300,8 @@ out:
 	return res;
 }
 
-static ssize_t scst_threads_show(struct kobject *kobj,
-	struct kobj_attribute *attr, char *buf)
+static ssize_t scst_threads_show(struct device *device,
+	struct device_attribute *attr, char *buf)
 {
 	int count;
 
@@ -3349,8 +3349,8 @@ out:
 	return res;
 }
 
-static ssize_t scst_threads_store(struct kobject *kobj,
-	struct kobj_attribute *attr, const char *buf, size_t count)
+static ssize_t scst_threads_store(struct device *device,
+	struct device_attribute *attr, const char *buf, size_t count)
 {
 	int res;
 	long newtn;
@@ -3376,8 +3376,8 @@ out:
 	return res;
 }
 
-static ssize_t scst_setup_id_show(struct kobject *kobj,
-	struct kobj_attribute *attr, char *buf)
+static ssize_t scst_setup_id_show(struct device *device,
+	struct device_attribute *attr, char *buf)
 {
 	int count;
 
@@ -3390,8 +3390,8 @@ static ssize_t scst_setup_id_show(struct kobject *kobj,
 	return count;
 }
 
-static ssize_t scst_setup_id_store(struct kobject *kobj,
-	struct kobj_attribute *attr, const char *buf, size_t count)
+static ssize_t scst_setup_id_store(struct device *device,
+	struct device_attribute *attr, const char *buf, size_t count)
 {
 	int res;
 	unsigned long val;
@@ -3462,8 +3462,8 @@ static ssize_t scst_trace_level_show(const struct scst_trace_log *local_tbl,
 	return pos;
 }
 
-static ssize_t scst_main_trace_level_show(struct kobject *kobj,
-	struct kobj_attribute *attr, char *buf)
+static ssize_t scst_main_trace_level_show(struct device *device,
+	struct device_attribute *attr, char *buf)
 {
 	return scst_trace_level_show(scst_local_trace_tbl, trace_flag,
 			buf, NULL);
@@ -3625,8 +3625,8 @@ out:
 #undef SCST_TRACE_ACTION_VALUE
 }
 
-static ssize_t scst_main_trace_level_store(struct kobject *kobj,
-	struct kobj_attribute *attr, const char *buf, size_t count)
+static ssize_t scst_main_trace_level_store(struct device *device,
+	struct device_attribute *attr, const char *buf, size_t count)
 {
 	int res;
 
@@ -3648,8 +3648,8 @@ out:
 
 #endif /* defined(CONFIG_SCST_DEBUG) || defined(CONFIG_SCST_TRACING) */
 
-static ssize_t scst_version_show(struct kobject *kobj,
-				 struct kobj_attribute *attr,
+static ssize_t scst_version_show(struct device *device,
+				 struct device_attribute *attr,
 				 char *buf)
 {
 	TRACE_ENTRY();
@@ -3704,71 +3704,37 @@ static ssize_t scst_version_show(struct kobject *kobj,
 	return strlen(buf);
 }
 
-static struct kobj_attribute scst_mgmt_attr =
-	__ATTR(mgmt, S_IRUGO | S_IWUSR, scst_mgmt_show, scst_mgmt_store);
 
-static struct kobj_attribute scst_threads_attr =
+static struct device_attribute scst_default_attrs[] = {
+	__ATTR(mgmt, S_IRUGO | S_IWUSR, scst_mgmt_show, scst_mgmt_store),
 	__ATTR(threads, S_IRUGO | S_IWUSR, scst_threads_show,
-	       scst_threads_store);
-
-static struct kobj_attribute scst_setup_id_attr =
+	       scst_threads_store),
 	__ATTR(setup_id, S_IRUGO | S_IWUSR, scst_setup_id_show,
-	       scst_setup_id_store);
-
+	       scst_setup_id_store),
 #if defined(CONFIG_SCST_DEBUG) || defined(CONFIG_SCST_TRACING)
-static struct kobj_attribute scst_trace_level_attr =
 	__ATTR(trace_level, S_IRUGO | S_IWUSR, scst_main_trace_level_show,
-	       scst_main_trace_level_store);
+	       scst_main_trace_level_store),
 #endif
-
-static struct kobj_attribute scst_version_attr =
-	__ATTR(version, S_IRUGO, scst_version_show, NULL);
-
-static struct attribute *scst_sysfs_root_default_attrs[] = {
-	&scst_mgmt_attr.attr,
-	&scst_threads_attr.attr,
-	&scst_setup_id_attr.attr,
-#if defined(CONFIG_SCST_DEBUG) || defined(CONFIG_SCST_TRACING)
-	&scst_trace_level_attr.attr,
-#endif
-	&scst_version_attr.attr,
-	NULL,
+	__ATTR(version, S_IRUGO, scst_version_show, NULL),
+	__ATTR_NULL
 };
 
-/**
- * kobject_create_and_add_kt() - Create a kernel object and add it to sysfs.
- */
-static struct kobject *kobject_create_and_add_kt(struct kobj_type *ktype,
-				struct kobject *parent, const char *name)
+static void scst_release_device(struct device *device)
 {
-	struct kobject *kobj;
-
-	BUG_ON(!ktype);
-	BUG_ON(!name);
-	kobj = kzalloc(sizeof(*kobj), GFP_KERNEL);
-	if (!kobj)
-		goto out;
-	if (kobject_init_and_add(kobj, ktype, parent, name))
-		goto kfree;
-out:
-	return kobj;
-kfree:
-	kobject_put(kobj);
-	kobj = NULL;
-	goto out;
-}
-
-static void scst_sysfs_root_release(struct kobject *kobj)
-{
-	WARN_ON(kobj != scst_sysfs_root_kobj);
+	WARN_ON(device != scst_device);
 	complete_all(&scst_sysfs_root_release_completion);
-	kfree(kobj);
+	kfree(device);
 }
 
-static struct kobj_type scst_sysfs_root_ktype = {
-	.sysfs_ops = &scst_sysfs_ops,
-	.release = scst_sysfs_root_release,
-	.default_attrs = scst_sysfs_root_default_attrs,
+static struct class scst_class = {
+	.name = "scst",
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
+	.release		= scst_release_device,
+	.class_dev_attrs	= scst_default_attrs,
+#else
+	.dev_release		= scst_release_device,
+	.dev_attrs		= scst_default_attrs,
+#endif
 };
 
 /**
@@ -3777,19 +3743,19 @@ static struct kobj_type scst_sysfs_root_ktype = {
 
 #if defined(CONFIG_SCST_DEBUG) || defined(CONFIG_SCST_TRACING)
 
-static ssize_t scst_devt_trace_level_show(struct device *dev,
+static ssize_t scst_devt_trace_level_show(struct device *device,
 	struct device_attribute *attr, char *buf)
 {
 	struct scst_dev_type *devt;
 
-	devt = scst_dev_to_devt(dev);
+	devt = scst_dev_to_devt(device);
 
 	return scst_trace_level_show(devt->trace_tbl,
 		devt->trace_flags ? *devt->trace_flags : 0, buf,
 		devt->trace_tbl_help);
 }
 
-static ssize_t scst_devt_trace_level_store(struct device *dev,
+static ssize_t scst_devt_trace_level_store(struct device *device,
 	struct device_attribute *attr, const char *buf, size_t count)
 {
 	int res;
@@ -3797,7 +3763,7 @@ static ssize_t scst_devt_trace_level_store(struct device *dev,
 
 	TRACE_ENTRY();
 
-	devt = scst_dev_to_devt(dev);
+	devt = scst_dev_to_devt(device);
 
 	res = mutex_lock_interruptible(&scst_log_mutex);
 	if (res)
@@ -3819,13 +3785,13 @@ static struct device_attribute devt_trace_attr =
 
 #endif /* #if defined(CONFIG_SCST_DEBUG) || defined(CONFIG_SCST_TRACING) */
 
-static ssize_t scst_devt_type_show(struct device *dev,
+static ssize_t scst_devt_type_show(struct device *device,
 	struct device_attribute *attr, char *buf)
 {
 	int pos;
 	struct scst_dev_type *devt;
 
-	devt = scst_dev_to_devt(dev);
+	devt = scst_dev_to_devt(device);
 
 	pos = sprintf(buf, "%d - %s\n", devt->type,
 		(unsigned)devt->type > ARRAY_SIZE(scst_dev_handler_types) ?
@@ -3839,13 +3805,13 @@ struct device_attribute scst_devt_default_attrs[] = {
 	__ATTR_NULL
 };
 
-static ssize_t scst_devt_mgmt_show(struct device *dev,
+static ssize_t scst_devt_mgmt_show(struct device *device,
 				   struct device_attribute *attr, char *buf)
 {
 	struct scst_dev_type *devt;
 	ssize_t res;
 
-	devt = scst_dev_to_devt(dev);
+	devt = scst_dev_to_devt(device);
 
 	res = 0;
 	if (devt->add_device_parameters)
@@ -4303,33 +4269,57 @@ EXPORT_SYMBOL_GPL(scst_wait_info_completion);
 
 int __init scst_sysfs_init(void)
 {
-	int res = 0;
+	int res;
 
 	TRACE_ENTRY();
 
-	scst_sysfs_root_kobj = kobject_create_and_add_kt(&scst_sysfs_root_ktype,
-						       kernel_kobj, "scst_tgt");
-	if (!scst_sysfs_root_kobj)
-		goto sysfs_root_kobj_error;
+	res = -ENOMEM;
+	scst_device = kzalloc(sizeof *scst_device, GFP_KERNEL);
+	if (!scst_device)
+		goto out;
 
-	res = scst_add_sgv_kobj(scst_sysfs_root_kobj, "sgv");
+	res = class_register(&scst_class);
 	if (res)
-		goto sgv_kobj_error;
+		goto out_free;
+
+	scst_device->class = &scst_class;
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
+	snprintf(scst_device->class_id, BUS_ID_SIZE, "%s", "scst");
+#elif LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 30)
+	snprintf(scst_device->bus_id, BUS_ID_SIZE, "%s", "scst");
+#else
+	dev_set_name(scst_device, "%s", "scst");
+#endif
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
+	res = class_device_register(scst_device);
+#else
+	res = device_register(scst_device);
+#endif
+	if (res)
+		goto out_unregister_class;
+
+	res = scst_add_sgv_kobj(&scst_device->kobj, "sgv");
+	if (res)
+		goto out_unregister_device;
 
 out:
 	TRACE_EXIT_RES(res);
 	return res;
 
-	scst_del_put_sgv_kobj();
-
-sgv_kobj_error:
-	kobject_del(scst_sysfs_root_kobj);
-	kobject_put(scst_sysfs_root_kobj);
-
-sysfs_root_kobj_error:
-	if (res == 0)
-		res = -EINVAL;
-
+out_unregister_device:
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
+	class_device_unregister(scst_device);
+#else
+	device_unregister(scst_device);
+#endif
+	scst_device = NULL;
+out_unregister_class:
+	class_unregister(&scst_class);
+out_free:
+	if (scst_device) {
+		kfree(scst_device);
+		scst_device = NULL;
+	}
 	goto out;
 }
 
@@ -4341,8 +4331,13 @@ void scst_sysfs_cleanup(void)
 
 	scst_del_put_sgv_kobj();
 
-	kobject_del(scst_sysfs_root_kobj);
-	kobject_put(scst_sysfs_root_kobj);
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
+	class_device_unregister(scst_device);
+#else
+	device_unregister(scst_device);
+#endif
+
+	class_unregister(&scst_class);
 
 	/*
 	 * Wait until the root object has been released and hence all child
@@ -4357,5 +4352,4 @@ void scst_sysfs_cleanup(void)
 	PRINT_INFO("%s", "Exiting SCST sysfs hierarchy done");
 
 	TRACE_EXIT();
-	return;
 }

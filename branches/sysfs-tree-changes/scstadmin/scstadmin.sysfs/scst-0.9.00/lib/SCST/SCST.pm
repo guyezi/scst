@@ -19,7 +19,7 @@ use constant {
 TRUE             => 1,
 FALSE            => 0,
 
-SCST_ROOT        => '/sys/kernel/scst_tgt',
+SCST_ROOT        => '/sys/class/scst/scst',
 
 # Root-level
 SCST_HANDLERS    => '/sys/class/device_driver',
@@ -37,7 +37,8 @@ SCST_SESSIONS    => 'sessions',
 SCST_LUNS        => 'luns',
 
 # Files
-SCST_MGMT_IO     => 'mgmt',
+SCST_MGMT_IO     => '/sys/class/scst/scst/mgmt',
+SCST_MGMT_IO_ATTR => 'mgmt',
 SCST_VERSION_IO  => 'version',
 SCST_TRACE_IO    => 'trace_level',
 SCST_RESYNC_IO   => 'resync_size',
@@ -499,7 +500,7 @@ sub initiators {
 
 	foreach my $initiator (readdir($iHandle)) {
 		next if ($initiator eq '.' || $initiator eq '..'
-			 || $initiator eq SCST_MGMT_IO);
+			 || $initiator eq SCST_MGMT_IO_ATTR);
 
 		push @initiators, $initiator;
 	}
@@ -608,7 +609,7 @@ sub driverDynamicAttributes {
 		return undef;
 	}
 
-	my $io = new IO::File mkpath(SCST_TARGETS, $driver, SCST_MGMT_IO), O_RDONLY;
+	my $io = new IO::File mkpath(SCST_TARGETS, $driver, SCST_MGMT_IO_ATTR), O_RDONLY;
 
 	if (!$io) {
 		$self->{'err_string'} = "driverDynamicAttributes(): Unable to open mgmt ".
@@ -680,7 +681,7 @@ sub addDriverDynamicAttribute {
 	return SCST_C_DRV_BAD_ATTRIBUTES if ($rc == 1);
 	return $rc if ($rc > 1);
 
-	my $path = mkpath(SCST_ROOT, SCST_MGMT_IO);
+	my $path = SCST_MGMT_IO;
 
 	my $io = new IO::File $path, O_WRONLY;
 
@@ -718,7 +719,7 @@ sub removeDriverDynamicAttribute {
 	return SCST_C_DRV_BAD_ATTRIBUTES if ($rc == 1);
 	return $rc if ($rc > 1);
 
-	my $path = mkpath(SCST_ROOT, SCST_MGMT_IO);
+	my $path = SCST_MGMT_IO;
 
 	my $io = new IO::File $path, O_WRONLY;
 
@@ -770,7 +771,7 @@ sub driverIsVirtualCapable {
 	return SCST_C_DRV_NO_DRIVER if (!$rc);
 	return $rc if ($rc > 1);
 
-	my $path = mkpath(SCST_TARGETS, $driver, SCST_MGMT_IO);
+	my $path = mkpath(SCST_TARGETS, $driver, SCST_MGMT_IO_ATTR);
 
 	my $io = new IO::File $path, O_RDONLY;
 
@@ -817,7 +818,7 @@ sub addVirtualTarget {
 	return SCST_C_TGT_BAD_ATTRIBUTES if ($rc == TRUE);
 	return $rc if ($rc > 1);
 
-	my $path = mkpath(SCST_ROOT, SCST_MGMT_IO);
+	my $path = SCST_MGMT_IO;
 
 	my $io = new IO::File $path, O_WRONLY;
 
@@ -863,7 +864,7 @@ sub targetDynamicAttributes {
 		return undef;
 	}
 
-	my $io = new IO::File mkpath(SCST_TARGETS, $driver, SCST_MGMT_IO), O_RDONLY;
+	my $io = new IO::File mkpath(SCST_TARGETS, $driver, SCST_MGMT_IO_ATTR), O_RDONLY;
 
 	if (!$io) {
 		$self->{'err_string'} = "targetDynamicAttributes(): Unable to open mgmt ".
@@ -940,7 +941,7 @@ sub addTargetDynamicAttribute {
 	return SCST_C_TGT_BAD_ATTRIBUTES if ($rc == 1);
 	return $rc if ($rc > 1);
 
-	my $path = mkpath(SCST_ROOT, SCST_MGMT_IO);
+	my $path = SCST_MGMT_IO;
 
 	my $io = new IO::File $path, O_WRONLY;
 
@@ -982,7 +983,7 @@ sub removeTargetDynamicAttribute {
 	return SCST_C_TGT_BAD_ATTRIBUTES if ($rc == 1);
 	return $rc if ($rc > 1);
 
-	my $path = mkpath(SCST_ROOT, SCST_MGMT_IO);
+	my $path = SCST_MGMT_IO;
 
 	my $io = new IO::File $path, O_WRONLY;
 
@@ -1018,7 +1019,7 @@ sub removeVirtualTarget {
 
 	return SCST_C_DRV_NOTVIRT if (!$self->driverIsVirtualCapable($driver));
 
-	my $path = mkpath(SCST_ROOT, SCST_MGMT_IO);
+	my $path = SCST_MGMT_IO;
 
 	my $io = new IO::File $path, O_WRONLY;
 
@@ -1174,7 +1175,7 @@ sub addGroup {
 	return SCST_C_GRP_EXISTS if ($rc == TRUE);
 	return $rc if ($rc > 1);
 
-	my $path = mkpath(SCST_ROOT, SCST_MGMT_IO);
+	my $path = SCST_MGMT_IO;
 
 	my $io = new IO::File $path, O_WRONLY;
 
@@ -1215,7 +1216,7 @@ sub removeGroup {
 	return SCST_C_GRP_NO_GROUP if (!$rc);
 	return $rc if ($rc > 1);
 
-	my $path = mkpath(SCST_ROOT, SCST_MGMT_IO);
+	my $path = SCST_MGMT_IO;
 
 	my $io = new IO::File $path, O_WRONLY;
 
@@ -1261,7 +1262,7 @@ sub addInitiator {
 	return SCST_C_GRP_INI_EXISTS if ($rc == TRUE);
 	return $rc if ($rc > 1);
 
-	my $path = mkpath(SCST_ROOT, SCST_MGMT_IO);
+	my $path = SCST_MGMT_IO;
 
 	my $io = new IO::File $path, O_WRONLY;
 
@@ -1309,7 +1310,7 @@ sub removeInitiator {
 	return SCST_C_GRP_NO_INI if (!$rc);
 	return $rc if ($rc > 1);
 
-	my $path = mkpath(SCST_ROOT, SCST_MGMT_IO);
+	my $path = SCST_MGMT_IO;
 
 	my $io = new IO::File $path, O_WRONLY;
 
@@ -1366,7 +1367,7 @@ sub moveInitiator {
 	return SCST_C_GRP_INI_EXISTS if ($rc == TRUE);
 	return $rc if ($rc > 1);
 
-	my $path = mkpath(SCST_ROOT, SCST_MGMT_IO);
+	my $path = SCST_MGMT_IO;
 
 	my $io = new IO::File $path, O_WRONLY;
 
@@ -1409,7 +1410,7 @@ sub clearInitiators {
 	return SCST_C_GRP_NO_GROUP if (!$rc);
 	return $rc if ($rc > 1);
 
-	my $path = mkpath(SCST_ROOT, SCST_MGMT_IO);
+	my $path = SCST_MGMT_IO;
 
 	my $io = new IO::File $path, O_WRONLY;
 
@@ -1484,7 +1485,7 @@ sub addLun {
 	return $err2 if ($rc == TRUE);
 	return $rc if ($rc > 1);
 
-	my $io = new IO::File mkpath(SCST_ROOT, SCST_MGMT_IO), O_WRONLY;
+	my $io = new IO::File SCST_MGMT_IO, O_WRONLY;
 
 	return $err if (!$io);
 
@@ -1551,7 +1552,7 @@ sub removeLun {
 	return $err2 if (!$rc);
 	return $rc if ($rc > 1);
 
-	my $io = new IO::File mkpath(SCST_ROOT, SCST_MGMT_IO), O_WRONLY;
+	my $io = new IO::File SCST_MGMT_IO, O_WRONLY;
 
 	return $err if (!$io);
 
@@ -1622,7 +1623,7 @@ sub replaceLun {
 
 	return SCST_C_LUN_DEV_EXISTS if ($$luns{$lun} eq $device);
 
-	my $io = new IO::File mkpath(SCST_ROOT, SCST_MGMT_IO), O_WRONLY;
+	my $io = new IO::File SCST_MGMT_IO, O_WRONLY;
 
 	return SCST_C_LUN_RPL_DEV_FAIL if (!$io);
 
@@ -1679,7 +1680,7 @@ sub clearLuns {
 		$path = mkpath(IN_SCST_TARGETS, $driver, $target, SCST_LUNS);
 	}
 
-	my $io = new IO::File mkpath(SCST_ROOT, SCST_MGMT_IO), O_WRONLY;
+	my $io = new IO::File SCST_MGMT_IO, O_WRONLY;
 
 	return $err if (!$io);
 
@@ -1841,7 +1842,7 @@ sub deviceAttributes {
 					}
 				}
 
-				next if ($attribute eq SCST_MGMT_IO);
+				next if ($attribute eq SCST_MGMT_IO_ATTR);
 
 				if ($attribute eq 'type') {
 					my($type, $type_string) = split(/\s\-\s/, $value, 2);
@@ -1922,7 +1923,7 @@ sub driverAttributes {
 					}
 				}
 
-				next if ($attribute eq SCST_MGMT_IO);
+				next if ($attribute eq SCST_MGMT_IO_ATTR);
 
 				if ($attribute eq SCST_TRACE_IO) {
 					$attributes{$attribute}->{'value'} = $value;
@@ -2070,7 +2071,7 @@ sub targetAttributes {
 					}
 				}
 
-				next if ($attribute eq SCST_MGMT_IO);
+				next if ($attribute eq SCST_MGMT_IO_ATTR);
 
 				$attributes{$attribute}->{'static'} = $is_static;
 
@@ -2110,7 +2111,7 @@ sub setTargetAttribute {
 	my $bytes;
 
 	if ($attribute eq 'enabled' || $attribute eq 'cpu_mask') {
-		my $io = new IO::File mkpath(SCST_ROOT, SCST_MGMT_IO), O_WRONLY;
+		my $io = new IO::File SCST_MGMT_IO, O_WRONLY;
 
 		return SCST_C_TGT_SETATTR_FAIL if (!$io);
 
@@ -2221,7 +2222,7 @@ sub groupAttributes {
 					}
 				}
 
-				next if ($attribute eq SCST_MGMT_IO);
+				next if ($attribute eq SCST_MGMT_IO_ATTR);
 
 				$attributes{$attribute}->{'static'} = $is_static;
 
@@ -2267,7 +2268,7 @@ sub setGroupAttribute {
 	my $bytes;
 
 	if ($attribute eq 'cpu_mask') {
-		my $io = new IO::File mkpath(SCST_ROOT, SCST_MGMT_IO), O_WRONLY;
+		my $io = new IO::File SCST_MGMT_IO, O_WRONLY;
 
 		return SCST_C_GRP_SETATTR_FAIL if (!$io);
 
@@ -2398,7 +2399,7 @@ sub lunAttributes {
 					}
 				}
 
-				next if ($attribute eq SCST_MGMT_IO);
+				next if ($attribute eq SCST_MGMT_IO_ATTR);
 
 				$attributes{$attribute}->{'static'} = $is_static;
 
@@ -2552,7 +2553,7 @@ sub initiatorAttributes {
 					}
 				}
 
-				next if ($attribute eq SCST_MGMT_IO);
+				next if ($attribute eq SCST_MGMT_IO_ATTR);
 
 				$attributes{$attribute}->{'static'} = $is_static;
 
@@ -2719,7 +2720,7 @@ sub handlerAttributes {
 	foreach my $attribute (readdir($hHandle)) {
 		next if ($attribute eq '.' || $attribute eq '..'
 			 || $attribute eq 'power' || $attribute eq 'subsystem'
-			 || $attribute eq SCST_MGMT_IO);
+			 || $attribute eq SCST_MGMT_IO_ATTR);
 		my $pPath = mkpath(SCST_HANDLERS, $handler, $attribute);
 		my $mode = (stat($pPath))[2];
 
@@ -2759,7 +2760,7 @@ sub handlerAttributes {
 			}
 		}
 
-		next if ($attribute eq SCST_MGMT_IO);
+		next if ($attribute eq SCST_MGMT_IO_ATTR);
 
 		if (!(($mode & S_IRUSR) >> 6)) {
 			$attributes{$attribute}->{'static'} = FALSE;
@@ -2885,7 +2886,7 @@ sub deviceCreateAttributes {
 		return undef;
 	}
 
-	my $io = new IO::File mkpath(SCST_HANDLERS, $handler, SCST_MGMT_IO), O_RDONLY;
+	my $io = new IO::File mkpath(SCST_HANDLERS, $handler, SCST_MGMT_IO_ATTR), O_RDONLY;
 
 	if (!$io) {
 		$self->{'err_string'} = "deviceCreateAttributes(): Unable to open mgmt ".
@@ -2925,7 +2926,7 @@ sub openDevice {
 	return SCST_C_DEV_BAD_ATTRIBUTES if ($rc == TRUE);
 	return $rc if ($rc > 1);
 
-	my $io = new IO::File mkpath(SCST_ROOT, SCST_MGMT_IO), O_WRONLY;
+	my $io = new IO::File SCST_MGMT_IO, O_WRONLY;
 
 	if (!$io) {
 		$self->{'err_string'} = "openDevice(): Unable to open mgmt interface for ".
@@ -2968,7 +2969,7 @@ sub closeDevice {
 	return SCST_C_HND_NO_HANDLER if (!$rc);
 	return $rc if ($rc > 1);
 
-	my $io = new IO::File mkpath(SCST_ROOT, SCST_MGMT_IO), O_WRONLY;
+	my $io = new IO::File SCST_MGMT_IO, O_WRONLY;
 
 	if (!$io) {
 		$self->{'err_string'} = "closeDevice(): Unable to open mgmt interface for handler ".
@@ -3017,7 +3018,7 @@ sub setDeviceAttribute {
 	if ($attribute eq 'filename'
 	    || $attribute eq 'threads_num'
 	    || $attribute eq 'threads_pool_type') {
-		my $io = new IO::File mkpath(SCST_ROOT, SCST_MGMT_IO), O_WRONLY;
+		my $io = new IO::File SCST_MGMT_IO, O_WRONLY;
 
 		return SCST_C_DEV_SETATTR_FAIL if (!$io);
 
@@ -3101,7 +3102,7 @@ sub targetCreateAttributes {
 		return undef;
 	}
 
-	my $io = new IO::File mkpath(SCST_TARGETS, $driver, SCST_MGMT_IO), O_RDONLY;
+	my $io = new IO::File mkpath(SCST_TARGETS, $driver, SCST_MGMT_IO_ATTR), O_RDONLY;
 
 	if (!$io) {
 		$self->{'err_string'} = "targetCreateAttributes(): Unable to open driver mgmt ".
@@ -3225,10 +3226,10 @@ sub lunCreateAttributes {
 		}
 
 		$_path = mkpath(SCST_TARGETS, $driver, $target, SCST_GROUPS,
-				$group, SCST_LUNS, SCST_MGMT_IO), O_RDONLY;
+				$group, SCST_LUNS, SCST_MGMT_IO_ATTR), O_RDONLY;
 	} else {
 		$_path =  mkpath(SCST_TARGETS, $driver, $target, SCST_LUNS,
-				 SCST_MGMT_IO), O_RDONLY;
+				 SCST_MGMT_IO_ATTR), O_RDONLY;
 	}
 
 	my $io = new IO::File $_path;
@@ -3325,7 +3326,7 @@ sub initiatorCreateAttributes {
 
 	my $io = new IO::File mkpath(SCST_TARGETS, $driver, $target,
 				     SCST_GROUPS, $group, SCST_INITIATORS,
-				     SCST_MGMT_IO), O_RDONLY;
+				     SCST_MGMT_IO_ATTR), O_RDONLY;
 
 	if (!$io) {
 		$self->{'err_string'} = "initiatorCreateAttributes(): Unable to open initiators mgmt ".
