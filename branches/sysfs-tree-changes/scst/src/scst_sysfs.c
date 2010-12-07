@@ -4316,10 +4316,7 @@ out_unregister_device:
 out_unregister_class:
 	class_unregister(&scst_class);
 out_free:
-	if (scst_device) {
-		kfree(scst_device);
-		scst_device = NULL;
-	}
+	kfree(scst_device);
 	goto out;
 }
 
