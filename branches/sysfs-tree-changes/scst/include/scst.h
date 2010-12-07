@@ -1396,7 +1396,7 @@ struct scst_dev_type {
 	const struct device_attribute **devt_attrs;
 
 	/* sysfs device attributes, if any */
-	const struct attribute **dev_attrs;
+	const struct device_attribute **dev_attrs;
 #endif
 
 	/* Pointer to dev handler's private data */
@@ -2261,7 +2261,7 @@ struct scst_device {
 	/* Threads pool type of the device. Valid only if threads_num > 0. */
 	enum scst_dev_type_threads_pool_type threads_pool_type;
 
-	struct kobject dev_kobj; /* kobject for this struct */
+	struct device dev_dev;
 
 #ifndef CONFIG_SCST_PROC
 	struct kobject *dev_exp_kobj; /* exported groups */
@@ -3805,19 +3805,19 @@ static inline struct scst_dev_type *scst_kobj_to_devt(struct kobject *kobj)
 	return scst_dev_to_devt(container_of(kobj, struct device, kobj));
 }
 
-/*
- * Returns device's root sysfs kobject.
- * The driver can create own files/directories/links here.
- */
-static inline struct kobject *scst_sysfs_get_dev_kobj(
-	struct scst_device *dev)
+static inline struct device *scst_sysfs_get_dev_dev(struct scst_device *dev)
 {
-	return &dev->dev_kobj;
+	return &dev->dev_dev;
 }
 
-static inline struct scst_device *scst_kobj_to_dev(struct kobject *kobj)
+static inline struct kobject *scst_sysfs_get_dev_kobj(struct scst_device *dev)
 {
-	return container_of(kobj, struct scst_device, dev_kobj);
+	return &dev->dev_dev.kobj;
+}
+
+static inline struct scst_device *scst_dev_to_dev(struct device *dev)
+{
+	return container_of(dev, struct scst_device, dev_dev);
 }
 
 /*

@@ -66,7 +66,6 @@ enum mgmt_path_type {
 static DECLARE_COMPLETION(scst_sysfs_root_release_completion);
 
 static struct kobject *scst_sysfs_root_kobj;
-static struct kobject *scst_devices_kobj;
 
 static const char *scst_dev_handler_types[] = {
 	"Direct-access device (e.g., magnetic disk)",
@@ -226,7 +225,6 @@ static int device_create_files(struct device *dev,
 	return err;
 }
 
-#if 0
 static void device_remove_files(struct device *dev,
 				const struct device_attribute **ptr)
 {
@@ -235,7 +233,6 @@ static void device_remove_files(struct device *dev,
 	for (i = 0; ptr[i]; i++)
 		device_remove_file(dev, ptr[i]);
 }
-#endif
 
 /**
  ** Regular SCST sysfs ops
@@ -854,13 +851,13 @@ out:
 	return res;
 }
 
-static ssize_t scst_dev_sysfs_type_show(struct kobject *kobj,
-			    struct kobj_attribute *attr, char *buf)
+static ssize_t scst_dev_sysfs_type_show(struct device *device,
+				struct device_attribute *attr, char *buf)
 {
 	int pos;
 	struct scst_device *dev;
 
-	dev = scst_kobj_to_dev(kobj);
+	dev = scst_dev_to_dev(device);
 
 	pos = sprintf(buf, "%d - %s\n", dev->type,
 		(unsigned)dev->type > ARRAY_SIZE(scst_dev_handler_types) ?
@@ -869,20 +866,17 @@ static ssize_t scst_dev_sysfs_type_show(struct kobject *kobj,
 	return pos;
 }
 
-static struct kobj_attribute dev_type_attr =
-	__ATTR(type, S_IRUGO, scst_dev_sysfs_type_show, NULL);
-
 #if defined(CONFIG_SCST_DEBUG) || defined(CONFIG_SCST_TRACING)
 
-static ssize_t scst_dev_sysfs_dump_prs(struct kobject *kobj,
-	struct kobj_attribute *attr, const char *buf, size_t count)
+static ssize_t scst_dev_sysfs_dump_prs(struct device *device,
+	struct device_attribute *attr, const char *buf, size_t count)
 {
 	ssize_t res;
 	struct scst_device *dev;
 
 	TRACE_ENTRY();
 
-	dev = scst_kobj_to_dev(kobj);
+	dev = scst_dev_to_dev(device);
 	scst_pr_dump_prs(dev, true);
 	res = count;
 
@@ -890,7 +884,7 @@ static ssize_t scst_dev_sysfs_dump_prs(struct kobject *kobj,
 	return res;
 }
 
-static struct kobj_attribute dev_dump_prs_attr =
+static struct device_attribute dev_dump_prs_attr =
 	__ATTR(dump_prs, S_IWUSR, NULL, scst_dev_sysfs_dump_prs);
 
 #endif /* defined(CONFIG_SCST_DEBUG) || defined(CONFIG_SCST_TRACING) */
@@ -962,15 +956,15 @@ out:
 	return res;
 }
 
-static ssize_t scst_dev_sysfs_threads_num_show(struct kobject *kobj,
-	struct kobj_attribute *attr, char *buf)
+static ssize_t scst_dev_sysfs_threads_num_show(struct device *device,
+	struct device_attribute *attr, char *buf)
 {
 	int pos;
 	struct scst_device *dev;
 
 	TRACE_ENTRY();
 
-	dev = scst_kobj_to_dev(kobj);
+	dev = scst_dev_to_dev(device);
 
 	pos = sprintf(buf, "%d\n%s", dev->threads_num,
 		(dev->threads_num != dev->handler->threads_num) ?
@@ -999,18 +993,18 @@ out:
 	return res;
 }
 
-static struct kobj_attribute dev_threads_num_attr =
+static struct device_attribute dev_threads_num_attr =
 	__ATTR(threads_num, S_IRUGO, scst_dev_sysfs_threads_num_show, NULL);
 
-static ssize_t scst_dev_sysfs_threads_pool_type_show(struct kobject *kobj,
-	struct kobj_attribute *attr, char *buf)
+static ssize_t scst_dev_sysfs_threads_pool_type_show(struct device *device,
+	struct device_attribute *attr, char *buf)
 {
 	int pos;
 	struct scst_device *dev;
 
 	TRACE_ENTRY();
 
-	dev = scst_kobj_to_dev(kobj);
+	dev = scst_dev_to_dev(device);
 
 	if (dev->threads_num == 0) {
 		pos = sprintf(buf, "Async\n");
@@ -1060,13 +1054,19 @@ out:
 	return res;
 }
 
-static struct kobj_attribute dev_threads_pool_type_attr =
+static struct device_attribute dev_threads_pool_type_attr =
 	__ATTR(threads_pool_type, S_IRUGO,
 	       scst_dev_sysfs_threads_pool_type_show, NULL);
 
-struct attribute *scst_dev_attrs[] = {
-	&dev_type_attr.attr,
-	NULL,
+static const struct device_attribute *dev_thread_attr[] = {
+	&dev_threads_num_attr,
+	&dev_threads_pool_type_attr,
+	NULL
+};
+
+struct device_attribute scst_dev_attrs[] = {
+	__ATTR(type, S_IRUGO, scst_dev_sysfs_type_show, NULL),
+	__ATTR_NULL,
 };
 
 int scst_devt_dev_sysfs_create(struct scst_device *dev)
@@ -1078,7 +1078,7 @@ int scst_devt_dev_sysfs_create(struct scst_device *dev)
 	if (dev->handler == &scst_null_devtype)
 		goto out;
 
-	res = sysfs_create_link(&dev->dev_kobj,
+	res = sysfs_create_link(scst_sysfs_get_dev_kobj(dev),
 				scst_sysfs_get_devt_kobj(dev->handler),
 				"handler");
 	if (res != 0) {
@@ -1088,7 +1088,7 @@ int scst_devt_dev_sysfs_create(struct scst_device *dev)
 	}
 
 	res = sysfs_create_link(scst_sysfs_get_devt_kobj(dev->handler),
-				&dev->dev_kobj, dev->virt_name);
+				scst_sysfs_get_dev_kobj(dev), dev->virt_name);
 	if (res != 0) {
 		PRINT_ERROR("Can't create handler link for dev %s",
 			    dev->virt_name);
@@ -1096,27 +1096,18 @@ int scst_devt_dev_sysfs_create(struct scst_device *dev)
 	}
 
 	if (dev->handler->threads_num >= 0) {
-		res = sysfs_create_file(&dev->dev_kobj,
-				&dev_threads_num_attr.attr);
-		if (res != 0) {
-			PRINT_ERROR("Can't add dev attr %s for dev %s",
-				dev_threads_num_attr.attr.name,
-				dev->virt_name);
-			goto out_err;
-		}
-		res = sysfs_create_file(&dev->dev_kobj,
-				&dev_threads_pool_type_attr.attr);
-		if (res != 0) {
-			PRINT_ERROR("Can't add dev attr %s for dev %s",
-				dev_threads_pool_type_attr.attr.name,
-				dev->virt_name);
+		res = device_create_files(scst_sysfs_get_dev_dev(dev),
+					  dev_thread_attr);
+		if (res) {
+			PRINT_ERROR("Can't add thread attributes for dev %s",
+				    dev->virt_name);
 			goto out_err;
 		}
 	}
 
 	if (dev->handler->dev_attrs) {
-		res = sysfs_create_files(&dev->dev_kobj,
-					 dev->handler->dev_attrs);
+		res = device_create_files(scst_sysfs_get_dev_dev(dev),
+					  dev->handler->dev_attrs);
 		if (res) {
 			PRINT_ERROR("Can't add device attributes for dev %s",
 				    dev->virt_name);
@@ -1141,12 +1132,12 @@ void scst_devt_dev_sysfs_del(struct scst_device *dev)
 		goto out;
 
 	if (dev->handler->dev_attrs)
-		sysfs_remove_files(&dev->dev_kobj, dev->handler->dev_attrs);
-	sysfs_remove_file(&dev->dev_kobj, &dev_threads_pool_type_attr.attr);
-	sysfs_remove_file(&dev->dev_kobj, &dev_threads_num_attr.attr);
+		device_remove_files(scst_sysfs_get_dev_dev(dev),
+				    dev->handler->dev_attrs);
+	device_remove_files(scst_sysfs_get_dev_dev(dev), dev_thread_attr);
 	sysfs_remove_link(scst_sysfs_get_devt_kobj(dev->handler),
 			  dev->virt_name);
-	sysfs_remove_link(&dev->dev_kobj, "handler");
+	sysfs_remove_link(scst_sysfs_get_dev_kobj(dev), "handler");
 
 out:
 	TRACE_EXIT();
@@ -1158,14 +1149,7 @@ int scst_dev_sysfs_create(struct scst_device *dev)
 
 	TRACE_ENTRY();
 
-	res = kobject_add(&dev->dev_kobj, scst_devices_kobj, dev->virt_name);
-	if (res) {
-		PRINT_ERROR("Can't add device %s to sysfs", dev->virt_name);
-		goto out;
-	}
-
-	dev->dev_exp_kobj = kobject_create_and_add("exported",
-						   &dev->dev_kobj);
+	dev->dev_exp_kobj = kobject_create_and_add("exported", scst_sysfs_get_dev_kobj(dev));
 	if (dev->dev_exp_kobj == NULL) {
 		PRINT_ERROR("Can't create exported link for device %s",
 			dev->virt_name);
@@ -1174,7 +1158,7 @@ int scst_dev_sysfs_create(struct scst_device *dev)
 	}
 
 	if (dev->scsi_dev != NULL) {
-		res = sysfs_create_link(&dev->dev_kobj,
+		res = sysfs_create_link(scst_sysfs_get_dev_kobj(dev),
 			&dev->scsi_dev->sdev_dev.kobj, "scsi_device");
 		if (res != 0) {
 			PRINT_ERROR("Can't create scsi_device link for dev %s",
@@ -1185,7 +1169,7 @@ int scst_dev_sysfs_create(struct scst_device *dev)
 
 #if defined(CONFIG_SCST_DEBUG) || defined(CONFIG_SCST_TRACING)
 	if (dev->scsi_dev == NULL) {
-		res = sysfs_create_file(&dev->dev_kobj,
+		res = sysfs_create_file(scst_sysfs_get_dev_kobj(dev),
 				&dev_dump_prs_attr.attr);
 		if (res != 0) {
 			PRINT_ERROR("Can't create attr %s for dev %s",
@@ -1207,12 +1191,8 @@ out_del:
 void scst_dev_sysfs_del(struct scst_device *dev)
 {
 	TRACE_ENTRY();
-
 	kobject_del(dev->dev_exp_kobj);
-	kobject_del(&dev->dev_kobj);
-
 	kobject_put(dev->dev_exp_kobj);
-
 	TRACE_EXIT();
 }
 
@@ -1809,7 +1789,7 @@ void scst_acg_dev_sysfs_del(struct scst_acg_dev *acg_dev)
 
 	sysfs_remove_link(acg_dev->dev->dev_exp_kobj,
 			  acg_dev->acg_dev_link_name);
-	kobject_put(&acg_dev->dev->dev_kobj);
+	kobject_put(scst_sysfs_get_dev_kobj(acg_dev->dev));
 
 	kobject_del(&acg_dev->acg_dev_kobj);
 
@@ -1834,7 +1814,7 @@ int scst_acg_dev_sysfs_create(struct scst_acg_dev *acg_dev,
 		goto out;
 	}
 
-	kobject_get(&acg_dev->dev->dev_kobj);
+	kobject_get(scst_sysfs_get_dev_kobj(acg_dev->dev));
 
 	snprintf(acg_dev->acg_dev_link_name, sizeof(acg_dev->acg_dev_link_name),
 		"export%u", acg_dev->dev->dev_exported_lun_num++);
@@ -1848,7 +1828,7 @@ int scst_acg_dev_sysfs_create(struct scst_acg_dev *acg_dev,
 	}
 
 	res = sysfs_create_link(&acg_dev->acg_dev_kobj,
-			&acg_dev->dev->dev_kobj, "device");
+			scst_sysfs_get_dev_kobj(acg_dev->dev), "device");
 	if (res != 0) {
 		PRINT_ERROR("Can't create acg %s device link",
 			acg_dev->acg->acg_name);
@@ -3033,7 +3013,7 @@ static ssize_t scst_mgmt_show(struct kobject *kobj,
 	ssize_t count;
 	static const char help[] =
 /* devices/<dev>/filename */
-"in devices/<dev> <dev_cmd>\n"
+"in target_device/<dev> <dev_cmd>\n"
 /* scst_devt_mgmt or scst_devt_pass_through_mgmt */
 "in device_driver/<devt> <devt_cmd>\n"
 /* scst_tgtt_mgmt */
@@ -3164,7 +3144,7 @@ static enum mgmt_path_type __parse_path(char *path,
 
 	if (!comp[0] || !comp[1])
 		goto err;
-	if (strcmp(comp[0], "devices") == 0) {
+	if (strcmp(comp[0], "target_device") == 0) {
 		*dev = __scst_lookup_dev(comp[1]);
 		if (!*dev)
 			goto err;
@@ -3236,7 +3216,7 @@ static ssize_t scst_mgmt_store(struct kobject *kobj,
 
 	TRACE_ENTRY();
 
-	TRACE_DBG("Processing management command \"%.*s\"",
+	TRACE_DBG("Processing cmd \"%.*s\"",
 		  count >= 1 && buf[count - 1] == '\n'
 		  ? (int)count - 1 : (int)count,
 		  buf);
@@ -4082,12 +4062,6 @@ int scst_devt_sysfs_create(struct scst_dev_type *devt)
 
 	TRACE_ENTRY();
 
-	res = sysfs_create_link(scst_devices_kobj,
-				scst_sysfs_get_devt_kobj(devt),
-				devt->name);
-	if (res)
-		goto out_err;
-
 	res = device_create_file(scst_sysfs_get_devt_dev(devt),
 				 &scst_devt_mgmt);
 	if (res) {
@@ -4130,7 +4104,6 @@ out_err:
 void scst_devt_sysfs_del(struct scst_dev_type *devt)
 {
 	TRACE_ENTRY();
-	sysfs_remove_link(scst_devices_kobj, devt->name);
 	TRACE_EXIT();
 }
 
@@ -4357,11 +4330,6 @@ int __init scst_sysfs_init(void)
 	if (!scst_sysfs_root_kobj)
 		goto sysfs_root_kobj_error;
 
-	scst_devices_kobj = kobject_create_and_add("devices",
-						   scst_sysfs_root_kobj);
-	if (!scst_devices_kobj)
-		goto devices_kobj_error;
-
 	res = scst_add_sgv_kobj(scst_sysfs_root_kobj, "sgv");
 	if (res)
 		goto sgv_kobj_error;
@@ -4373,10 +4341,6 @@ out:
 	scst_del_put_sgv_kobj();
 
 sgv_kobj_error:
-	kobject_del(scst_devices_kobj);
-	kobject_put(scst_devices_kobj);
-
-devices_kobj_error:
 	kobject_del(scst_sysfs_root_kobj);
 	kobject_put(scst_sysfs_root_kobj);
 
@@ -4394,9 +4358,6 @@ void scst_sysfs_cleanup(void)
 	PRINT_INFO("%s", "Exiting SCST sysfs hierarchy...");
 
 	scst_del_put_sgv_kobj();
-
-	kobject_del(scst_devices_kobj);
-	kobject_put(scst_devices_kobj);
 
 	kobject_del(scst_sysfs_root_kobj);
 	kobject_put(scst_sysfs_root_kobj);

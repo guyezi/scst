@@ -200,14 +200,14 @@ static int dev_user_read_proc(struct seq_file *seq,
 
 #else /* CONFIG_SCST_PROC */
 
-static ssize_t dev_user_sysfs_commands_show(struct kobject *kobj,
-	struct kobj_attribute *attr, char *buf);
+static ssize_t dev_user_sysfs_commands_show(struct device *device,
+	struct device_attribute *attr, char *buf);
 
-static struct kobj_attribute dev_user_commands_attr =
+static struct device_attribute dev_user_commands_attr =
 	__ATTR(commands, S_IRUGO, dev_user_sysfs_commands_show, NULL);
 
-static const struct attribute *dev_user_dev_attrs[] = {
-	&dev_user_commands_attr.attr,
+static const struct device_attribute *dev_user_dev_attrs[] = {
+	&dev_user_commands_attr,
 	NULL,
 };
 
@@ -3526,8 +3526,8 @@ out:
 
 #ifndef CONFIG_SCST_PROC
 
-static ssize_t dev_user_sysfs_commands_show(struct kobject *kobj,
-	struct kobj_attribute *attr, char *buf)
+static ssize_t dev_user_sysfs_commands_show(struct device *device,
+	struct device_attribute *attr, char *buf)
 {
 	int pos = 0, ppos, i;
 	struct scst_device *dev;
@@ -3536,9 +3536,8 @@ static ssize_t dev_user_sysfs_commands_show(struct kobject *kobj,
 
 	TRACE_ENTRY();
 
-	dev = scst_kobj_to_dev(kobj);
-
-	udev = (struct scst_user_dev *)dev->dh_priv;
+	dev = scst_dev_to_dev(device);
+	udev = dev->dh_priv;
 
 	spin_lock_irqsave(&udev->udev_cmd_threads.cmd_list_lock, flags);
 	for (i = 0; i < (int)ARRAY_SIZE(udev->ucmd_hash); i++) {

@@ -463,7 +463,7 @@ extern const struct sysfs_ops scst_sysfs_ops;
 extern struct sysfs_ops scst_sysfs_ops;
 #endif
 extern struct device_attribute scst_devt_default_attrs[];
-extern struct attribute *scst_dev_attrs[];
+extern struct device_attribute scst_dev_attrs[];
 extern struct attribute *scst_session_attrs[];
 extern struct attribute *scst_tgt_dev_attrs[];
 extern struct attribute *scst_lun_attrs[];

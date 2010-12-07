@@ -956,15 +956,14 @@ void scst_resume_activity(void)
 }
 EXPORT_SYMBOL_GPL(scst_resume_activity);
 
-static void scst_release_dev(struct kobject *kobj)
+static void scst_release_dev(struct device *device)
 {
 	struct scst_device *dev;
 
-	dev = scst_kobj_to_dev(kobj);
+	dev = scst_dev_to_dev(device);
 	scst_free_device(dev);
 }
 
-#if 0
 static struct class scst_dev_class = {
 	.name			= "target_device",
 #if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
@@ -975,19 +974,10 @@ static struct class scst_dev_class = {
 	.dev_attrs		= scst_dev_attrs,
 #endif
 };
-#endif
-
-static struct kobj_type scst_dev_ktype = {
-	.release = scst_release_dev,
-#ifndef CONFIG_SCST_PROC
-	.sysfs_ops = &scst_sysfs_ops,
-	.default_attrs = scst_dev_attrs,
-#endif
-};
 
 static int scst_register_device(struct scsi_device *scsidp)
 {
-	int res = 0;
+	int res;
 	struct scst_device *dev, *d;
 #ifdef CONFIG_SCST_PROC
 	struct scst_dev_type *dt;
@@ -995,29 +985,19 @@ static int scst_register_device(struct scsi_device *scsidp)
 
 	TRACE_ENTRY();
 
-#ifdef CONFIG_SCST_PROC
 	res = scst_suspend_activity(true);
-	if (res != 0)
+	if (res)
 		goto out;
-#endif
 
-	if (mutex_lock_interruptible(&scst_mutex) != 0) {
-		res = -EINTR;
-#ifdef CONFIG_SCST_PROC
+	res = mutex_lock_interruptible(&scst_mutex);
+	if (res)
 		goto out_resume;
-#else
-		goto out;
-#endif
-	}
 
 	res = scst_alloc_device(GFP_KERNEL, &dev);
-	if (res != 0)
+	if (res)
 		goto out_unlock;
 
-	kobject_init(&dev->dev_kobj, &scst_dev_ktype);
-
 	dev->type = scsidp->type;
-
 	dev->virt_name = kasprintf(GFP_KERNEL, "%d:%d:%d:%d",
 				   scsidp->host->host_no,
 				   scsidp->channel, scsidp->id, scsidp->lun);
@@ -1037,8 +1017,6 @@ static int scst_register_device(struct scsi_device *scsidp)
 
 	dev->scsi_dev = scsidp;
 
-	list_add_tail(&dev->dev_list_entry, &scst_dev_list);
-
 #ifdef CONFIG_SCST_PROC
 	/*
 	 * Let's don't attach to dev handler by default, but keep this code in
@@ -1048,20 +1026,41 @@ static int scst_register_device(struct scsi_device *scsidp)
 		if (dt->type == scsidp->type) {
 			res = scst_assign_dev_handler(dev, dt);
 			if (res != 0)
-				goto out_del;
+				goto out_free_dev;
 			break;
 		}
 	}
+#else
+	dev->dev_dev.class = &scst_dev_class;
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
+	dev->dev_dev.dev = &scsidp->sdev_dev;
+#else
+	dev->dev_dev.parent = &scsidp->sdev_dev;
+#endif
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
+	snprintf(dev->dev_dev.class_id, BUS_ID_SIZE, "%s", dev->virt_name);
+#elif LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 30)
+	snprintf(dev->dev_dev.bus_id, BUS_ID_SIZE, "%s", dev->virt_name);
+#else
+	dev_set_name(&dev->dev_dev, "%s", dev->virt_name);
+#endif
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
+	res = class_device_register(&dev->dev_dev);
+#else
+	res = device_register(&dev->dev_dev);
+#endif
+	if (res)
+		goto out_free_dev;
+	
+	res = scst_dev_sysfs_create(dev);
+	if (res)
+		goto out_unregister;
+#endif
+
+	list_add_tail(&dev->dev_list_entry, &scst_dev_list);
 
 	mutex_unlock(&scst_mutex);
 	scst_resume_activity();
-#else
-	mutex_unlock(&scst_mutex);
-
-	res = scst_dev_sysfs_create(dev);
-	if (res != 0)
-		goto out_del;
-#endif
 
 	PRINT_INFO("Attached to scsi%d, channel %d, id %d, lun %d, "
 		"type %d", scsidp->host->host_no, scsidp->channel,
@@ -1071,18 +1070,22 @@ out:
 	TRACE_EXIT_RES(res);
 	return res;
 
-out_del:
-	list_del(&dev->dev_list_entry);
-
+out_unregister:
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
+	class_device_unregister(&dev->dev_dev);
+#else
+	device_unregister(&dev->dev_dev);
+#endif
+	dev = NULL;
 out_free_dev:
-	kobject_put(&dev->dev_kobj);
-
+	if (dev) {
+		scst_free_device(dev);
+		dev = NULL;
+	}
 out_unlock:
 	mutex_unlock(&scst_mutex);
-#ifdef CONFIG_SCST_PROC
 out_resume:
 	scst_resume_activity();
-#endif
 	goto out;
 }
 
@@ -1112,6 +1115,8 @@ static void scst_unregister_device(struct scsi_device *scsidp)
 
 	list_del(&dev->dev_list_entry);
 
+	scst_dev_sysfs_del(dev);
+
 	scst_assign_dev_handler(dev, &scst_null_devtype);
 
 	list_for_each_entry_safe(acg_dev, aa, &dev->dev_acg_dev_list,
@@ -1119,7 +1124,11 @@ static void scst_unregister_device(struct scsi_device *scsidp)
 		scst_acg_del_lun(acg_dev->acg, acg_dev->lun, true);
 	}
 
-	scst_dev_sysfs_del(dev);
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
+	class_device_unregister(&dev->dev_dev);
+#else
+	device_unregister(&dev->dev_dev);
+#endif
 
 	mutex_unlock(&scst_mutex);
 
@@ -1128,8 +1137,6 @@ static void scst_unregister_device(struct scsi_device *scsidp)
 	PRINT_INFO("Detached from scsi%d, channel %d, id %d, lun %d, type %d",
 		scsidp->host->host_no, scsidp->channel, scsidp->id,
 		scsidp->lun, scsidp->type);
-
-	scst_free_device(dev);
 
 out:
 	TRACE_EXIT();
@@ -1202,7 +1209,7 @@ static int scst_check_device_name(const char *dev_name)
 int scst_register_virtual_device(struct scst_dev_type *dev_handler,
 	const char *dev_name)
 {
-	int res, rc;
+	int res;
 	struct scst_device *dev, *d;
 
 	TRACE_ENTRY();
@@ -1221,21 +1228,20 @@ int scst_register_virtual_device(struct scst_dev_type *dev_handler,
 	}
 
 	res = scst_check_device_name(dev_name);
-	if (res != 0)
+	if (res)
 		goto out;
 
 	res = scst_dev_handler_check(dev_handler);
-	if (res != 0)
+	if (res)
 		goto out;
 
 	res = scst_suspend_activity(true);
-	if (res != 0)
+	if (res)
 		goto out;
 
-	if (mutex_lock_interruptible(&scst_mutex) != 0) {
-		res = -EINTR;
+	res = mutex_lock_interruptible(&scst_mutex);
+	if (res)
 		goto out_resume;
-	}
 
 	list_for_each_entry(d, &scst_dev_list, dev_list_entry) {
 		if (strcmp(d->virt_name, dev_name) == 0) {
@@ -1246,10 +1252,8 @@ int scst_register_virtual_device(struct scst_dev_type *dev_handler,
 	}
 
 	res = scst_alloc_device(GFP_KERNEL, &dev);
-	if (res != 0)
+	if (res)
 		goto out_unlock;
-
-	kobject_init(&dev->dev_kobj, &scst_dev_ktype);
 
 	dev->type = dev_handler->type;
 	dev->scsi_dev = NULL;
@@ -1270,23 +1274,40 @@ int scst_register_virtual_device(struct scst_dev_type *dev_handler,
 
 	res = dev->virt_id;
 
-	rc = scst_pr_init_dev(dev);
-	if (rc != 0) {
-		res = rc;
+	dev->dev_dev.class = &scst_dev_class;
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
+	dev->dev_dev.dev = NULL;
+#else
+	dev->dev_dev.parent = NULL;
+#endif
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
+	snprintf(dev->dev_dev.class_id, BUS_ID_SIZE, "%s", dev->virt_name);
+#elif LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 30)
+	snprintf(dev->dev_dev.bus_id, BUS_ID_SIZE, "%s", dev->virt_name);
+#else
+	dev_set_name(&dev->dev_dev, "%s", dev->virt_name);
+#endif
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
+	res = class_device_register(&dev->dev_dev);
+#else
+	res = device_register(&dev->dev_dev);
+#endif
+	if (res)
 		goto out_free_dev;
-	}
+
+	res = scst_pr_init_dev(dev);
+	if (res)
+		goto out_unregister;
 
 #ifndef CONFIG_SCST_PROC
 	res = scst_dev_sysfs_create(dev);
-	if (res != 0)
+	if (res)
 		goto out_pr_clear_dev;
 #endif
 
-	rc = scst_assign_dev_handler(dev, dev_handler);
-	if (rc != 0) {
-		res = rc;
+	res = scst_assign_dev_handler(dev, dev_handler);
+	if (res)
 		goto out_sysfs_del;
-	}
 
 	list_add_tail(&dev->dev_list_entry, &scst_dev_list);
 
@@ -1295,8 +1316,7 @@ int scst_register_virtual_device(struct scst_dev_type *dev_handler,
 
 	res = dev->virt_id;
 
-	PRINT_INFO("Attached to virtual device %s (id %d)",
-		dev_name, res);
+	PRINT_INFO("Attached to virtual device %s (id %d)", dev_name, res);
 
 out:
 	TRACE_EXIT_RES(res);
@@ -1304,16 +1324,22 @@ out:
 
 out_sysfs_del:
 	scst_dev_sysfs_del(dev);
-
 out_pr_clear_dev:
 	scst_pr_clear_dev(dev);
-
+out_unregister:
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
+	class_device_unregister(&dev->dev_dev);
+#else
+	device_unregister(&dev->dev_dev);
+#endif
+	dev = NULL;
 out_free_dev:
-	kobject_put(&dev->dev_kobj);
-
+	if (dev) {
+		scst_free_device(dev);
+		dev = NULL;
+	}
 out_unlock:
 	mutex_unlock(&scst_mutex);
-
 out_resume:
 	scst_resume_activity();
 	goto out;
@@ -1348,6 +1374,8 @@ void scst_unregister_virtual_device(int id)
 
 	list_del(&dev->dev_list_entry);
 
+	scst_dev_sysfs_del(dev);
+
 	scst_pr_clear_dev(dev);
 
 	scst_assign_dev_handler(dev, &scst_null_devtype);
@@ -1357,15 +1385,17 @@ void scst_unregister_virtual_device(int id)
 		scst_acg_del_lun(acg_dev->acg, acg_dev->lun, true);
 	}
 
-	scst_dev_sysfs_del(dev);
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
+	class_device_unregister(&dev->dev_dev);
+#else
+	device_unregister(&dev->dev_dev);
+#endif
 
 	mutex_unlock(&scst_mutex);
 	scst_resume_activity();
 
 	PRINT_INFO("Detached from virtual device %s (id %d)",
 		dev->virt_name, dev->virt_id);
-
-	kobject_put(&dev->dev_kobj);
 
 out:
 	TRACE_EXIT();
@@ -2492,15 +2522,13 @@ static int __init init_scst(void)
 	if (res)
 		goto out_unregister_tgt_class;
 
-#if 0
 	res = class_register(&scst_dev_class);
 	if (res)
 		goto out_unregister_devt_class;
-#endif
 
 	res = scst_sysfs_init();
 	if (res)
-		goto out_unregister_devt_class;
+		goto out_unregister_dev_class;
 
 	if (scst_max_cmd_mem == 0) {
 		struct sysinfo si;
@@ -2591,10 +2619,8 @@ out_free_acg:
 out_destroy_sgv_pool:
 	scst_sgv_pools_deinit();
 
-#if 0
 out_unregister_dev_class:
 	class_unregister(&scst_dev_class);
-#endif
 
 out_unregister_devt_class:
 	class_unregister(&scst_devt_class);
@@ -2679,9 +2705,7 @@ static void __exit exit_scst(void)
 
 	scst_sgv_pools_deinit();
 
-#if 0
 	class_unregister(&scst_dev_class);
-#endif
 	class_unregister(&scst_devt_class);
 	class_unregister(&scst_tgt_class);
 	class_unregister(&scst_tgtt_class);

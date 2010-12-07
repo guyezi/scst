@@ -24,7 +24,8 @@ SCST_ROOT        => '/sys/kernel/scst_tgt',
 # Root-level
 SCST_HANDLERS    => '/sys/class/device_driver',
 IN_SCST_HANDLERS => 'device_driver',
-SCST_DEVICES     => 'devices',
+SCST_DEVICES     => '/sys/class/target_device',
+IN_SCST_DEVICES  => 'target_device',
 SCST_TARGETS     => '/sys/class/target_driver',
 IN_SCST_TARGETS  => 'target_driver',
 SCST_SGV         => 'sgv',
@@ -267,7 +268,7 @@ sub scstAttributes {
 	}
 
 	foreach my $attribute (readdir($pHandle)) {
-		next if (($attribute eq '.') || ($attribute eq '..'));
+		next if ($attribute eq '.' || $attribute eq '..');
 		my $pPath = mkpath(SCST_ROOT, $attribute);
 		my $mode = (stat($pPath))[2];
 
@@ -387,7 +388,7 @@ sub drivers {
 	}
 
 	foreach my $driver (readdir($dHandle)) {
-		next if (($driver eq '.') || ($driver eq '..'));
+		next if ($driver eq '.' || $driver eq '..');
 
 		if (-d mkpath(SCST_TARGETS, $driver)) {
 			push @drivers, $driver;
@@ -454,7 +455,7 @@ sub groups {
 	}
 
 	foreach my $group (readdir($gHandle)) {
-		next if (($group eq '.') || ($group eq '..'));
+		next if ($group eq '.' || $group eq '..');
 
 		if (-d mkpath(SCST_TARGETS, $driver, $target, SCST_GROUPS,
 			      $group)) {
@@ -498,8 +499,8 @@ sub initiators {
 	}
 
 	foreach my $initiator (readdir($iHandle)) {
-		next if (($initiator eq '.') || ($initiator eq '..'));
-		next if ($initiator eq SCST_MGMT_IO);
+		next if ($initiator eq '.' || $initiator eq '..'
+			 || $initiator eq SCST_MGMT_IO);
 
 		push @initiators, $initiator;
 	}
@@ -548,7 +549,7 @@ sub luns {
 	}
 
 	foreach my $lun (readdir($lHandle)) {
-		next if (($lun eq '.') || ($lun eq '..'));
+		next if ($lun eq '.' || $lun eq '..');
 
 		my $lPath = mkpath($_path, $lun);
 
@@ -566,7 +567,7 @@ sub luns {
 				if (-l $pPath) {
 					my $linked = readlink($pPath);
 
-					my $d = SCST_DEVICES;
+					my $d = IN_SCST_DEVICES;
 
 					if ($linked =~ /.*\/$d\/(.*)/) {
 						$luns{$lun} = $1;
@@ -1703,7 +1704,7 @@ sub devices {
 	my @devices;
 
 	my $dHandle = new IO::Handle;
-	my $_path = mkpath(SCST_ROOT, SCST_DEVICES);
+	my $_path = SCST_DEVICES;
 	if (!(opendir $dHandle, $_path)) {
 		$self->{'err_string'} = "devices(): Unable to read directory '$_path': $!";
 		return undef;
@@ -1712,7 +1713,7 @@ sub devices {
 	foreach my $device (readdir($dHandle)) {
 		next if ($device eq '.' || $device eq '..');
 
-                if (-d mkpath(SCST_ROOT, SCST_DEVICES, $device, 'handler')) {
+                if (-d mkpath(SCST_DEVICES, $device, 'handler')) {
 			push @devices, $device;
 		}							
 	}
@@ -1750,24 +1751,24 @@ sub deviceAttributes {
 	}
 
 	my $pHandle = new IO::Handle;	
-	my $_path = mkpath(SCST_ROOT, SCST_DEVICES, $device); 
+	my $_path = mkpath(SCST_DEVICES, $device); 
 	if (!(opendir $pHandle, $_path)) {
 		$self->{'err_string'} = "deviceAttributes(): Unable to read directory '$_path': $!";
 		return undef;
 	}
 
 	foreach my $attribute (readdir($pHandle)) {
-		next if (($attribute eq '.') || ($attribute eq '..'));
-		my $pPath = mkpath(SCST_ROOT, SCST_DEVICES, $device, $attribute);
+		next if ($attribute eq '.' || $attribute eq '..');
+		my $pPath = mkpath(SCST_DEVICES, $device, $attribute);
 		my $mode = (stat($pPath))[2];
 
 		if ($attribute eq 'exported') {
 			my $eHandle = new IO::Handle;
-			opendir $eHandle, mkpath(SCST_ROOT, SCST_DEVICES,
-						 $device, $attribute);
+			opendir $eHandle, mkpath(SCST_DEVICES, $device,
+						 $attribute);
 
 			foreach my $export (readdir($eHandle)) {
-				next if (($export eq '.') || ($export eq '..'));
+				next if ($export eq '.' || $export eq '..');
 
 				my $linked = readlink mkpath($pPath, $export);
 
@@ -1882,7 +1883,7 @@ sub driverAttributes {
 	}
 
 	foreach my $attribute (readdir($pHandle)) {
-		next if (($attribute eq '.') || ($attribute eq '..'));
+		next if ($attribute eq '.' || $attribute eq '..');
 		my $pPath = mkpath(SCST_TARGETS, $driver, $attribute);
 		my $mode = (stat($pPath))[2];
 
@@ -2021,7 +2022,7 @@ sub targetAttributes {
 	}
 
 	foreach my $attribute (readdir($pHandle)) {
-		next if (($attribute eq '.') || ($attribute eq '..'));
+		next if ($attribute eq '.' || $attribute eq '..');
 		my $pPath = mkpath(SCST_TARGETS, $driver, $target, $attribute);
 		my $mode = (stat($pPath))[2];
 
@@ -2179,7 +2180,7 @@ sub groupAttributes {
 	}
 
 	foreach my $attribute (readdir($pHandle)) {
-		next if (($attribute eq '.') || ($attribute eq '..'));
+		next if ($attribute eq '.' || $attribute eq '..');
 		my $pPath = mkpath(SCST_TARGETS, $driver, $target, SCST_GROUPS,
 		  $group, $attribute);
 		my $mode = (stat($pPath))[2];
@@ -2347,7 +2348,7 @@ sub lunAttributes {
 	}
 
 	foreach my $attribute (readdir($pHandle)) {
-		next if (($attribute eq '.') || ($attribute eq '..'));
+		next if ($attribute eq '.' || $attribute eq '..');
 		my $pPath = mkpath($_path, $attribute);
 		my $mode = (stat($pPath))[2];
 
@@ -2511,7 +2512,7 @@ sub initiatorAttributes {
 	}
 
 	foreach my $attribute (readdir($pHandle)) {
-		next if (($attribute eq '.') || ($attribute eq '..'));
+		next if ($attribute eq '.' || $attribute eq '..');
 		my $pPath = mkpath(SCST_TARGETS, $driver, $target, SCST_GROUPS,
 				   $group, SCST_INITIATORS, $initiator,
 				   $attribute);
@@ -2633,7 +2634,7 @@ sub handlers {
 	}
 
 	foreach my $handler (readdir($hHandle)) {
-		next if (($handler eq '.') || ($handler eq '..'));
+		next if ($handler eq '.' || $handler eq '..');
 
 		if (-d SCST_HANDLERS) {
 			push @handlers, $handler;
@@ -2980,7 +2981,7 @@ sub closeDevice {
 	return SCST_C_DEV_NO_DEVICE if ($rc != TRUE);
 	return $rc if ($rc > 1);
 
-	my $cmd = "in " . mkpath(SCST_HANDLERS, $handler)
+	my $cmd = "in " . mkpath(IN_SCST_HANDLERS, $handler)
 	    . " del_device $device\n";
 
 	my $bytes;
@@ -3021,7 +3022,7 @@ sub setDeviceAttribute {
 
 		return SCST_C_DEV_SETATTR_FAIL if (!$io);
 
-		my $cmd = "in " . mkpath(SCST_DEVICES, $device) . " " .
+		my $cmd = "in " . mkpath(IN_SCST_DEVICES, $device) . " " .
 		    ($attribute eq 'filename'
 		     ? "set_filename $value"
 		     : $attribute eq 'threads_num'
@@ -3040,7 +3041,7 @@ sub setDeviceAttribute {
 
 		return FALSE if ($self->{'debug'} || $bytes);
 	} else {
-		my $path = mkpath(SCST_ROOT, SCST_DEVICES, $device, $attribute);
+		my $path = mkpath(SCST_DEVICES, $device, $attribute);
 	
 		my $io = new IO::File $path, O_WRONLY;
 	
@@ -3377,7 +3378,7 @@ sub sessions {
 	}
 
 	foreach my $session (readdir($sHandle)) {
-		next if (($session eq '.') || ($session eq '..'));
+		next if ($session eq '.' || $session eq '..');
 		my $pHandle = new IO::Handle;
 		my $sPath = mkpath($_path, $session);
 		if (!(opendir $pHandle, $sPath)) {
@@ -3386,7 +3387,7 @@ sub sessions {
 		}
 
 		foreach my $attribute (readdir($pHandle)) {
-			next if (($attribute eq '.') || ($attribute eq '..'));
+			next if ($attribute eq '.' || $attribute eq '..');
 			my $pPath = mkpath($sPath, $attribute);
 
 			if ($attribute eq 'luns') {
@@ -3480,7 +3481,7 @@ sub sgvStats {
 	}
 
 	foreach my $stat (readdir($sHandle)) {
-		next if (($stat eq '.') || ($stat eq '..'));
+		next if ($stat eq '.' || $stat eq '..');
 
 		my $sPath = mkpath(SCST_ROOT, SCST_SGV, $stat);
 
