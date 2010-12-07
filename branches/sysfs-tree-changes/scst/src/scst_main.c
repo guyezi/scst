@@ -968,10 +968,15 @@ static struct class scst_dev_class = {
 	.name			= "target_device",
 #if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
 	.release		= scst_release_dev,
-	.class_dev_attrs	= scst_dev_attrs,
 #else
 	.dev_release		= scst_release_dev,
+#endif
+#ifndef CONFIG_SCST_PROC
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
+	.class_dev_attrs	= scst_dev_attrs,
+#else
 	.dev_attrs		= scst_dev_attrs,
+#endif
 #endif
 };
 
@@ -1017,20 +1022,6 @@ static int scst_register_device(struct scsi_device *scsidp)
 
 	dev->scsi_dev = scsidp;
 
-#ifdef CONFIG_SCST_PROC
-	/*
-	 * Let's don't attach to dev handler by default, but keep this code in
-	 * for compatibility in the proc build only.
-	 */
-	list_for_each_entry(dt, &scst_dev_type_list, dev_type_list_entry) {
-		if (dt->type == scsidp->type) {
-			res = scst_assign_dev_handler(dev, dt);
-			if (res != 0)
-				goto out_free_dev;
-			break;
-		}
-	}
-#else
 	dev->dev_dev.class = &scst_dev_class;
 #if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
 	dev->dev_dev.dev = &scsidp->sdev_dev;
@@ -1051,7 +1042,21 @@ static int scst_register_device(struct scsi_device *scsidp)
 #endif
 	if (res)
 		goto out_free_dev;
-	
+
+#ifdef CONFIG_SCST_PROC
+	/*
+	 * Let's don't attach to dev handler by default, but keep this code in
+	 * for compatibility in the proc build only.
+	 */
+	list_for_each_entry(dt, &scst_dev_type_list, dev_type_list_entry) {
+		if (dt->type == scsidp->type) {
+			res = scst_assign_dev_handler(dev, dt);
+			if (res != 0)
+				goto out_unregister;
+			break;
+		}
+	}
+#else
 	res = scst_dev_sysfs_create(dev);
 	if (res)
 		goto out_unregister;
@@ -1307,7 +1312,11 @@ int scst_register_virtual_device(struct scst_dev_type *dev_handler,
 
 	res = scst_assign_dev_handler(dev, dev_handler);
 	if (res)
+#ifndef CONFIG_SCST_PROC
 		goto out_sysfs_del;
+#else
+		goto out_pr_clear_dev;
+#endif
 
 	list_add_tail(&dev->dev_list_entry, &scst_dev_list);
 
@@ -1322,8 +1331,10 @@ out:
 	TRACE_EXIT_RES(res);
 	return res;
 
+#ifndef CONFIG_SCST_PROC
 out_sysfs_del:
 	scst_dev_sysfs_del(dev);
+#endif
 out_pr_clear_dev:
 	scst_pr_clear_dev(dev);
 out_unregister:
@@ -1420,10 +1431,15 @@ static struct class scst_devt_class = {
 	.name			= "device_driver",
 #if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
 	.release		= scst_release_devt,
-	.class_dev_attrs	= scst_devt_default_attrs,
 #else
 	.dev_release		= scst_release_devt,
+#endif
+#ifndef CONFIG_SCST_PROC
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
+	.class_dev_attrs	= scst_devt_default_attrs,
+#else
 	.dev_attrs		= scst_devt_default_attrs,
+#endif
 #endif
 };
 
