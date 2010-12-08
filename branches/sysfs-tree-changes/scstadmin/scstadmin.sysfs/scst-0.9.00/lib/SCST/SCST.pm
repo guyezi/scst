@@ -565,18 +565,11 @@ sub luns {
 				return undef;
 			}
 
-			foreach my $attribute (readdir($_lHandle)) {
-				my $pPath = mkpath($lPath, $attribute);
-
-				if (-l $pPath) {
-					my $linked = readlink($pPath);
-
-					my $d = IN_SCST_DEVICES;
-
-					if ($linked =~ /.*\/$d\/(.*)/) {
-						$luns{$lun} = $1;
-					}
-				}
+			my $pPath = mkpath($lPath, 'device');
+			if (-l $pPath) {
+				my $linked = readlink($pPath);
+				$linked =~ s/.*\///;
+				$luns{$lun} = $linked;
 			}
 		}
 	}
@@ -2333,22 +2326,18 @@ sub lunAttributes {
 	foreach my $attribute (readdir($pHandle)) {
 		next if ($attribute eq '.' || $attribute eq '..');
 		my $pPath = mkpath($_path, $attribute);
-		my $mode = (stat($pPath))[2];
 
 		if ($attribute eq 'device') {
 			my $linked = readlink($pPath);
 
-			my $r = SCST_ROOT;
-
-			$linked =~ s/\.\.\/\.\.\/\.\.\/\.\.\/\.\.\/\.\.\/\.\.\//\/$r\//;
-			$linked =~ s/\.\.\/\.\.\/\.\.\/\.\.\/\.\.\//\/$r\//;
-			$linked =~ s/^\/+/\//;
+			$linked =~ s/.*\///;
 
 			$attributes{$attribute}->{'static'} = TRUE;
 			$attributes{$attribute}->{'value'} = $linked;
 		} elsif (-d $pPath) {
 			# Skip directories
 		} else {
+			my $mode = (stat($pPath))[2];
 			if (!(($mode & S_IRUSR) >> 6)) {
 				$attributes{$attribute}->{'static'} = FALSE;
 				$attributes{$attribute}->{'value'} = undef;
