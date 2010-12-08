@@ -1382,18 +1382,18 @@ struct scst_dev_type {
 	/* Optional help string for mgmt_cmd commands */
 	const char *mgmt_cmd_help;
 
-	/* List of parameters for add_device command, if any */
+	/* Array of parameters for add_device command, if any */
 	const char *const *add_device_parameters;
 
 	/*
-	 * List of optional, i.e. which could be added by add_attribute command
-	 * and deleted by del_attribute command, sysfs attributes, if any.
-	 * Helpful for scstadmin to work correctly.
+	 * Array with optional, i.e. which could be added by add_attribute
+	 * command and deleted by del_attribute command, sysfs attributes, if
+	 * any. Helpful for scstadmin to work correctly.
 	 */
 	const char *const *devt_optional_attributes;
 
 	/*
-	 * List of optional, i.e. which could be added by add_device_attribute
+	 * Array of optional, i.e. which could be added by add_device_attribute
 	 * command and deleted by del_device_attribute command, sysfs
 	 * attributes, if any. Helpful for scstadmin to work correctly.
 	 */
