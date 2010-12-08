@@ -1383,21 +1383,21 @@ struct scst_dev_type {
 	const char *mgmt_cmd_help;
 
 	/* List of parameters for add_device command, if any */
-	const char *add_device_parameters;
+	const char *const *add_device_parameters;
 
 	/*
 	 * List of optional, i.e. which could be added by add_attribute command
 	 * and deleted by del_attribute command, sysfs attributes, if any.
 	 * Helpful for scstadmin to work correctly.
 	 */
-	const char *devt_optional_attributes;
+	const char *const *devt_optional_attributes;
 
 	/*
 	 * List of optional, i.e. which could be added by add_device_attribute
 	 * command and deleted by del_device_attribute command, sysfs
 	 * attributes, if any. Helpful for scstadmin to work correctly.
 	 */
-	const char *dev_optional_attributes;
+	const char *const *dev_optional_attributes;
 
 	/* sysfs attributes, if any */
 	const struct device_attribute **devt_attrs;

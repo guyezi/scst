@@ -29,8 +29,9 @@ IN_SCST_DEVICES  => 'target_device',
 SCST_TARGETS     => '/sys/class/target_driver',
 IN_SCST_TARGETS  => 'target_driver',
 SCST_ADD_TGT_PARAMS => 'add_target_parameters',
-SCST_TGTT_ATTR => 'driver_attributes',
-SCST_TGT_ATTR => 'target_attributes',
+SCST_TGTT_ATTR   => 'driver_attributes',
+SCST_TGT_ATTR    => 'target_attributes',
+SCST_ADD_DEV_PARAMS => 'add_device_parameters',
 SCST_SGV         => 'sgv',
 
 # Target specific
@@ -2858,27 +2859,17 @@ sub deviceCreateAttributes {
 		return undef;
 	}
 
-	my $io = new IO::File mkpath(SCST_HANDLERS, $handler, SCST_MGMT_IO_ATTR), O_RDONLY;
+	my $io = new IO::File mkpath(SCST_HANDLERS, $handler,
+				     SCST_ADD_DEV_PARAMS), O_RDONLY;
 
 	if (!$io) {
-		$self->{'err_string'} = "deviceCreateAttributes(): Unable to open mgmt ".
-		  "interface for handler '$handler': $!";
+		$self->{'err_string'} = "deviceCreateAttributes(): Unable to open " . SCST_ADD_DEV_PARAMS . " for handler '$handler': $!";
 		return undef;
 	}
 
-	while (my $in = <$io>) {
-		if ($in =~ /^The following parameters available\:/) {
-			(undef, $available) = split(/\:/, $in, 2);
-			$available =~ s/\.$//;
-		}
-	}
-
-	if ($available) {
-		foreach my $attribute (split(/\,/, $available)) {
-			$attribute =~ s/^\s+//;
-			$attribute =~ s/\s+$//;
-			$attributes{$attribute} = '';
-		}
+	while (my $attribute = <$io>) {
+		chomp($attribute);
+		$attributes{$attribute} = '';
 	}
 
 	return \%attributes;

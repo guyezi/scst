@@ -429,6 +429,11 @@ static struct kmem_cache *vdisk_thr_cachep;
  * /sys/kernel/scst_tgt entry, hence a part of user space ABI.
  */
 
+static const char* vdisk_fileio_add_device_parameters[] = {
+	"filename", "blocksize", "write_through", "nv_cache", "o_direct",
+	"read_only", "removable", "thin_provisioned", NULL
+};
+
 static struct scst_dev_type vdisk_file_devtype = {
 	.name =			"vdisk_fileio",
 	.type =			TYPE_DISK,
@@ -450,8 +455,7 @@ static struct scst_dev_type vdisk_file_devtype = {
 	.add_device =		vdisk_add_fileio_device,
 	.del_device =		vdisk_del_device,
 	.dev_attrs =		vdisk_fileio_attrs,
-	.add_device_parameters = "filename, blocksize, write_through, "
-		"nv_cache, o_direct, read_only, removable, thin_provisioned",
+	.add_device_parameters = vdisk_fileio_add_device_parameters,
 #endif
 #if defined(CONFIG_SCST_DEBUG) || defined(CONFIG_SCST_TRACING)
 	.default_trace_flags =	SCST_DEFAULT_DEV_LOG_FLAGS,
@@ -464,6 +468,11 @@ static struct scst_dev_type vdisk_file_devtype = {
 };
 
 static struct kmem_cache *blockio_work_cachep;
+
+static const char* vdisk_blockio_add_device_parameters[] = {
+	"filename", "blocksize", "nv_cache", "read_only", "removable",
+	"thin_provisioned", NULL
+};
 
 static struct scst_dev_type vdisk_blk_devtype = {
 	.name =			"vdisk_blockio",
@@ -485,8 +494,7 @@ static struct scst_dev_type vdisk_blk_devtype = {
 	.add_device =		vdisk_add_blockio_device,
 	.del_device =		vdisk_del_device,
 	.dev_attrs =		vdisk_blockio_attrs,
-	.add_device_parameters = "filename, blocksize, nv_cache, read_only, "
-		"removable, thin_provisioned",
+	.add_device_parameters = vdisk_blockio_add_device_parameters,
 #endif
 #if defined(CONFIG_SCST_DEBUG) || defined(CONFIG_SCST_TRACING)
 	.default_trace_flags =	SCST_DEFAULT_DEV_LOG_FLAGS,
@@ -496,6 +504,10 @@ static struct scst_dev_type vdisk_blk_devtype = {
 	.trace_tbl_help =	VDISK_TRACE_TLB_HELP,
 #endif
 #endif
+};
+
+static const char* vdisk_nullio_add_device_parameters[] = {
+	"blocksize", "read_only", "removable", NULL
 };
 
 static struct scst_dev_type vdisk_null_devtype = {
@@ -518,7 +530,7 @@ static struct scst_dev_type vdisk_null_devtype = {
 	.add_device =		vdisk_add_nullio_device,
 	.del_device =		vdisk_del_device,
 	.dev_attrs =		vdisk_nullio_attrs,
-	.add_device_parameters = "blocksize, read_only, removable",
+	.add_device_parameters = vdisk_nullio_add_device_parameters,
 #endif
 #if defined(CONFIG_SCST_DEBUG) || defined(CONFIG_SCST_TRACING)
 	.default_trace_flags =	SCST_DEFAULT_DEV_LOG_FLAGS,

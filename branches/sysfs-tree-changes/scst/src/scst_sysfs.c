@@ -3834,27 +3834,45 @@ struct device_attribute scst_devt_default_attrs[] = {
 	__ATTR_NULL
 };
 
-static ssize_t scst_devt_mgmt_show(struct device *device,
-				   struct device_attribute *attr, char *buf)
+static ssize_t scst_devt_add_device_parameters_show(struct device *device,
+				struct device_attribute *attr, char *buf)
 {
 	struct scst_dev_type *devt;
+	const char *const *p;
 	ssize_t res;
 
 	devt = scst_dev_to_devt(device);
-
 	res = 0;
-	if (devt->add_device_parameters)
-		res += scnprintf(buf + res, PAGE_SIZE - res,
-				 "The following parameters available: %s\n",
-				 devt->add_device_parameters);
-	if (devt->devt_optional_attributes)
-		res += scnprintf(buf + res, PAGE_SIZE - res,
-			"The following dev handler attributes available: %s\n",
-				 devt->devt_optional_attributes);
-	if (devt->dev_optional_attributes)
-		res += scnprintf(buf + res, PAGE_SIZE - res,
-			"The following device attributes available: %s\n",
-			devt->dev_optional_attributes);
+	for (p = devt->add_device_parameters; p && *p; p++)
+		res += scnprintf(buf + res, PAGE_SIZE - res, "%s\n", *p);
+	return res;
+}
+
+static ssize_t scst_devt_devt_attributes_show(struct device *device,
+				struct device_attribute *attr, char *buf)
+{
+	struct scst_dev_type *devt;
+	const char *const *p;
+	ssize_t res;
+
+	devt = scst_dev_to_devt(device);
+	res = 0;
+	for (p = devt->devt_optional_attributes; p && *p; p++)
+		res += scnprintf(buf + res, PAGE_SIZE - res, "%s\n", *p);
+	return res;
+}
+
+static ssize_t scst_devt_dev_attributes_show(struct device *device,
+				struct device_attribute *attr, char *buf)
+{
+	struct scst_dev_type *devt;
+	const char *const *p;
+	ssize_t res;
+
+	devt = scst_dev_to_devt(device);
+	res = 0;
+	for (p = devt->dev_optional_attributes; p && *p; p++)
+		res += scnprintf(buf + res, PAGE_SIZE - res, "%s\n", *p);
 	return res;
 }
 
@@ -3914,8 +3932,22 @@ out_syntax_err:
 	goto out;
 }
 
-static struct device_attribute scst_devt_mgmt =
-	__ATTR(mgmt, S_IRUGO, scst_devt_mgmt_show, NULL);
+static struct device_attribute scst_devt_add_device_parameters_attr =
+	__ATTR(add_device_parameters, S_IRUGO,
+	       scst_devt_add_device_parameters_show, NULL);
+static struct device_attribute scst_devt_devt_attributes_attr =
+	__ATTR(driver_attributes, S_IRUGO,
+	       scst_devt_devt_attributes_show, NULL);
+static struct device_attribute scst_devt_dev_attributes_attr =
+	__ATTR(device_attributes, S_IRUGO,
+	       scst_devt_dev_attributes_show, NULL);
+
+static const struct device_attribute *scst_devt_attr[] = {
+	&scst_devt_add_device_parameters_attr,
+	&scst_devt_devt_attributes_attr,
+	&scst_devt_dev_attributes_attr,
+	NULL
+};
 
 static int scst_process_devt_pass_through_mgmt_store(char *buffer,
 	struct scst_dev_type *devt)
@@ -4039,10 +4071,10 @@ int scst_devt_sysfs_create(struct scst_dev_type *devt)
 
 	TRACE_ENTRY();
 
-	res = device_create_file(scst_sysfs_get_devt_dev(devt),
-				 &scst_devt_mgmt);
+	res = device_create_files(scst_sysfs_get_devt_dev(devt),
+				  scst_devt_attr);
 	if (res) {
-		PRINT_ERROR("Can't add mgmt attr for dev handler %s",
+		PRINT_ERROR("Can't add attributes for dev handler %s",
 			    devt->name);
 		goto out_err;
 	}
