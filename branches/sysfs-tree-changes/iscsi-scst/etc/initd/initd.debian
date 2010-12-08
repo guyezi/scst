@@ -14,7 +14,7 @@ PATH=/sbin:/bin:/usr/sbin:/usr/bin:/usr/local/sbin:/usr/local/bin
 # with knowledge about it.
 MEM_SIZE=1048576
 
-ADD_MODULES="scst_disk scst_vdisk scst"
+ADD_MODULES="scst_local scst_disk scst_vdisk scst"
 
 configure_memsize()
 {
@@ -58,7 +58,7 @@ iscsi_scstd_start()
 	for m in $ADD_MODULES; do
 		modprobe $m
 	done
-	find /sys/kernel/scst_tgt -name trace_level | while read f; do
+	find /sys -name trace_level | while read f; do
 	    #echo "add entryexit" >$f
 	    #echo "add debug" >$f
 	    :
