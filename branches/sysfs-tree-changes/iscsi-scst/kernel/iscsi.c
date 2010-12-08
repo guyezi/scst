@@ -3775,6 +3775,14 @@ static uint16_t iscsi_get_scsi_transport_version(struct scst_tgt *scst_tgt)
 	return 0x0960; /* iSCSI */
 }
 
+static const char *tgtt_add_target_attributes[] = {
+	"IncomingUser", "OutgoingUser", NULL
+};
+
+static const char *tgt_add_target_attributes[] = {
+	"IncomingUser", "OutgoingUser", "allowed_portal", NULL
+};
+
 struct scst_tgt_template iscsi_template = {
 	.name = "iscsi",
 	.sg_tablesize = 0xFFFF /* no limit */,
@@ -3790,8 +3798,8 @@ struct scst_tgt_template iscsi_template = {
 	.add_target = iscsi_sysfs_add_target,
 	.del_target = iscsi_sysfs_del_target,
 	.mgmt_cmd = iscsi_sysfs_mgmt_cmd,
-	.tgtt_optional_attributes = "IncomingUser, OutgoingUser",
-	.tgt_optional_attributes = "IncomingUser, OutgoingUser, allowed_portal",
+	.tgtt_optional_attributes = tgtt_add_target_attributes,
+	.tgt_optional_attributes = tgt_add_target_attributes,
 #endif
 #if defined(CONFIG_SCST_DEBUG) || defined(CONFIG_SCST_TRACING)
 	.default_trace_flags = ISCSI_DEFAULT_LOG_FLAGS,

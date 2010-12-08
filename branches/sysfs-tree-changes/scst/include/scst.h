@@ -1014,22 +1014,22 @@ struct scst_tgt_template {
 	/* Optional help string for mgmt_cmd commands */
 	const char *mgmt_cmd_help;
 
-	/* List of parameters for add_target command, if any */
-	const char *add_target_parameters;
+	/* Array with the names of parameters for add_target command, if any */
+	const char *const *add_target_parameters;
 
 	/*
-	 * List of optional, i.e. which could be added by add_attribute command
+	 * Array of optional, i.e. which could be added by add_attribute command
 	 * and deleted by del_attribute command, sysfs attributes, if any.
 	 * Helpful for scstadmin to work correctly.
 	 */
-	const char *tgtt_optional_attributes;
+	const char *const *tgtt_optional_attributes;
 
 	/*
-	 * List of optional, i.e. which could be added by add_target_attribute
+	 * Array of optional, i.e. which could be added by add_target_attribute
 	 * command and deleted by del_target_attribute command, sysfs
 	 * attributes, if any. Helpful for scstadmin to work correctly.
 	 */
-	const char *tgt_optional_attributes;
+	const char *const *tgt_optional_attributes;
 
 	/** Private, must be inited to 0 by memset() **/
 

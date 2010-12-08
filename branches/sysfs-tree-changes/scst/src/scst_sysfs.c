@@ -420,27 +420,45 @@ static struct device_attribute tgtt_trace_attr =
 
 #endif /* #if defined(CONFIG_SCST_DEBUG) || defined(CONFIG_SCST_TRACING) */
 
-static ssize_t scst_tgtt_mgmt_show(struct device *device,
-				   struct device_attribute *attr, char *buf)
+static ssize_t scst_tgtt_add_target_parameters_show(struct device *device,
+				struct device_attribute *attr, char *buf)
 {
 	struct scst_tgt_template *tgtt;
+	const char *const *p;
 	ssize_t res;
 
 	tgtt = scst_dev_to_tgtt(device);
-
 	res = 0;
-	if (tgtt->add_target_parameters)
-		res += scnprintf(buf + res, PAGE_SIZE - res,
-				 "The following parameters available: %s\n",
-				 tgtt->add_target_parameters);
-	if (tgtt->tgtt_optional_attributes)
-		res += scnprintf(buf + res, PAGE_SIZE - res,
-		       "The following target driver attributes available: %s\n",
-				 tgtt->tgtt_optional_attributes);
-	if (tgtt->tgt_optional_attributes)
-		res += scnprintf(buf + res, PAGE_SIZE - res,
-			      "The following target attributes available: %s\n",
-				 tgtt->tgt_optional_attributes);
+	for (p = tgtt->add_target_parameters; p && *p; p++)
+		res += scnprintf(buf + res, PAGE_SIZE - res, "%s\n", *p);
+	return res;
+}
+
+static ssize_t scst_tgtt_tgtt_attributes_show(struct device *device,
+				struct device_attribute *attr, char *buf)
+{
+	struct scst_tgt_template *tgtt;
+	const char *const *p;
+	ssize_t res;
+
+	tgtt = scst_dev_to_tgtt(device);
+	res = 0;
+	for (p = tgtt->tgtt_optional_attributes; p && *p; p++)
+		res += scnprintf(buf + res, PAGE_SIZE - res, "%s\n", *p);
+	return res;
+}
+
+static ssize_t scst_tgtt_tgt_attributes_show(struct device *device,
+				struct device_attribute *attr, char *buf)
+{
+	struct scst_tgt_template *tgtt;
+	const char *const *p;
+	ssize_t res;
+
+	tgtt = scst_dev_to_tgtt(device);
+	res = 0;
+	for (p = tgtt->tgt_optional_attributes; p && *p; p++)
+		res += scnprintf(buf + res, PAGE_SIZE - res, "%s\n", *p);
 	return res;
 }
 
@@ -500,8 +518,22 @@ out_syntax_err:
 	goto out;
 }
 
-static struct device_attribute scst_tgtt_mgmt_attr =
-	__ATTR(mgmt, S_IRUGO, scst_tgtt_mgmt_show, NULL);
+static struct device_attribute scst_tgtt_add_target_parameters_attr =
+	__ATTR(add_target_parameters, S_IRUGO,
+	       scst_tgtt_add_target_parameters_show, NULL);
+static struct device_attribute scst_tgtt_tgtt_attributes_attr =
+	__ATTR(driver_attributes, S_IRUGO,
+	       scst_tgtt_tgtt_attributes_show, NULL);
+static struct device_attribute scst_tgtt_tgt_attributes_attr =
+	__ATTR(target_attributes, S_IRUGO,
+	       scst_tgtt_tgt_attributes_show, NULL);
+
+static const struct device_attribute *scst_tgtt_attr[] = {
+	&scst_tgtt_add_target_parameters_attr,
+	&scst_tgtt_tgtt_attributes_attr,
+	&scst_tgtt_tgt_attributes_attr,
+	NULL
+};
 
 int scst_tgtt_sysfs_create(struct scst_tgt_template *tgtt)
 {
@@ -509,12 +541,12 @@ int scst_tgtt_sysfs_create(struct scst_tgt_template *tgtt)
 
 	TRACE_ENTRY();
 
-	if (tgtt->add_target != NULL) {
-		res = device_create_file(scst_sysfs_get_tgtt_dev(tgtt),
-					 &scst_tgtt_mgmt_attr);
-		if (res != 0) {
-			PRINT_ERROR("Can't add mgmt attr for target driver %s",
-				tgtt->name);
+	if (tgtt->add_target) {
+		res = device_create_files(scst_sysfs_get_tgtt_dev(tgtt),
+					  scst_tgtt_attr);
+		if (res) {
+			PRINT_ERROR("Can't add attributes for target driver %s",
+				    tgtt->name);
 			goto out_del;
 		}
 	}

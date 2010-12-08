@@ -928,8 +928,13 @@ static int scst_local_send_resp(struct scsi_cmnd *cmnd,
  * This does the heavy lifting ... we pass all the commands on to the
  * target driver and have it do its magic ...
  */
+#if LINUX_VERSION_CODE <= KERNEL_VERSION(2, 6, 36)
 static int scst_local_queuecommand(struct scsi_cmnd *SCpnt,
 				   void (*done)(struct scsi_cmnd *))
+#else
+static int scst_local_queuecommand(struct Scsi_Host *SChost,
+				   struct scsi_cmnd *SCpnt)
+#endif
 	__acquires(&h->host_lock)
 	__releases(&h->host_lock)
 {
@@ -951,7 +956,7 @@ static int scst_local_queuecommand(struct scsi_cmnd *SCpnt,
 
 	scsi_set_resid(SCpnt, 0);
 
-#if (LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 25))
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 25)
 	/*
 	 * Allocate a tgt_specific_structure. We need this in case we need
 	 * to construct a single element SGL.
@@ -964,12 +969,14 @@ static int scst_local_queuecommand(struct scsi_cmnd *SCpnt,
 	}
 	tgt_specific->cmnd = SCpnt;
 	tgt_specific->done = done;
-#else
+#elif LINUX_VERSION_CODE <= KERNEL_VERSION(2, 6, 36)
 	/*
 	 * We save a pointer to the done routine in SCpnt->scsi_done and
 	 * we save that as tgt specific stuff below.
 	 */
 	SCpnt->scsi_done = done;
+#else
+	WARN_ON_ONCE(!SCpnt->scsi_done);
 #endif
 
 	/*
@@ -1348,6 +1355,10 @@ static uint16_t scst_local_get_phys_transport_version(struct scst_tgt *scst_tgt)
 	return tgt->phys_transport_version;
 }
 
+static const char *add_target_parameters[] = {
+	"session_name", NULL
+};
+
 static struct scst_tgt_template scst_local_targ_tmpl = {
 	.name			= "scst_local",
 #if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 20)
@@ -1364,7 +1375,7 @@ static struct scst_tgt_template scst_local_targ_tmpl = {
 	.add_target		= scst_local_sysfs_add_target,
 	.del_target		= scst_local_sysfs_del_target,
 	.mgmt_cmd		= scst_local_sysfs_mgmt_cmd,
-	.add_target_parameters	= "session_name",
+	.add_target_parameters	= add_target_parameters,
 	.mgmt_cmd_help		= "       echo \"add_session target_name session_name\" >mgmt\n"
 				  "       echo \"del_session target_name session_name\" >mgmt\n",
 #endif

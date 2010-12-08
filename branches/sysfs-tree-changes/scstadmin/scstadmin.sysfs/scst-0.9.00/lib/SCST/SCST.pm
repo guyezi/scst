@@ -28,6 +28,9 @@ SCST_DEVICES     => '/sys/class/target_device',
 IN_SCST_DEVICES  => 'target_device',
 SCST_TARGETS     => '/sys/class/target_driver',
 IN_SCST_TARGETS  => 'target_driver',
+SCST_ADD_TGT_PARAMS => 'add_target_parameters',
+SCST_TGTT_ATTR => 'driver_attributes',
+SCST_TGT_ATTR => 'target_attributes',
 SCST_SGV         => 'sgv',
 
 # Target specific
@@ -610,27 +613,17 @@ sub driverDynamicAttributes {
 		return undef;
 	}
 
-	my $io = new IO::File mkpath(SCST_TARGETS, $driver, SCST_MGMT_IO_ATTR), O_RDONLY;
+	my $io = new IO::File mkpath(SCST_TARGETS, $driver,
+				     SCST_TGTT_ATTR), O_RDONLY;
 
 	if (!$io) {
-		$self->{'err_string'} = "driverDynamicAttributes(): Unable to open mgmt ".
-		  "interface for driver '$driver': $!";
+		$self->{'err_string'} = "driverDynamicAttributes(): Unable to open " . SCST_TGTT_ATTR . " for driver '$driver': $!";
 		return undef;
 	}
 
-	while (my $in = <$io>) {
-		if ($in =~ /^The following target driver attributes available\:/) {
-			(undef, $available) = split(/\:/, $in, 2);
-			$available =~ s/\.$//;
-		}
-	}
-
-	if ($available) {
-		foreach my $attribute (split(/\,/, $available)) {
-			$attribute =~ s/^\s+//;
-			$attribute =~ s/\s+$//;
-			$attributes{$attribute} = '';
-		}
+	while (my $attribute = <$io>) {
+		chomp($attribute);
+		$attributes{$attribute} = '';
 	}
 
 	return \%attributes;
@@ -772,7 +765,7 @@ sub driverIsVirtualCapable {
 	return SCST_C_DRV_NO_DRIVER if (!$rc);
 	return $rc if ($rc > 1);
 
-	my $path = mkpath(SCST_TARGETS, $driver, SCST_MGMT_IO_ATTR);
+	my $path = mkpath(SCST_TARGETS, $driver, SCST_ADD_TGT_PARAMS);
 
 	my $io = new IO::File $path, O_RDONLY;
 
@@ -865,27 +858,16 @@ sub targetDynamicAttributes {
 		return undef;
 	}
 
-	my $io = new IO::File mkpath(SCST_TARGETS, $driver, SCST_MGMT_IO_ATTR), O_RDONLY;
+	my $io = new IO::File mkpath(SCST_TARGETS, $driver, SCST_TGT_ATTR), O_RDONLY;
 
 	if (!$io) {
-		$self->{'err_string'} = "targetDynamicAttributes(): Unable to open mgmt ".
-		  "interface for driver '$driver': $!";
+		$self->{'err_string'} = "targetDynamicAttributes(): Unable to open " . SCST_TGT_ATTR . " for driver '$driver': $!";
 		return undef;
 	}
 
-	while (my $in = <$io>) {
-		if ($in =~ /^The following target attributes available\:/) {
-			(undef, $available) = split(/\:/, $in, 2);
-			$available =~ s/\.$//;
-		}
-	}
-
-	if ($available) {
-		foreach my $attribute (split(/\,/, $available)) {
-			$attribute =~ s/^\s+//;
-			$attribute =~ s/\s+$//;
-			$attributes{$attribute} = '';
-		}
+	while (my $attribute = <$io>) {
+		chomp($attribute);
+		$attributes{$attribute} = '';
 	}
 
 	return \%attributes;
@@ -3103,27 +3085,16 @@ sub targetCreateAttributes {
 		return undef;
 	}
 
-	my $io = new IO::File mkpath(SCST_TARGETS, $driver, SCST_MGMT_IO_ATTR), O_RDONLY;
+	my $io = new IO::File mkpath(SCST_TARGETS, $driver, SCST_ADD_TGT_PARAMS), O_RDONLY;
 
 	if (!$io) {
-		$self->{'err_string'} = "targetCreateAttributes(): Unable to open driver mgmt ".
-		  "interface for driver '$driver': $!";
+		$self->{'err_string'} = "targetCreateAttributes(): Unable to open " . SCST_ADD_TGT_PARAMS . " for driver '$driver': $!";
 		return undef;
 	}
 
-	while (my $in = <$io>) {
-		if ($in =~ /^The following parameters available\:/) {
-			(undef, $available) = split(/\:/, $in, 2);
-			$available =~ s/\.$//;
-		}
-	}
-
-	if ($available) {
-		foreach my $attribute (split(/\,/, $available)) {
-			$attribute =~ s/^\s+//;
-			$attribute =~ s/\s+$//;
-			$attributes{$attribute} = '';
-		}
+	while (my $attribute = <$io>) {
+		chomp($attribute);
+		$attributes{$attribute} = '';
 	}
 
 	return \%attributes;

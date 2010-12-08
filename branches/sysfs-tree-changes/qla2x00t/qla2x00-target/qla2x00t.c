@@ -188,6 +188,10 @@ static ssize_t q2t_del_vtarget(const char *target_name);
 static unsigned long q2t_trace_flag = Q2T_DEFAULT_LOG_FLAGS;
 #endif
 
+static const char *add_target_parameters[] = {
+	"node_name", "parent_host", NULL
+};
+
 static struct scst_tgt_template tgt2x_template = {
 #ifdef CONFIG_SCST_PROC
 	.name = "qla2x00tgt",
@@ -223,7 +227,7 @@ static struct scst_tgt_template tgt2x_template = {
 	.del_target = q2t_del_vtarget,
 #endif /*((LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 28)) || \
 	  defined(FC_VPORT_CREATE_DEFINED))*/
-	.add_target_parameters = "node_name, parent_host",
+	.add_target_parameters = add_target_parameters,
 	.tgtt_attrs = q2t_attrs,
 	.tgt_attrs = q2t_tgt_attrs,
 #endif
