@@ -1457,7 +1457,8 @@ sub writeConfiguration {
 					$group_buff .= $g_attribute_buff;
 				}
 
-				if ($group_buff) {
+				if ($group_buff && ($lun_buff || $init_buff ||
+						    $g_attribute_buff || $g_attribute_buff_nk)) {
 					$group_buff .= "\t\t}\n\n";
 					$group_buff =~ s/\n+$/\n/;
 				}
@@ -1514,6 +1515,11 @@ sub checkConfiguration {
 	print "-> Checking configuration file '$CONFIGFILE' for errors.\n";
 
 	readConfigFile() if (!$CONFIG);
+
+	if (!scalar keys %{$CONFIG}) {
+		print "-> WARNING: Configuration is empty or unreadable, aborting.\n\n";
+		exit 0;
+	}
 
 	# Check for a minimum sane configuration
 	if (!defined($$CONFIG{'TARGET_DRIVER'}) ||
@@ -1695,7 +1701,7 @@ sub applyConfiguration {
 
 	print "\t-> Done, $changes change(s) made.\n";
 
-	return 0;
+	return FALSE;
 }
 
 sub applyConfigDevices {
@@ -1902,7 +1908,7 @@ sub applyConfigAssignments {
 		}
 	}
 
-	return if ($only_del);
+	return $changes if ($only_del);
 
 	$assignments = $$config{'TARGET_DRIVER'};
 
@@ -2255,6 +2261,8 @@ sub clearConfiguration {
 	}
 
 	print "\t-> Configuration cleared.\n";
+
+	return FALSE;
 }
 
 sub addVirtualTarget {
@@ -2304,6 +2312,8 @@ sub listHandlers {
 	foreach my $handler (@{$handlers}) {
 		print "\t$handler\n";
 	}	
+
+	return FALSE;
 }
 
 sub listHandler {
@@ -2364,6 +2374,8 @@ sub listHandler {
 	} else {
 		print "No such handler '$handler' found.\n";
 	}
+
+	return FALSE;
 }
 
 sub listDevices {
@@ -2380,7 +2392,7 @@ sub listDevice {
 
 	my $attributes = $SCST->deviceAttributes($device);
 
-	return if issueWarning($SCST->errorString());
+	return TRUE if issueWarning($SCST->errorString());
 
 	if (!scalar(keys %{$attributes})) {
 		print "No such device '$device' exists.\n";
@@ -2412,6 +2424,8 @@ sub listDrivers {
 	foreach my $driver (@{$drivers}) {
 		print "\t$driver\n";
 	}
+
+	return FALSE;
 }
 
 sub listTargets {
@@ -2469,6 +2483,8 @@ sub listTargets {
 	} else {
 		print "No such driver '$driver' exists.\n";
 	}
+
+	return FALSE;
 }
 
 sub listSessions {
@@ -2510,6 +2526,8 @@ sub listSessions {
 			}
 		}
 	}
+
+	return FALSE;
 }
 
 sub listGroup {
@@ -2523,7 +2541,7 @@ sub listGroup {
 	$initiators = $SCST->initiators($driver, $target, $group)
 	  if (($initiators eq '') && ($group ne ''));
 
-	return if issueWarning($SCST->errorString());
+	return TRUE if issueWarning($SCST->errorString());
 
 	if ((keys %{$luns}) || ($#{$initiators} > -1)) {
 		my $l_device;
@@ -2582,6 +2600,7 @@ sub listGroup {
 		}
 	}
 
+	return FALSE;
 }
 
 sub listGroups {
@@ -2643,6 +2662,8 @@ sub listGroups {
 			print "Target '$target' not found.\n";
 		}
 	}
+
+	return FALSE;
 }
 
 sub listExported {
@@ -2651,7 +2672,7 @@ sub listExported {
 
 	$attributes = $SCST->deviceAttributes($device) if (!$attributes);
 
-	return if issueWarning($SCST->errorString());
+	return TRUE if issueWarning($SCST->errorString());
 
 	if (keys %{$$attributes{'exported'}}) {
 		my $exported = $$attributes{'exported'}->{'value'};
@@ -2696,6 +2717,8 @@ sub listExported {
 	} else {
 		print "Device '$device' is not currently in use by any group.\n";
 	}
+
+	return FALSE;
 }
 
 sub listAttributes {
@@ -2810,6 +2833,8 @@ sub listAttributes {
 
 		print "\n";
 	}
+
+	return FALSE;
 }
 
 sub listScstAttributes {
@@ -2817,7 +2842,7 @@ sub listScstAttributes {
 
 	my $attributes = $SCST->scstAttributes();
 
-	return if issueWarning($SCST->errorString());
+	return TRUE if issueWarning($SCST->errorString());
 
 	if (!scalar(keys %{$attributes})) {
 		print "FATAL: Unable to get a list of SCST attributes! Please make sure SCST is loaded.\n";
@@ -2833,7 +2858,7 @@ sub listHandlerAttributes {
 
 	my $attributes = $SCST->handlerAttributes($handler);
 
-	return if issueWarning($SCST->errorString());
+	return TRUE if issueWarning($SCST->errorString());
 
 	if (!scalar(keys %{$attributes})) {
 		print "No such handler '$handler' found.\n";
@@ -2845,8 +2870,8 @@ sub listHandlerAttributes {
 
 	$attributes = $SCST->deviceCreateAttributes($handler);
 
-	return if issueWarning($SCST->errorString());
-	return if (!scalar keys %{$attributes});
+	return TRUE if issueWarning($SCST->errorString());
+	return TRUE if (!scalar keys %{$attributes});
 
 	print "\n\tDevice CREATE attributes available\n";
 	print "\t----------------------------------\n";
@@ -2854,6 +2879,8 @@ sub listHandlerAttributes {
 	foreach my $attribute (keys %{$attributes}) {
 		print "\t$attribute\n";
 	}
+
+	return FALSE;
 }
 
 sub listDriverAttributes {
@@ -2862,7 +2889,7 @@ sub listDriverAttributes {
 
 	my $attributes = $SCST->driverAttributes($driver);
 
-	return if issueWarning($SCST->errorString());
+	return TRUE if issueWarning($SCST->errorString());
 
 	if (!scalar(keys %{$attributes})) {
 		print "No such driver '$driver' found.\n";
@@ -2874,7 +2901,7 @@ sub listDriverAttributes {
 
 	if ($SCST->driverIsVirtualCapable($driver)) {
 		$attributes = $SCST->driverDynamicAttributes($driver);
-		return if issueWarning($SCST->errorString());
+		return TRUE if issueWarning($SCST->errorString());
 
 		if (scalar keys %{$attributes}) {
 			print "\n\tDynamic attributes available\n";
@@ -2887,8 +2914,8 @@ sub listDriverAttributes {
 
 		my $attributes = $SCST->targetCreateAttributes($driver);
 
-		return if issueWarning($SCST->errorString());
-		return if (!scalar keys %{$attributes});
+		return TRUE if issueWarning($SCST->errorString());
+		return TRUE if (!scalar keys %{$attributes});
 
 		print "\n\tTarget CREATE attributes available:\n";
 		print "\t-----------------------------------\n";
@@ -2897,6 +2924,8 @@ sub listDriverAttributes {
 			print "\t$attribute\n";
 		}
 	}
+
+	return FALSE;
 }
 
 sub listTargetAttributes {
@@ -2906,7 +2935,7 @@ sub listTargetAttributes {
 
 	my $attributes = $SCST->targetAttributes($driver, $target);
 
-	return if issueWarning($SCST->errorString());
+	return TRUE if issueWarning($SCST->errorString());
 
 	if (!scalar(keys %{$attributes})) {
 		print "No such driver/target '$driver/$target' found.\n";
@@ -2918,7 +2947,7 @@ sub listTargetAttributes {
 
 	if ($SCST->driverIsVirtualCapable($driver)) {
 		$attributes = $SCST->targetDynamicAttributes($driver);
-		return if issueWarning($SCST->errorString());
+		return TRUE if issueWarning($SCST->errorString());
 
 		if (scalar keys %{$attributes}) {
 			print "\n\tDynamic attributes available\n";
@@ -2932,8 +2961,8 @@ sub listTargetAttributes {
 
 	$attributes = $SCST->lunCreateAttributes($driver, $target);
 
-	return if issueWarning($SCST->errorString());
-	return if (!scalar keys %{$attributes});
+	return TRUE if issueWarning($SCST->errorString());
+	return TRUE if (!scalar keys %{$attributes});
 
 	print "\n\tLUN CREATE attributes available\n";
 	print "\t-------------------------------\n";
@@ -2941,6 +2970,8 @@ sub listTargetAttributes {
 	foreach my $attribute (keys %{$attributes}) {
 		print "\t$attribute\n";
 	}
+
+	return FALSE;
 }
 
 sub listGroupAttributes {
@@ -2951,7 +2982,7 @@ sub listGroupAttributes {
 
 	my $attributes = $SCST->groupAttributes($driver, $target, $group);
 
-	return if issueWarning($SCST->errorString());
+	return TRUE if issueWarning($SCST->errorString());
 
 	if (!scalar(keys %{$attributes})) {
 		print "No such driver/target/group '$driver/$target/$group' found.\n";
@@ -2963,8 +2994,8 @@ sub listGroupAttributes {
 
 	$attributes = $SCST->lunCreateAttributes($driver, $target, $group);
 
-	return if issueWarning($SCST->errorString());
-	return if (!scalar keys %{$attributes});
+	return TRUE if issueWarning($SCST->errorString());
+	return TRUE if (!scalar keys %{$attributes});
 
 	print "\n\tLUN CREATE attributes available\n";
 	print "\t-------------------------------\n";
@@ -2975,8 +3006,8 @@ sub listGroupAttributes {
 
 	$attributes = $SCST->initiatorCreateAttributes($driver, $target, $group);
 
-	return if issueWarning($SCST->errorString());
-	return if (!scalar keys %{$attributes});
+	return TRUE if issueWarning($SCST->errorString());
+	return TRUE if (!scalar keys %{$attributes});
 
 	print "\n\tInitiator CREATE attributes available\n";
 	print "\t-------------------------------------\n";
@@ -2984,6 +3015,8 @@ sub listGroupAttributes {
 	foreach my $attribute (keys %{$attributes}) {
 		print "\t$attribute\n";
 	}
+
+	return FALSE;
 }
 
 sub listLunAttributes {
@@ -2995,7 +3028,7 @@ sub listLunAttributes {
 
 	my $attributes = $SCST->lunAttributes($driver, $target, $lun, $group);
 
-	return if issueWarning($SCST->errorString());
+	return TRUE if issueWarning($SCST->errorString());
 
 	if (!scalar(keys %{$attributes})) {
 		if ($group ne '') {
@@ -3025,7 +3058,7 @@ sub listInitiatorAttributes {
 		return;
 	}
 
-	return if issueWarning($SCST->errorString());
+	return TRUE if issueWarning($SCST->errorString());
 
 	if (!scalar(keys %{$attributes})) {
 		print "No such driver/target/group/initiator '$driver/$target/$group/$initiator' found.\n";
@@ -3059,7 +3092,7 @@ sub setScstAttributes {
 	my $error = "\t-> WARNING: SCST lacks the settable attribute '%s', ignoring.\n\n";
 	my $_attributes = $SCST->scstAttributes();
 
-	return if issueWarning($SCST->errorString());
+	return TRUE if issueWarning($SCST->errorString());
 
 	return setAttributes(undef, undef, undef, undef, $attributes,
 	  $_attributes, $error, \&setScstAttribute, $showset);
@@ -3089,7 +3122,7 @@ sub setDeviceAttributes {
 	  "attribute '%s', ignoring.\n\n";
 	my $_attributes = $SCST->deviceAttributes($device);
 
-	return if issueWarning($SCST->errorString());
+	return TRUE if issueWarning($SCST->errorString());
 
 	return setAttributes(undef, undef, undef, $device, $attributes,
 	  $_attributes, $error, \&setDeviceAttribute, $showset);
@@ -3119,7 +3152,7 @@ sub setHandlerAttributes {
 	  "attribute '%s', ignoring.\n\n";
 	my $_attributes = $SCST->handlerAttributes($handler);
 
-	return if issueWarning($SCST->errorString());
+	return TRUE if issueWarning($SCST->errorString());
 
 	return setAttributes(undef, undef, undef, $handler, $attributes,
 	  $_attributes, $error, \&setHandlerAttribute, $showset);
@@ -3152,7 +3185,7 @@ sub setGroupAttributes {
 	  "attribute '%s', ignoring.\n\n";
 	my $_attributes = $SCST->groupAttributes($driver, $target, $group);
 
-	return if issueWarning($SCST->errorString());
+	return TRUE if issueWarning($SCST->errorString());
 
 	return setAttributes(undef, $driver, $target, $group, $attributes,
 	  $_attributes, $error, \&setGroupAttribute, $showset);
@@ -3199,7 +3232,7 @@ sub setLunAttributes {
 
 	my $_attributes = $SCST->lunAttributes($driver, $target, $lun, $group);
 
-	return if issueWarning($SCST->errorString());
+	return TRUE if issueWarning($SCST->errorString());
 
 	return setAttributes($driver, $target, $lun, $group, $attributes,
 	  $_attributes, $error, \&setLunAttribute, $showset);
@@ -3232,7 +3265,7 @@ sub setInitiatorAttributes {
 
 	my $_attributes = $SCST->initiatorAttributes($driver, $target, $group, $initiator);
 
-	return if issueWarning($SCST->errorString());
+	return TRUE if issueWarning($SCST->errorString());
 
 	# As if writing, initiators didn't have attributes. This will
 	# allow us to support it in the future.
@@ -3327,7 +3360,7 @@ sub setDriverAttributes {
 	my $driverCap = $SCST->driverIsVirtualCapable($driver);
 	my $_attributes = $SCST->driverAttributes($driver);
 
-	return if issueWarning($SCST->errorString());
+	return 0 if issueWarning($SCST->errorString());
 
 	# build caches for easier matching
 	foreach my $attribute (keys %{$attributes}) {
@@ -3400,7 +3433,7 @@ sub addDriverDynamicAttributes {
 
 	my $_attributes = $SCST->driverAttributes($driver);
 
-	return if issueWarning($SCST->errorString());
+	return TRUE if issueWarning($SCST->errorString());
 
 	my $existing = cacheAttributes($_attributes);
 
@@ -3413,6 +3446,8 @@ sub addDriverDynamicAttributes {
 
 		addDriverDynamicAttribute($driver, $attribute, $$attributes{$attribute});
 	}
+
+	return FALSE;
 }
 
 sub addDriverDynamicAttribute {
@@ -3425,6 +3460,8 @@ sub addDriverDynamicAttribute {
 	print "done.\n";
 
 	immediateExit($SCST->errorString($rc)) if ($rc); 
+
+	return FALSE;
 }
 
 sub removeDriverDynamicAttributes {
@@ -3433,7 +3470,7 @@ sub removeDriverDynamicAttributes {
 
 	my $_attributes = $SCST->driverAttributes($driver);
 
-	return if issueWarning($SCST->errorString());
+	return TRUE if issueWarning($SCST->errorString());
 
 	my $existing = cacheAttributes($_attributes);
 
@@ -3446,6 +3483,8 @@ sub removeDriverDynamicAttributes {
 
 		removeDriverDynamicAttribute($driver, $attribute, $$attributes{$attribute});
 	}
+
+	return FALSE;
 }
 
 sub removeDriverDynamicAttribute {
@@ -3453,13 +3492,15 @@ sub removeDriverDynamicAttribute {
 	my $attribute = shift;
 	my $value = shift;
 
-	return if (!$SCST->driverIsVirtualCapable($driver));
+	return TRUE if (!$SCST->driverIsVirtualCapable($driver));
 
 	print "\t-> Removing dynamic attribute '$attribute' with value '$value' for driver '$driver': ";
 	my $rc = $SCST->removeDriverDynamicAttribute($driver, $attribute, $value);
 	print "done.\n";
 
 	immediateExit($SCST->errorString($rc)) if ($rc);
+
+	return FALSE;
 }
 
 sub setTargetAttribute {
@@ -3480,6 +3521,8 @@ sub setTargetAttribute {
 	print "done.\n";
 
 	immediateExit($SCST->errorString($rc)) if ($rc);
+
+	return FALSE;
 }
 
 sub setTargetAttributes {
@@ -3493,7 +3536,7 @@ sub setTargetAttributes {
 	my $driverCap = $SCST->driverIsVirtualCapable($driver);
 	my $_attributes = $SCST->targetAttributes($driver, $target);
 
-	return if issueWarning($SCST->errorString());
+	return 0 if issueWarning($SCST->errorString());
 
 	# build caches for easier matching
 	foreach my $attribute (keys %{$attributes}) {
@@ -3569,7 +3612,7 @@ sub addTargetDynamicAttributes {
 
 	my $_attributes = $SCST->targetAttributes($driver, $target);
 
-	return if issueWarning($SCST->errorString());
+	return TRUE if issueWarning($SCST->errorString());
 
 	my $existing = cacheAttributes($_attributes);
 
@@ -3583,6 +3626,8 @@ sub addTargetDynamicAttributes {
 
 		addTargetDynamicAttribute($driver, $target, $attribute, $$attributes{$attribute});
 	}
+
+	return FALSE;
 }
 
 sub addTargetDynamicAttribute {
@@ -3597,6 +3642,8 @@ sub addTargetDynamicAttribute {
 	print "done.\n";
 
 	immediateExit($SCST->errorString($rc)) if ($rc); 
+
+	return FALSE;
 }
 
 sub removeTargetDynamicAttributes {
@@ -3606,7 +3653,7 @@ sub removeTargetDynamicAttributes {
 
 	my $_attributes = $SCST->targetAttributes($driver, $target);
 
-	return if issueWarning($SCST->errorString());
+	return TRUE if issueWarning($SCST->errorString());
 
 	my $existing = cacheAttributes($_attributes);
 
@@ -3620,6 +3667,8 @@ sub removeTargetDynamicAttributes {
 
 		removeTargetDynamicAttribute($driver, $target, $attribute, $$attributes{$attribute});
 	}
+
+	return FALSE;
 }
 
 sub removeTargetDynamicAttribute {
@@ -3628,13 +3677,15 @@ sub removeTargetDynamicAttribute {
 	my $attribute = shift;
 	my $value = shift;
 
-	return if (!$SCST->driverIsVirtualCapable($driver));
+	return TRUE if (!$SCST->driverIsVirtualCapable($driver));
 
 	print "\t-> Removing dynamic attribute '$attribute' with value '$value' for driver/target '$driver/$target': ";
 	my $rc = $SCST->removeTargetDynamicAttribute($driver, $target, $attribute, $value);
 	print "done.\n";
 
 	immediateExit($SCST->errorString($rc)) if ($rc);
+
+	return FALSE;
 }
 
 ####################################################################
@@ -3651,6 +3702,8 @@ sub openDevice {
 	print "done.\n";
 
 	immediateExit($SCST->errorString($rc)) if ($rc);
+
+	return FALSE;
 }
 
 sub closeDevice {
@@ -3675,13 +3728,15 @@ sub closeDevice {
 	print "done.\n";
 
 	immediateExit($SCST->errorString($rc)) if ($rc);
+
+	return FALSE;
 }
 
 sub resyncDevice {
 	my $device = shift;
 	my %attributes = ('resync_size', 1);
 
-	setDeviceAttributes($device, \%attributes);
+	return setDeviceAttributes($device, \%attributes);
 }
 
 ####################################################################
@@ -3698,6 +3753,8 @@ sub addGroup {
 	print "done.\n";
 
 	immediateExit($SCST->errorString($rc)) if ($rc);
+
+	return FALSE;
 }
 
 sub removeGroup {
@@ -3723,6 +3780,8 @@ sub removeGroup {
 	print "done.\n";
 
 	immediateExit($SCST->errorString($rc)) if ($rc);
+
+	return FALSE;
 }
 
 ####################################################################
@@ -3755,6 +3814,8 @@ sub addInitiator {
 	print "done.\n";
 
 	immediateExit($SCST->errorString($rc)) if ($rc);
+
+	return FALSE;
 }
 
 sub removeInitiator {
@@ -3771,6 +3832,8 @@ sub removeInitiator {
 	print "done.\n";
 
 	immediateExit($SCST->errorString($rc)) if ($rc);
+
+	return FALSE;
 }
 
 sub moveInitiator {
@@ -3787,6 +3850,8 @@ sub moveInitiator {
 	print "done.\n";
 
 	immediateExit($SCST->errorString($rc)) if ($rc);
+
+	return FALSE;
 }
 
 sub clearInitiators {
@@ -3801,6 +3866,8 @@ sub clearInitiators {
 	print "done.\n";
 
 	immediateExit($SCST->errorString($rc)) if ($rc);
+
+	return FALSE;
 }
 
 ####################################################################
@@ -3826,6 +3893,8 @@ sub addLun {
 	print "done.\n";
 
 	immediateExit($SCST->errorString($rc)) if ($rc);
+
+	return FALSE;
 }
 
 sub removeLun {
@@ -3847,6 +3916,8 @@ sub removeLun {
 	print "done.\n";
 
 	immediateExit($SCST->errorString($rc)) if ($rc);
+
+	return FALSE;
 }
 
 sub replaceLun {
@@ -3865,6 +3936,8 @@ sub replaceLun {
 	print "done.\n";
 
 	immediateExit($SCST->errorString($rc)) if ($rc);
+
+	return FALSE;
 }
 
 sub clearLuns {
@@ -3883,12 +3956,14 @@ sub clearLuns {
 	print "done.\n";
 
 	immediateExit($SCST->errorString($rc)) if ($rc);
+
+	return FALSE;
 }
 
 sub clearDriverDynamicAttributes {
 	my $driver = shift;
 
-	return if (!$SCST->driverIsVirtualCapable($driver));
+	return TRUE if (!$SCST->driverIsVirtualCapable($driver));
 
 	print "\t-> Removing all dynamic attributes from driver '$driver': ";
 
@@ -3909,13 +3984,15 @@ sub clearDriverDynamicAttributes {
 	}
 
 	print "done.\n";
+
+	return FALSE;
 }
 
 sub clearTargetDynamicAttributes {
 	my $driver = shift;
 	my $target = shift;
 
-	return if (!$SCST->driverIsVirtualCapable($driver));
+	return TRUE if (!$SCST->driverIsVirtualCapable($driver));
 
 	print "\t-> Removing all dynamic attributes from driver/target '$driver/$target': ";
 
@@ -3936,6 +4013,8 @@ sub clearTargetDynamicAttributes {
 	}
 
 	print "done.\n";
+
+	return FALSE;
 }
 
 ####################################################################
@@ -3946,6 +4025,8 @@ sub enableTarget {
 	my %attributes = ('enabled', 1);
 
 	setTargetAttributes($driver, $target, \%attributes);
+
+	return FALSE;
 }
 
 sub disableTarget {
@@ -3954,6 +4035,8 @@ sub disableTarget {
 	my %attributes = ('enabled', 0);
 
 	setTargetAttributes($driver, $target, \%attributes);
+
+	return FALSE;
 }
 
 sub enableDriver {
@@ -3961,9 +4044,9 @@ sub enableDriver {
 	my %attributes = ('enabled', 1);
 
 	my $attrs = $SCST->driverAttributes($driver);
-	return if (!defined($$attrs{'enabled'}));
+	return TRUE if (!defined($$attrs{'enabled'}));
 
-	setDriverAttributes($driver, \%attributes);
+	return setDriverAttributes($driver, \%attributes);
 }
 
 sub disableDriver {
@@ -3971,9 +4054,9 @@ sub disableDriver {
 	my %attributes = ('enabled', 0);
 
 	my $attrs = $SCST->driverAttributes($driver);
-	return if (!defined($$attrs{'enabled'}));
+	return TRUE if (!defined($$attrs{'enabled'}));
 
-	setDriverAttributes($driver, \%attributes);
+	return setDriverAttributes($driver, \%attributes);
 }
 
 sub issueLip {
@@ -4085,6 +4168,8 @@ sub readConfigFile {
 	@buff_a = split(//, $buffer);
 
 	$CONFIG = parseStanza(\@buff_a);
+
+	return FALSE;
 }
 
 sub parseStanza {
@@ -4384,6 +4469,8 @@ sub addAllGroupsToTarget {
 			%{$$new{'TARGET_DRIVER'}->{$driver}->{'TARGET'}->{$target}->{'GROUP'}->{$group}->{'LUN'}->{$lun}->{$device}} = ();
 		}
 	}
+
+	return FALSE;
 }
 
 sub findTargetDriver {
@@ -4497,7 +4584,7 @@ sub numerically {
 sub immediateExit {
 	my $error = shift;
 
-	return if (!$error);
+	return FALSE if (!$error);
 
 	print "\n\nFATAL: Received the following error:\n\n\t";
 	print "$error\n\n";
