@@ -130,9 +130,9 @@ static int scst_write_trace(const char *buf, size_t length,
 
 #endif /* defined(CONFIG_SCST_DEBUG) || defined(CONFIG_SCST_TRACING) */
 
-static ssize_t scst_luns_mgmt_show(struct kobject *kobj,
-				   struct kobj_attribute *attr,
-				   char *buf);
+static ssize_t scst_lun_parameters_show(struct kobject *kobj,
+					struct kobj_attribute *attr,
+					char *buf);
 static ssize_t scst_tgt_addr_method_show(struct device *device,
 					 struct device_attribute *attr,
 					 char *buf);
@@ -561,8 +561,8 @@ void scst_tgtt_sysfs_del(struct scst_tgt_template *tgtt)
  ** Target directory implementation
  **/
 
-static struct kobj_attribute scst_luns_mgmt =
-	__ATTR(mgmt, S_IRUGO, scst_luns_mgmt_show, NULL);
+static struct kobj_attribute scst_lun_parameters =
+	__ATTR(parameters, S_IRUGO, scst_lun_parameters_show, NULL);
 
 static struct device_attribute scst_tgt_addr_method =
 	__ATTR(addr_method, S_IRUGO | S_IWUSR, scst_tgt_addr_method_show,
@@ -746,10 +746,10 @@ int scst_tgt_sysfs_create(struct scst_tgt *tgt)
 		goto out_nomem;
 	}
 
-	res = sysfs_create_file(tgt->tgt_luns_kobj, &scst_luns_mgmt.attr);
-	if (res != 0) {
+	res = sysfs_create_file(tgt->tgt_luns_kobj, &scst_lun_parameters.attr);
+	if (res) {
 		PRINT_ERROR("Can't add attribute %s for tgt %s",
-			scst_luns_mgmt.attr.name, tgt->tgt_name);
+			    scst_lun_parameters.attr.name, tgt->tgt_name);
 		goto out_err;
 	}
 
@@ -2094,14 +2094,11 @@ out:
 #undef SCST_LUN_ACTION_CLEAR
 }
 
-static ssize_t scst_luns_mgmt_show(struct kobject *kobj,
+static ssize_t scst_lun_parameters_show(struct kobject *kobj,
 				   struct kobj_attribute *attr,
 				   char *buf)
 {
-	static const char help[] =
-		"The following parameters available: read_only.\n";
-
-	return sprintf(buf, "%s", help);
+	return sprintf(buf, "%s", "read_only\n");
 }
 
 static ssize_t __scst_acg_addr_method_show(struct scst_acg *acg, char *buf)
@@ -2437,10 +2434,10 @@ int scst_acg_sysfs_create(struct scst_tgt *tgt, struct scst_acg *acg)
 		goto out_del;
 	}
 
-	res = sysfs_create_file(acg->luns_kobj, &scst_luns_mgmt.attr);
-	if (res != 0) {
+	res = sysfs_create_file(acg->luns_kobj, &scst_lun_parameters.attr);
+	if (res) {
 		PRINT_ERROR("Can't add tgt attr %s for tgt %s",
-			scst_luns_mgmt.attr.name, tgt->tgt_name);
+			scst_lun_parameters.attr.name, tgt->tgt_name);
 		goto out_del;
 	}
 
@@ -3076,7 +3073,7 @@ static ssize_t scst_mgmt_show(struct device *device,
 "replace VNAME lun [parameters]\n"
 "clear\n"
 "\n"
-"where parameters is either 'read_only' or 'empty'.\n"
+"where parameters is either 'read_only' or empty.\n"
 "\n"
 "acg_mgmt_cmd syntax:\n"
 "\n"

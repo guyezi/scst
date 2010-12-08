@@ -39,6 +39,7 @@ SCST_LUNS        => 'luns',
 # Files
 SCST_MGMT_IO     => '/sys/class/scst/scst/mgmt',
 SCST_MGMT_IO_ATTR => 'mgmt',
+SCST_PARAM_ATTR  => 'parameters',
 SCST_VERSION_IO  => 'version',
 SCST_TRACE_IO    => 'trace_level',
 SCST_RESYNC_IO   => 'resync_size',
@@ -3226,10 +3227,10 @@ sub lunCreateAttributes {
 		}
 
 		$_path = mkpath(SCST_TARGETS, $driver, $target, SCST_GROUPS,
-				$group, SCST_LUNS, SCST_MGMT_IO_ATTR), O_RDONLY;
+				$group, SCST_LUNS, SCST_PARAM_ATTR), O_RDONLY;
 	} else {
 		$_path =  mkpath(SCST_TARGETS, $driver, $target, SCST_LUNS,
-				 SCST_MGMT_IO_ATTR), O_RDONLY;
+				 SCST_PARAM_ATTR), O_RDONLY;
 	}
 
 	my $io = new IO::File $_path;
@@ -3240,19 +3241,9 @@ sub lunCreateAttributes {
 		return undef;
 	}
 
-	while (my $in = <$io>) {
-		if ($in =~ /^The following parameters available\:/) {
-			(undef, $available) = split(/\:/, $in, 2);
-			$available =~ s/\.$//;
-		}
-	}
-
-	if ($available) {
-		foreach my $attribute (split(/\,/, $available)) {
-			$attribute =~ s/^\s+//;
-			$attribute =~ s/\s+$//;
-			$attributes{$attribute} = '';
-		}
+	while (my $attribute = <$io>) {
+		chomp($attribute);
+		$attributes{$attribute} = '';
 	}
 
 	return \%attributes;
