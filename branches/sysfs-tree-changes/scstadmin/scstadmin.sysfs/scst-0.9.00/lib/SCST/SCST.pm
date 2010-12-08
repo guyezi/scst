@@ -609,11 +609,6 @@ sub driverDynamicAttributes {
 	my $io = new IO::File mkpath(SCST_TARGETS, $driver,
 				     SCST_TGTT_ATTR), O_RDONLY;
 
-	if (!$io) {
-		$self->{'err_string'} = "driverDynamicAttributes(): Unable to open " . SCST_TGTT_ATTR . " for driver '$driver': $!";
-		return undef;
-	}
-
 	while (my $attribute = <$io>) {
 		chomp($attribute);
 		$attributes{$attribute} = '';
@@ -852,11 +847,6 @@ sub targetDynamicAttributes {
 	}
 
 	my $io = new IO::File mkpath(SCST_TARGETS, $driver, SCST_TGT_ATTR), O_RDONLY;
-
-	if (!$io) {
-		$self->{'err_string'} = "targetDynamicAttributes(): Unable to open " . SCST_TGT_ATTR . " for driver '$driver': $!";
-		return undef;
-	}
 
 	while (my $attribute = <$io>) {
 		chomp($attribute);
@@ -3164,12 +3154,6 @@ sub lunCreateAttributes {
 	}
 
 	my $io = new IO::File $_path;
-
-	if (!$io) {
-		$self->{'err_string'} = "lunCreateAttributes(): Unable to open luns mgmt ".
-		  "interface for group '$group': $!";
-		return undef;
-	}
 
 	while (my $attribute = <$io>) {
 		chomp($attribute);
