@@ -42,7 +42,6 @@ SCST_LUNS        => 'luns',
 
 # Files
 SCST_MGMT_IO     => '/sys/class/scst/scst/mgmt',
-SCST_MGMT_IO_ATTR => 'mgmt',
 SCST_PARAM_ATTR  => 'parameters',
 SCST_VERSION_IO  => 'version',
 SCST_TRACE_IO    => 'trace_level',
@@ -3210,49 +3209,6 @@ sub initiatorCreateAttributes {
 	my $group = shift;
 	my $available;
 	my %attributes;
-
-	if ($self->driverExists($driver) != TRUE) {
-		$self->{'err_string'} = "initiatorCreateAttributes(): Driver '$driver' ".
-		  "is not available";
-		return undef;
-	}
-
-	if ($self->targetExists($driver, $target) != TRUE) {
-		$self->{'err_string'} = "initiatorCreateAttributes(): Target '$target' ".
-		  "is not available";
-		return undef;
-	}
-
-	if ($self->groupExists($driver, $target, $group) != TRUE) {
-		$self->{'err_string'} = "initiatorCreateAttributes(): Group '$group' ".
-		  "does not exist";
-		return undef;
-	}
-
-	my $io = new IO::File mkpath(SCST_TARGETS, $driver, $target,
-				     SCST_GROUPS, $group, SCST_INITIATORS,
-				     SCST_MGMT_IO_ATTR), O_RDONLY;
-
-	if (!$io) {
-		$self->{'err_string'} = "initiatorCreateAttributes(): Unable to open initiators mgmt ".
-		  "interface for group '$group': $!";
-		return undef;
-	}
-
-	while (my $in = <$io>) {
-		if ($in =~ /^The following parameters available\:/) {
-			(undef, $available) = split(/\:/, $in, 2);
-			$available =~ s/\.$//;
-		}
-	}
-
-	if ($available) {
-		foreach my $attribute (split(/\,/, $available)) {
-			$attribute =~ s/^\s+//;
-			$attribute =~ s/\s+$//;
-			$attributes{$attribute} = '';
-		}
-	}
 
 	return \%attributes;
 }
