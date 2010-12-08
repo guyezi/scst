@@ -504,8 +504,7 @@ sub initiators {
 	}
 
 	foreach my $initiator (readdir($iHandle)) {
-		next if ($initiator eq '.' || $initiator eq '..'
-			 || $initiator eq SCST_MGMT_IO_ATTR);
+		next if ($initiator eq '.' || $initiator eq '..');
 
 		push @initiators, $initiator;
 	}
@@ -1819,8 +1818,6 @@ sub deviceAttributes {
 					}
 				}
 
-				next if ($attribute eq SCST_MGMT_IO_ATTR);
-
 				if ($attribute eq 'type') {
 					my($type, $type_string) = split(/\s\-\s/, $value, 2);
 					$attributes{$attribute}->{'value'} = $type;
@@ -1899,8 +1896,6 @@ sub driverAttributes {
 						$attribute =~ s/\d+$//;
 					}
 				}
-
-				next if ($attribute eq SCST_MGMT_IO_ATTR);
 
 				if ($attribute eq SCST_TRACE_IO) {
 					$attributes{$attribute}->{'value'} = $value;
@@ -2047,8 +2042,6 @@ sub targetAttributes {
 						$attribute =~ s/\d+$//;
 					}
 				}
-
-				next if ($attribute eq SCST_MGMT_IO_ATTR);
 
 				$attributes{$attribute}->{'static'} = $is_static;
 
@@ -2198,8 +2191,6 @@ sub groupAttributes {
 						$attribute =~ s/\d+$//;
 					}
 				}
-
-				next if ($attribute eq SCST_MGMT_IO_ATTR);
 
 				$attributes{$attribute}->{'static'} = $is_static;
 
@@ -2372,8 +2363,6 @@ sub lunAttributes {
 					}
 				}
 
-				next if ($attribute eq SCST_MGMT_IO_ATTR);
-
 				$attributes{$attribute}->{'static'} = $is_static;
 
 				if ($is_key) {
@@ -2525,8 +2514,6 @@ sub initiatorAttributes {
 						$attribute =~ s/\d+$//;
 					}
 				}
-
-				next if ($attribute eq SCST_MGMT_IO_ATTR);
 
 				$attributes{$attribute}->{'static'} = $is_static;
 
@@ -2692,8 +2679,7 @@ sub handlerAttributes {
 
 	foreach my $attribute (readdir($hHandle)) {
 		next if ($attribute eq '.' || $attribute eq '..'
-			 || $attribute eq 'power' || $attribute eq 'subsystem'
-			 || $attribute eq SCST_MGMT_IO_ATTR);
+			 || $attribute eq 'power' || $attribute eq 'subsystem');
 		my $pPath = mkpath(SCST_HANDLERS, $handler, $attribute);
 		my $mode = (stat($pPath))[2];
 
@@ -2732,8 +2718,6 @@ sub handlerAttributes {
 				$attribute =~ s/\d+$//;
 			}
 		}
-
-		next if ($attribute eq SCST_MGMT_IO_ATTR);
 
 		if (!(($mode & S_IRUSR) >> 6)) {
 			$attributes{$attribute}->{'static'} = FALSE;
@@ -2861,11 +2845,6 @@ sub deviceCreateAttributes {
 
 	my $io = new IO::File mkpath(SCST_HANDLERS, $handler,
 				     SCST_ADD_DEV_PARAMS), O_RDONLY;
-
-	if (!$io) {
-		$self->{'err_string'} = "deviceCreateAttributes(): Unable to open " . SCST_ADD_DEV_PARAMS . " for handler '$handler': $!";
-		return undef;
-	}
 
 	while (my $attribute = <$io>) {
 		chomp($attribute);

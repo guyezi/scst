@@ -528,13 +528,6 @@ static struct device_attribute scst_tgtt_tgt_attributes_attr =
 	__ATTR(target_attributes, S_IRUGO,
 	       scst_tgtt_tgt_attributes_show, NULL);
 
-static const struct device_attribute *scst_tgtt_attr[] = {
-	&scst_tgtt_add_target_parameters_attr,
-	&scst_tgtt_tgtt_attributes_attr,
-	&scst_tgtt_tgt_attributes_attr,
-	NULL
-};
-
 int scst_tgtt_sysfs_create(struct scst_tgt_template *tgtt)
 {
 	int res;
@@ -542,11 +535,37 @@ int scst_tgtt_sysfs_create(struct scst_tgt_template *tgtt)
 	TRACE_ENTRY();
 
 	if (tgtt->add_target) {
-		res = device_create_files(scst_sysfs_get_tgtt_dev(tgtt),
-					  scst_tgtt_attr);
+		res = device_create_file(scst_sysfs_get_tgtt_dev(tgtt),
+					 &scst_tgtt_add_target_parameters_attr);
 		if (res) {
-			PRINT_ERROR("Can't add attributes for target driver %s",
-				    tgtt->name);
+			PRINT_ERROR("Can't add attribute %s for target driver"
+				" %s",
+				scst_tgtt_add_target_parameters_attr.attr.name,
+				tgtt->name);
+			goto out_del;
+		}
+	}
+
+	if (tgtt->tgtt_optional_attributes) {
+		res = device_create_file(scst_sysfs_get_tgtt_dev(tgtt),
+					 &scst_tgtt_tgtt_attributes_attr);
+		if (res) {
+			PRINT_ERROR("Can't add attribute %s for target driver"
+				" %s",
+				scst_tgtt_tgtt_attributes_attr.attr.name,
+				tgtt->name);
+			goto out_del;
+		}
+	}
+
+	if (tgtt->tgt_optional_attributes) {
+		res = device_create_file(scst_sysfs_get_tgtt_dev(tgtt),
+					 &scst_tgtt_tgt_attributes_attr);
+		if (res) {
+			PRINT_ERROR("Can't add attribute %s for target driver"
+				" %s",
+				scst_tgtt_tgt_attributes_attr.attr.name,
+				tgtt->name);
 			goto out_del;
 		}
 	}
@@ -3942,13 +3961,6 @@ static struct device_attribute scst_devt_dev_attributes_attr =
 	__ATTR(device_attributes, S_IRUGO,
 	       scst_devt_dev_attributes_show, NULL);
 
-static const struct device_attribute *scst_devt_attr[] = {
-	&scst_devt_add_device_parameters_attr,
-	&scst_devt_devt_attributes_attr,
-	&scst_devt_dev_attributes_attr,
-	NULL
-};
-
 static int scst_process_devt_pass_through_mgmt_store(char *buffer,
 	struct scst_dev_type *devt)
 {
@@ -4071,12 +4083,37 @@ int scst_devt_sysfs_create(struct scst_dev_type *devt)
 
 	TRACE_ENTRY();
 
-	res = device_create_files(scst_sysfs_get_devt_dev(devt),
-				  scst_devt_attr);
-	if (res) {
-		PRINT_ERROR("Can't add attributes for dev handler %s",
-			    devt->name);
-		goto out_err;
+	if (devt->add_device_parameters) {
+		res = device_create_file(scst_sysfs_get_devt_dev(devt),
+					 &scst_devt_add_device_parameters_attr);
+		if (res) {
+			PRINT_ERROR("Can't add attribute %s for dev handler %s",
+				scst_devt_add_device_parameters_attr.attr.name,
+				devt->name);
+			goto out_err;
+		}
+	}
+
+	if (devt->devt_optional_attributes) {
+		res = device_create_file(scst_sysfs_get_devt_dev(devt),
+					 &scst_devt_devt_attributes_attr);
+		if (res) {
+			PRINT_ERROR("Can't add attribute %s for dev handler %s",
+				scst_devt_devt_attributes_attr.attr.name,
+				devt->name);
+			goto out_err;
+		}
+	}
+
+	if (devt->dev_optional_attributes) {
+		res = device_create_file(scst_sysfs_get_devt_dev(devt),
+					 &scst_devt_dev_attributes_attr);
+		if (res) {
+			PRINT_ERROR("Can't add attribute %s for dev handler %s",
+				scst_devt_dev_attributes_attr.attr.name,
+				devt->name);
+			goto out_err;
+		}
 	}
 
 	if (devt->devt_attrs) {
