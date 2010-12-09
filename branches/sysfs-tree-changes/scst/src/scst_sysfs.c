@@ -130,12 +130,6 @@ static int scst_write_trace(const char *buf, size_t length,
 
 #endif /* defined(CONFIG_SCST_DEBUG) || defined(CONFIG_SCST_TRACING) */
 
-static ssize_t scst_tgt_io_grouping_type_show(struct device *device,
-					      struct device_attribute *attr,
-					      char *buf);
-static ssize_t scst_tgt_io_grouping_type_store(struct device *device,
-					       struct device_attribute *attr,
-					       const char *buf, size_t count);
 static ssize_t scst_tgt_cpu_mask_show(struct device *device,
 				      struct device_attribute *attr,
 				      char *buf);
@@ -149,12 +143,6 @@ static ssize_t scst_acg_addr_method_show(struct kobject *kobj,
 				   struct kobj_attribute *attr,
 				   char *buf);
 static ssize_t scst_acg_addr_method_store(struct kobject *kobj,
-				    struct kobj_attribute *attr,
-				    const char *buf, size_t count);
-static ssize_t scst_acg_io_grouping_type_show(struct kobject *kobj,
-				   struct kobj_attribute *attr,
-				   char *buf);
-static ssize_t scst_acg_io_grouping_type_store(struct kobject *kobj,
 				    struct kobj_attribute *attr,
 				    const char *buf, size_t count);
 static ssize_t scst_acg_cpu_mask_show(struct kobject *kobj,
@@ -781,6 +769,145 @@ static struct device_attribute scst_tgt_addr_method =
 	__ATTR(addr_method, S_IRUGO | S_IWUSR, scst_tgt_addr_method_show,
 	       scst_tgt_addr_method_store);
 
+static ssize_t __scst_acg_io_grouping_type_show(struct scst_acg *acg, char *buf)
+{
+	int res;
+
+	switch (acg->acg_io_grouping_type) {
+	case SCST_IO_GROUPING_AUTO:
+		res = sprintf(buf, "%s\n", SCST_IO_GROUPING_AUTO_STR);
+		break;
+	case SCST_IO_GROUPING_THIS_GROUP_ONLY:
+		res = sprintf(buf, "%s\n%s\n",
+			SCST_IO_GROUPING_THIS_GROUP_ONLY_STR,
+			SCST_SYSFS_KEY_MARK);
+		break;
+	case SCST_IO_GROUPING_NEVER:
+		res = sprintf(buf, "%s\n%s\n", SCST_IO_GROUPING_NEVER_STR,
+			SCST_SYSFS_KEY_MARK);
+		break;
+	default:
+		res = sprintf(buf, "%d\n%s\n", acg->acg_io_grouping_type,
+			SCST_SYSFS_KEY_MARK);
+		break;
+	}
+
+	return res;
+}
+
+static int __scst_acg_process_io_grouping_type_store(struct scst_tgt *tgt,
+	struct scst_acg *acg, int io_grouping_type)
+{
+	int res;
+	struct scst_acg_dev *acg_dev;
+
+	scst_assert_activity_suspended();
+
+	TRACE_DBG("tgt %p, acg %p, io_grouping_type %d", tgt, acg,
+		io_grouping_type);
+
+	res = mutex_lock_interruptible(&scst_mutex);
+	if (res)
+		goto out;
+
+	acg->acg_io_grouping_type = io_grouping_type;
+
+	list_for_each_entry(acg_dev, &acg->acg_dev_list, acg_dev_list_entry) {
+		int rc;
+
+		scst_stop_dev_threads(acg_dev->dev);
+
+		rc = scst_create_dev_threads(acg_dev->dev);
+		if (rc != 0)
+			res = rc;
+	}
+
+	mutex_unlock(&scst_mutex);
+
+out:
+	return res;
+}
+
+static ssize_t __scst_acg_io_grouping_type_store(struct scst_acg *acg,
+	const char *buf, size_t count)
+{
+	int res = 0;
+	int prev = acg->acg_io_grouping_type;
+	long io_grouping_type;
+
+	if (strncasecmp(buf, SCST_IO_GROUPING_AUTO_STR,
+			min_t(int, strlen(SCST_IO_GROUPING_AUTO_STR), count)) == 0)
+		io_grouping_type = SCST_IO_GROUPING_AUTO;
+	else if (strncasecmp(buf, SCST_IO_GROUPING_THIS_GROUP_ONLY_STR,
+			min_t(int, strlen(SCST_IO_GROUPING_THIS_GROUP_ONLY_STR), count)) == 0)
+		io_grouping_type = SCST_IO_GROUPING_THIS_GROUP_ONLY;
+	else if (strncasecmp(buf, SCST_IO_GROUPING_NEVER_STR,
+			min_t(int, strlen(SCST_IO_GROUPING_NEVER_STR), count)) == 0)
+		io_grouping_type = SCST_IO_GROUPING_NEVER;
+	else {
+		res = strict_strtol(buf, 0, &io_grouping_type);
+		if ((res != 0) || (io_grouping_type <= 0)) {
+			PRINT_ERROR("Unknown or not allowed I/O grouping type "
+				"%s", buf);
+			res = -EINVAL;
+			goto out;
+		}
+	}
+
+	if (prev == io_grouping_type)
+		goto out;
+
+	res = __scst_acg_process_io_grouping_type_store(acg->tgt, acg,
+							io_grouping_type);
+out:
+	return res;
+}
+
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
+static ssize_t scst_tgt_io_grouping_type_show(struct class_device *device,
+					      char *buf)
+#else
+static ssize_t scst_tgt_io_grouping_type_show(struct device *device,
+	struct device_attribute *attr, char *buf)
+#endif
+{
+	struct scst_acg *acg;
+	struct scst_tgt *tgt;
+
+	tgt = scst_dev_to_tgt(device);
+
+	acg = tgt->default_acg;
+
+	return __scst_acg_io_grouping_type_show(acg, buf);
+}
+
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
+static ssize_t scst_tgt_io_grouping_type_store(struct class_device *device,
+					       const char *buf, size_t count)
+#else
+static ssize_t scst_tgt_io_grouping_type_store(struct device *device,
+	struct device_attribute *attr, const char *buf, size_t count)
+#endif
+{
+	int res;
+	struct scst_acg *acg;
+	struct scst_tgt *tgt;
+
+	tgt = scst_dev_to_tgt(device);
+
+	acg = tgt->default_acg;
+
+	res = __scst_acg_io_grouping_type_store(acg, buf, count);
+	if (res != 0)
+		goto out;
+
+	res = count;
+
+out:
+	TRACE_EXIT_RES(res);
+	return res;
+}
+
 #if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
 static struct class_device_attribute scst_tgt_io_grouping_type =
 #else
@@ -820,6 +947,35 @@ static const struct device_attribute *scst_tgt_attr[] = {
 static struct kobj_attribute scst_acg_addr_method =
 	__ATTR(addr_method, S_IRUGO | S_IWUSR, scst_acg_addr_method_show,
 		scst_acg_addr_method_store);
+
+static ssize_t scst_acg_io_grouping_type_show(struct kobject *kobj,
+	struct kobj_attribute *attr, char *buf)
+{
+	struct scst_acg *acg;
+
+	acg = scst_kobj_to_acg(kobj);
+
+	return __scst_acg_io_grouping_type_show(acg, buf);
+}
+
+static ssize_t scst_acg_io_grouping_type_store(struct kobject *kobj,
+	struct kobj_attribute *attr, const char *buf, size_t count)
+{
+	int res;
+	struct scst_acg *acg;
+
+	acg = scst_kobj_to_acg(kobj);
+
+	res = __scst_acg_io_grouping_type_store(acg, buf, count);
+	if (res != 0)
+		goto out;
+
+	res = count;
+
+out:
+	TRACE_EXIT_RES(res);
+	return res;
+}
 
 static struct kobj_attribute scst_acg_io_grouping_type =
 	__ATTR(io_grouping_type, S_IRUGO | S_IWUSR,
@@ -2337,145 +2493,6 @@ out:
 #undef SCST_LUN_ACTION_CLEAR
 }
 
-static ssize_t __scst_acg_io_grouping_type_show(struct scst_acg *acg, char *buf)
-{
-	int res;
-
-	switch (acg->acg_io_grouping_type) {
-	case SCST_IO_GROUPING_AUTO:
-		res = sprintf(buf, "%s\n", SCST_IO_GROUPING_AUTO_STR);
-		break;
-	case SCST_IO_GROUPING_THIS_GROUP_ONLY:
-		res = sprintf(buf, "%s\n%s\n",
-			SCST_IO_GROUPING_THIS_GROUP_ONLY_STR,
-			SCST_SYSFS_KEY_MARK);
-		break;
-	case SCST_IO_GROUPING_NEVER:
-		res = sprintf(buf, "%s\n%s\n", SCST_IO_GROUPING_NEVER_STR,
-			SCST_SYSFS_KEY_MARK);
-		break;
-	default:
-		res = sprintf(buf, "%d\n%s\n", acg->acg_io_grouping_type,
-			SCST_SYSFS_KEY_MARK);
-		break;
-	}
-
-	return res;
-}
-
-static int __scst_acg_process_io_grouping_type_store(struct scst_tgt *tgt,
-	struct scst_acg *acg, int io_grouping_type)
-{
-	int res;
-	struct scst_acg_dev *acg_dev;
-
-	scst_assert_activity_suspended();
-
-	TRACE_DBG("tgt %p, acg %p, io_grouping_type %d", tgt, acg,
-		io_grouping_type);
-
-	res = mutex_lock_interruptible(&scst_mutex);
-	if (res)
-		goto out;
-
-	acg->acg_io_grouping_type = io_grouping_type;
-
-	list_for_each_entry(acg_dev, &acg->acg_dev_list, acg_dev_list_entry) {
-		int rc;
-
-		scst_stop_dev_threads(acg_dev->dev);
-
-		rc = scst_create_dev_threads(acg_dev->dev);
-		if (rc != 0)
-			res = rc;
-	}
-
-	mutex_unlock(&scst_mutex);
-
-out:
-	return res;
-}
-
-static ssize_t __scst_acg_io_grouping_type_store(struct scst_acg *acg,
-	const char *buf, size_t count)
-{
-	int res = 0;
-	int prev = acg->acg_io_grouping_type;
-	long io_grouping_type;
-
-	if (strncasecmp(buf, SCST_IO_GROUPING_AUTO_STR,
-			min_t(int, strlen(SCST_IO_GROUPING_AUTO_STR), count)) == 0)
-		io_grouping_type = SCST_IO_GROUPING_AUTO;
-	else if (strncasecmp(buf, SCST_IO_GROUPING_THIS_GROUP_ONLY_STR,
-			min_t(int, strlen(SCST_IO_GROUPING_THIS_GROUP_ONLY_STR), count)) == 0)
-		io_grouping_type = SCST_IO_GROUPING_THIS_GROUP_ONLY;
-	else if (strncasecmp(buf, SCST_IO_GROUPING_NEVER_STR,
-			min_t(int, strlen(SCST_IO_GROUPING_NEVER_STR), count)) == 0)
-		io_grouping_type = SCST_IO_GROUPING_NEVER;
-	else {
-		res = strict_strtol(buf, 0, &io_grouping_type);
-		if ((res != 0) || (io_grouping_type <= 0)) {
-			PRINT_ERROR("Unknown or not allowed I/O grouping type "
-				"%s", buf);
-			res = -EINVAL;
-			goto out;
-		}
-	}
-
-	if (prev == io_grouping_type)
-		goto out;
-
-	res = __scst_acg_process_io_grouping_type_store(acg->tgt, acg,
-							io_grouping_type);
-out:
-	return res;
-}
-
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
-static ssize_t scst_tgt_io_grouping_type_show(struct class_device *device,
-					      char *buf)
-#else
-static ssize_t scst_tgt_io_grouping_type_show(struct device *device,
-	struct device_attribute *attr, char *buf)
-#endif
-{
-	struct scst_acg *acg;
-	struct scst_tgt *tgt;
-
-	tgt = scst_dev_to_tgt(device);
-
-	acg = tgt->default_acg;
-
-	return __scst_acg_io_grouping_type_show(acg, buf);
-}
-
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
-static ssize_t scst_tgt_io_grouping_type_store(struct class_device *device,
-					       const char *buf, size_t count)
-#else
-static ssize_t scst_tgt_io_grouping_type_store(struct device *device,
-	struct device_attribute *attr, const char *buf, size_t count)
-#endif
-{
-	int res;
-	struct scst_acg *acg;
-	struct scst_tgt *tgt;
-
-	tgt = scst_dev_to_tgt(device);
-
-	acg = tgt->default_acg;
-
-	res = __scst_acg_io_grouping_type_store(acg, buf, count);
-	if (res != 0)
-		goto out;
-
-	res = count;
-
-out:
-	TRACE_EXIT_RES(res);
-	return res;
-}
-
 static ssize_t __scst_acg_cpu_mask_show(struct scst_acg *acg, char *buf)
 {
 	int res;
@@ -2674,35 +2691,6 @@ static ssize_t scst_acg_addr_method_store(struct kobject *kobj,
 
 	res = __scst_acg_addr_method_store(acg, buf, count);
 
-	TRACE_EXIT_RES(res);
-	return res;
-}
-
-static ssize_t scst_acg_io_grouping_type_show(struct kobject *kobj,
-	struct kobj_attribute *attr, char *buf)
-{
-	struct scst_acg *acg;
-
-	acg = scst_kobj_to_acg(kobj);
-
-	return __scst_acg_io_grouping_type_show(acg, buf);
-}
-
-static ssize_t scst_acg_io_grouping_type_store(struct kobject *kobj,
-	struct kobj_attribute *attr, const char *buf, size_t count)
-{
-	int res;
-	struct scst_acg *acg;
-
-	acg = scst_kobj_to_acg(kobj);
-
-	res = __scst_acg_io_grouping_type_store(acg, buf, count);
-	if (res != 0)
-		goto out;
-
-	res = count;
-
-out:
 	TRACE_EXIT_RES(res);
 	return res;
 }
