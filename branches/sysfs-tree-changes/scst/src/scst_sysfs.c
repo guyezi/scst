@@ -130,12 +130,6 @@ static int scst_write_trace(const char *buf, size_t length,
 
 #endif /* defined(CONFIG_SCST_DEBUG) || defined(CONFIG_SCST_TRACING) */
 
-static ssize_t scst_rel_tgt_id_show(struct device *device,
-				   struct device_attribute *attr,
-				   char *buf);
-static ssize_t scst_rel_tgt_id_store(struct device *device,
-				    struct device_attribute *attr,
-				    const char *buf, size_t count);
 static ssize_t scst_acg_addr_method_show(struct kobject *kobj,
 				   struct kobj_attribute *attr,
 				   char *buf);
@@ -1009,6 +1003,92 @@ static struct class_device_attribute scst_tgt_cpu_mask =
 static struct device_attribute scst_tgt_cpu_mask =
 #endif
 	__ATTR(cpu_mask, S_IRUGO, scst_tgt_cpu_mask_show, NULL);
+
+static ssize_t scst_rel_tgt_id_show(struct device *device,
+				    struct device_attribute *attr, char *buf)
+{
+	struct scst_tgt *tgt;
+	int res;
+
+	TRACE_ENTRY();
+
+	tgt = scst_dev_to_tgt(device);
+
+	res = sprintf(buf, "%d\n%s", tgt->rel_tgt_id,
+		(tgt->rel_tgt_id != 0) ? SCST_SYSFS_KEY_MARK "\n" : "");
+
+	TRACE_EXIT_RES(res);
+	return res;
+}
+
+static int scst_process_rel_tgt_id_store(struct scst_tgt *tgt,
+					 unsigned long rel_tgt_id)
+{
+	int res = 0;
+
+	TRACE_ENTRY();
+
+	/* tgt protected by kobject_get() */
+
+	TRACE_DBG("Trying to set relative target port id %d",
+		(uint16_t)rel_tgt_id);
+
+	if (tgt->tgtt->is_target_enabled(tgt) &&
+	    rel_tgt_id != tgt->rel_tgt_id) {
+		if (!scst_is_relative_target_port_id_unique(rel_tgt_id, tgt)) {
+			PRINT_ERROR("Relative port id %d is not unique",
+				(uint16_t)rel_tgt_id);
+			res = -EBADSLT;
+			goto out;
+		}
+	}
+
+	if (rel_tgt_id < SCST_MIN_REL_TGT_ID ||
+	    rel_tgt_id > SCST_MAX_REL_TGT_ID) {
+		if ((rel_tgt_id == 0) && !tgt->tgtt->is_target_enabled(tgt))
+			goto set;
+
+		PRINT_ERROR("Invalid relative port id %d",
+			(uint16_t)rel_tgt_id);
+		res = -EINVAL;
+		goto out;
+	}
+
+set:
+	tgt->rel_tgt_id = (uint16_t)rel_tgt_id;
+out:
+	TRACE_EXIT_RES(res);
+	return res;
+}
+
+static ssize_t scst_rel_tgt_id_store(struct device *device,
+	struct device_attribute *attr, const char *buf, size_t count)
+{
+	int res;
+	struct scst_tgt *tgt;
+	unsigned long rel_tgt_id;
+
+	TRACE_ENTRY();
+
+	BUG_ON(!buf);
+
+	tgt = scst_dev_to_tgt(device);
+
+	res = strict_strtoul(buf, 0, &rel_tgt_id);
+	if (res != 0) {
+		PRINT_ERROR("%s", "Wrong rel_tgt_id");
+		res = -EINVAL;
+		goto out;
+	}
+
+	res = scst_process_rel_tgt_id_store(tgt, rel_tgt_id);
+	if (res == 0)
+		res = count;
+
+out:
+	TRACE_EXIT_RES(res);
+	return res;
+}
 
 #if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
 static struct class_device_attribute scst_rel_tgt_id =
@@ -2750,92 +2830,6 @@ out:
 
 #undef SCST_LUN_ACTION_CREATE
 #undef SCST_LUN_ACTION_DEL
-}
-
-static ssize_t scst_rel_tgt_id_show(struct device *device,
-				    struct device_attribute *attr, char *buf)
-{
-	struct scst_tgt *tgt;
-	int res;
-
-	TRACE_ENTRY();
-
-	tgt = scst_dev_to_tgt(device);
-
-	res = sprintf(buf, "%d\n%s", tgt->rel_tgt_id,
-		(tgt->rel_tgt_id != 0) ? SCST_SYSFS_KEY_MARK "\n" : "");
-
-	TRACE_EXIT_RES(res);
-	return res;
-}
-
-static int scst_process_rel_tgt_id_store(struct scst_tgt *tgt,
-					 unsigned long rel_tgt_id)
-{
-	int res = 0;
-
-	TRACE_ENTRY();
-
-	/* tgt protected by kobject_get() */
-
-	TRACE_DBG("Trying to set relative target port id %d",
-		(uint16_t)rel_tgt_id);
-
-	if (tgt->tgtt->is_target_enabled(tgt) &&
-	    rel_tgt_id != tgt->rel_tgt_id) {
-		if (!scst_is_relative_target_port_id_unique(rel_tgt_id, tgt)) {
-			PRINT_ERROR("Relative port id %d is not unique",
-				(uint16_t)rel_tgt_id);
-			res = -EBADSLT;
-			goto out;
-		}
-	}
-
-	if (rel_tgt_id < SCST_MIN_REL_TGT_ID ||
-	    rel_tgt_id > SCST_MAX_REL_TGT_ID) {
-		if ((rel_tgt_id == 0) && !tgt->tgtt->is_target_enabled(tgt))
-			goto set;
-
-		PRINT_ERROR("Invalid relative port id %d",
-			(uint16_t)rel_tgt_id);
-		res = -EINVAL;
-		goto out;
-	}
-
-set:
-	tgt->rel_tgt_id = (uint16_t)rel_tgt_id;
-out:
-	TRACE_EXIT_RES(res);
-	return res;
-}
-
-static ssize_t scst_rel_tgt_id_store(struct device *device,
-	struct device_attribute *attr, const char *buf, size_t count)
-{
-	int res;
-	struct scst_tgt *tgt;
-	unsigned long rel_tgt_id;
-
-	TRACE_ENTRY();
-
-	BUG_ON(!buf);
-
-	tgt = scst_dev_to_tgt(device);
-
-	res = strict_strtoul(buf, 0, &rel_tgt_id);
-	if (res != 0) {
-		PRINT_ERROR("%s", "Wrong rel_tgt_id");
-		res = -EINVAL;
-		goto out;
-	}
-
-	res = scst_process_rel_tgt_id_store(tgt, rel_tgt_id);
-	if (res == 0)
-		res = count;
-
-out:
-	TRACE_EXIT_RES(res);
-	return res;
 }
 
 int scst_acn_sysfs_create(struct scst_acn *acn)
