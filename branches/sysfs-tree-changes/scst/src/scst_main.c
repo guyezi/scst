@@ -189,7 +189,11 @@ struct scst_dev_type scst_null_devtype = {
 
 static void __scst_resume_activity(void);
 
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
+static void scst_release_tgtt(struct class_device *dev)
+#else
 static void scst_release_tgtt(struct device *dev)
+#endif
 {
 	/*
 	 * Since target template objects reside in a data segment, no memory
@@ -508,7 +512,11 @@ out_err_up:
 }
 EXPORT_SYMBOL(scst_unregister_target_template);
 
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
+static void scst_release_target(struct class_device *dev);
+#else
 static void scst_release_target(struct device *dev);
+#endif
 
 static struct class scst_tgt_class = {
 	.name		= "target_instance",
@@ -578,7 +586,7 @@ struct scst_tgt *scst_register_target(struct scst_tgt_template *vtt,
 
 	tgt->tgt_dev.class = &scst_tgt_class;
 #if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
-	tgt->tgt_dev.dev = &tgt->tgtt->tgtt_dev;
+	tgt->tgt_dev.dev = tgt->tgtt->tgtt_dev.dev;
 #else
 	tgt->tgt_dev.parent = &tgt->tgtt->tgtt_dev;
 #endif
@@ -746,7 +754,11 @@ again:
 }
 EXPORT_SYMBOL(scst_unregister_target);
 
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
+static void scst_release_target(struct class_device *dev)
+#else
 static void scst_release_target(struct device *dev)
+#endif
 {
 	struct scst_tgt *tgt;
 
@@ -956,7 +968,11 @@ void scst_resume_activity(void)
 }
 EXPORT_SYMBOL_GPL(scst_resume_activity);
 
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
+static void scst_release_dev(struct class_device *device)
+#else
 static void scst_release_dev(struct device *device)
+#endif
 {
 	struct scst_device *dev;
 
@@ -1024,7 +1040,7 @@ static int scst_register_device(struct scsi_device *scsidp)
 
 	dev->dev_dev.class = &scst_dev_class;
 #if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
-	dev->dev_dev.dev = &scsidp->sdev_dev;
+	dev->dev_dev.dev = scsidp->sdev_classdev.dev;
 #else
 	dev->dev_dev.parent = &scsidp->sdev_dev;
 #endif
@@ -1419,7 +1435,11 @@ out_unlock:
 }
 EXPORT_SYMBOL_GPL(scst_unregister_virtual_device);
 
-static void scst_release_devt(struct device *kobj)
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
+static void scst_release_devt(struct class_device *dev)
+#else
+static void scst_release_devt(struct device *dev)
+#endif
 {
 	/*
 	 * Since device type objects reside in a data segment, no memory
@@ -1585,7 +1605,11 @@ out:
 	return res;
 
 out_unregister:
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
+	class_device_unregister(&dev_type->devt_dev);
+#else
 	device_unregister(&dev_type->devt_dev);
+#endif
 
 out_unlock:
 	mutex_unlock(&scst_mutex);
@@ -1636,7 +1660,11 @@ void scst_unregister_dev_driver(struct scst_dev_type *dev_type)
 	scst_devt_sysfs_del(dev_type);
 #endif
 
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
+	class_device_unregister(&dev_type->devt_dev);
+#else
 	device_unregister(&dev_type->devt_dev);
+#endif
 
 	mutex_unlock(&scst_mutex);
 	scst_resume_activity();
@@ -1693,7 +1721,7 @@ int __scst_register_virtual_dev_driver(struct scst_dev_type *dev_type,
 	dev_type->devt_dev.class = &scst_devt_class;
 #if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
 	dev_type->devt_dev.dev = dev_type->parent
-		? scst_sysfs_get_devt_dev(dev_type->parent) : NULL;
+		? scst_sysfs_get_devt_dev(dev_type->parent)->dev : NULL;
 #else
 	dev_type->devt_dev.parent = dev_type->parent
 		? scst_sysfs_get_devt_dev(dev_type->parent) : NULL;

@@ -462,8 +462,13 @@ extern const struct sysfs_ops scst_sysfs_ops;
 #else
 extern struct sysfs_ops scst_sysfs_ops;
 #endif
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
+extern struct class_device_attribute scst_devt_default_attrs[];
+extern struct class_device_attribute scst_dev_attrs[];
+#else
 extern struct device_attribute scst_devt_default_attrs[];
 extern struct device_attribute scst_dev_attrs[];
+#endif
 extern struct attribute *scst_session_attrs[];
 extern struct attribute *scst_tgt_dev_attrs[];
 extern struct attribute *scst_lun_attrs[];

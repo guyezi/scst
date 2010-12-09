@@ -34,8 +34,6 @@
 #ifdef CONFIG_SCST_PROC
 #include <linux/proc_fs.h>
 #include <linux/seq_file.h>
-#elif defined(RHEL_MAJOR) && RHEL_MAJOR -0 <= 5
-#error The SCST sysfs interface is not supported on RHEL 5. Please run make enable_proc.
 #endif
 
 #include <scsi/scsi_cmnd.h>
@@ -130,6 +128,91 @@ static inline int set_cpus_allowed_ptr(struct task_struct *p,
 				       const cpumask_t *new_mask)
 {
 	return set_cpus_allowed(p, *new_mask);
+}
+#endif
+
+#if !defined(CONFIG_SCST_PROC) && LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
+struct kobj_attribute {
+	struct attribute attr;
+	ssize_t (*show)(struct kobject *kobj, struct kobj_attribute *attr,
+			char *buf);
+	ssize_t (*store)(struct kobject *kobj, struct kobj_attribute *attr,
+			 const char *buf, size_t count);
+};
+
+static inline ssize_t kobj_attr_show(struct kobject *kobj,
+				     struct attribute *attr, char *buf)
+{
+	struct kobj_attribute *kattr;
+	ssize_t ret = -EIO;
+
+	kattr = container_of(attr, struct kobj_attribute, attr);
+	if (kattr->show)
+		ret = kattr->show(kobj, kattr, buf);
+	return ret;
+}
+
+static inline ssize_t kobj_attr_store(struct kobject *kobj,
+				      struct attribute *attr,
+				      const char *buf, size_t count)
+{
+	struct kobj_attribute *kattr;
+	ssize_t ret = -EIO;
+
+	kattr = container_of(attr, struct kobj_attribute, attr);
+	if (kattr->store)
+		ret = kattr->store(kobj, kattr, buf, count);
+	return ret;
+}
+
+static struct sysfs_ops kobj_sysfs_ops = {
+        .show   = kobj_attr_show,
+        .store  = kobj_attr_store,
+};
+
+static inline void dynamic_kobj_release(struct kobject *kobj)
+{
+	kfree(kobj);
+}
+
+static struct kobj_type dynamic_kobj_ktype = {
+	.release        = dynamic_kobj_release,
+	.sysfs_ops      = &kobj_sysfs_ops,
+};
+
+static inline struct kobject * __must_check kobject_create(void)
+{
+        struct kobject *kobj;
+
+        kobj = kzalloc(sizeof(*kobj), GFP_KERNEL);
+        if (!kobj)
+                return NULL;
+
+        kobject_init(kobj);
+	kobj->ktype = &dynamic_kobj_ktype;
+        return kobj;
+}
+
+static inline struct kobject * __must_check kobject_create_and_add(
+			   const char *name, struct kobject *parent)
+{
+	struct kobject *kobj;
+	int retval;
+
+	kobj = kobject_create();
+	if (!kobj)
+		return NULL;
+
+	kobject_set_name(kobj, "%s", name);
+	kobj->parent = parent;
+	retval = kobject_add(kobj);
+	if (retval) {
+		printk(KERN_WARNING "%s: kobject_add error: %d\n", __func__,
+		       retval);
+		kobject_put(kobj);
+		kobj = NULL;
+	}
+	return kobj;
 }
 #endif
 
@@ -1002,10 +1085,18 @@ struct scst_tgt_template {
 
 #ifndef CONFIG_SCST_PROC
 	/* sysfs attributes, if any */
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
+	const struct class_device_attribute **tgtt_attrs;
+#else
 	const struct device_attribute **tgtt_attrs;
+#endif
 
 	/* sysfs target attributes, if any */
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
+	const struct class_device_attribute **tgt_attrs;
+#else
 	const struct device_attribute **tgt_attrs;
+#endif
 
 	/* sysfs session attributes, if any */
 	const struct attribute **sess_attrs;
@@ -1046,7 +1137,11 @@ struct scst_tgt_template {
 	/* Device number in /proc */
 	int proc_dev_num;
 #endif
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
+	struct class_device tgtt_dev;
+#else
 	struct device tgtt_dev;
+#endif
 
 	/*
 	 * Optional vendor to be reported via the SCSI inquiry data. If NULL,
@@ -1419,7 +1514,11 @@ struct scst_dev_type {
 	/* list entry in scst_(virtual_)dev_type_list */
 	struct list_head dev_type_list_entry;
 
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
+	struct class_device devt_dev;
+#else
 	struct device devt_dev;
+#endif
 
 #ifdef CONFIG_SCST_PROC
 	/* The pointer to the /proc directory entry */
@@ -1480,7 +1579,11 @@ struct scst_tgt {
 
 	uint16_t rel_tgt_id;
 
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
+	struct class_device tgt_dev;
+#else
 	struct device tgt_dev;
+#endif
 
 #ifdef CONFIG_SCST_PROC
 	/* Name of the default security group ("Default_target_name") */
@@ -2268,7 +2371,11 @@ struct scst_device {
 	/* Threads pool type of the device. Valid only if threads_num > 0. */
 	enum scst_dev_type_threads_pool_type threads_pool_type;
 
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
+	struct class_device dev_dev;
+#else
 	struct device dev_dev;
+#endif
 
 #ifndef CONFIG_SCST_PROC
 	struct kobject *dev_exp_kobj; /* exported groups */
@@ -3758,7 +3865,11 @@ struct sysfs_ops *scst_sysfs_get_sysfs_ops(void);
 
 #endif /* CONFIG_SCST_PROC */
 
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
+static inline struct class_device *scst_sysfs_get_tgtt_dev(
+#else
 static inline struct device *scst_sysfs_get_tgtt_dev(
+#endif
 	struct scst_tgt_template *tgtt)
 {
 	return &tgtt->tgtt_dev;
@@ -3770,12 +3881,20 @@ static inline struct kobject *scst_sysfs_get_tgtt_kobj(
 	return &tgtt->tgtt_dev.kobj;
 }
 
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
+static inline struct scst_tgt_template *scst_dev_to_tgtt(struct class_device *dev)
+#else
 static inline struct scst_tgt_template *scst_dev_to_tgtt(struct device *dev)
+#endif
 {
 	return container_of(dev, struct scst_tgt_template, tgtt_dev);
 }
 
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
+static inline struct class_device *scst_sysfs_get_tgt_dev(struct scst_tgt *tgt)
+#else
 static inline struct device *scst_sysfs_get_tgt_dev(struct scst_tgt *tgt)
+#endif
 {
 	return &tgt->tgt_dev;
 }
@@ -3785,12 +3904,20 @@ static inline struct kobject *scst_sysfs_get_tgt_kobj(struct scst_tgt *tgt)
 	return &tgt->tgt_dev.kobj;
 }
 
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
+static inline struct scst_tgt *scst_dev_to_tgt(struct class_device *dev)
+#else
 static inline struct scst_tgt *scst_dev_to_tgt(struct device *dev)
+#endif
 {
 	return container_of(dev, struct scst_tgt, tgt_dev);
 }
 
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
+static inline struct class_device *scst_sysfs_get_devt_dev(
+#else
 static inline struct device *scst_sysfs_get_devt_dev(
+#endif
 	struct scst_dev_type *devt)
 {
 	return &devt->devt_dev;
@@ -3802,17 +3929,29 @@ static inline struct kobject *scst_sysfs_get_devt_kobj(
 	return &devt->devt_dev.kobj;
 }
 
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
+static inline struct scst_dev_type *scst_dev_to_devt(struct class_device *dev)
+#else
 static inline struct scst_dev_type *scst_dev_to_devt(struct device *dev)
+#endif
 {
 	return container_of(dev, struct scst_dev_type, devt_dev);
 }
 
 static inline struct scst_dev_type *scst_kobj_to_devt(struct kobject *kobj)
 {
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
+	return scst_dev_to_devt(container_of(kobj, struct class_device, kobj));
+#else
 	return scst_dev_to_devt(container_of(kobj, struct device, kobj));
+#endif
 }
 
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
+static inline struct class_device *scst_sysfs_get_dev_dev(struct scst_device *dev)
+#else
 static inline struct device *scst_sysfs_get_dev_dev(struct scst_device *dev)
+#endif
 {
 	return &dev->dev_dev;
 }
@@ -3822,7 +3961,11 @@ static inline struct kobject *scst_sysfs_get_dev_kobj(struct scst_device *dev)
 	return &dev->dev_dev.kobj;
 }
 
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
+static inline struct scst_device *scst_dev_to_dev(struct class_device *dev)
+#else
 static inline struct scst_device *scst_dev_to_dev(struct device *dev)
+#endif
 {
 	return container_of(dev, struct scst_device, dev_dev);
 }
