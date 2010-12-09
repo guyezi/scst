@@ -130,9 +130,6 @@ static int scst_write_trace(const char *buf, size_t length,
 
 #endif /* defined(CONFIG_SCST_DEBUG) || defined(CONFIG_SCST_TRACING) */
 
-static ssize_t scst_lun_parameters_show(struct kobject *kobj,
-					struct kobj_attribute *attr,
-					char *buf);
 static ssize_t scst_tgt_addr_method_show(struct device *device,
 					 struct device_attribute *attr,
 					 char *buf);
@@ -686,6 +683,13 @@ void scst_tgtt_sysfs_del(struct scst_tgt_template *tgtt)
 /**
  ** Target directory implementation
  **/
+
+static ssize_t scst_lun_parameters_show(struct kobject *kobj,
+				   struct kobj_attribute *attr,
+				   char *buf)
+{
+	return sprintf(buf, "%s", "read_only\n");
+}
 
 static struct kobj_attribute scst_lun_parameters =
 	__ATTR(parameters, S_IRUGO, scst_lun_parameters_show, NULL);
@@ -2252,13 +2256,6 @@ out:
 #undef SCST_LUN_ACTION_DEL
 #undef SCST_LUN_ACTION_REPLACE
 #undef SCST_LUN_ACTION_CLEAR
-}
-
-static ssize_t scst_lun_parameters_show(struct kobject *kobj,
-				   struct kobj_attribute *attr,
-				   char *buf)
-{
-	return sprintf(buf, "%s", "read_only\n");
 }
 
 static ssize_t __scst_acg_addr_method_show(struct scst_acg *acg, char *buf)
