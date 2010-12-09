@@ -174,10 +174,6 @@ static int __scst_acg_process_cpu_mask_store(struct scst_tgt *tgt,
 					     cpumask_t *cpu_mask);
 static ssize_t scst_acn_file_show(struct kobject *kobj,
 	struct kobj_attribute *attr, char *buf);
-static int scst_process_devt_mgmt_store(char *buffer,
-					struct scst_dev_type *devt);
-static int scst_process_devt_pass_through_mgmt_store(char *buffer,
-						struct scst_dev_type *devt);
 static ssize_t scst_dev_set_threads_num(struct scst_device *dev, long newtn);
 static ssize_t scst_dev_set_thread_pool_type(struct scst_device *dev,
 				enum scst_dev_type_threads_pool_type newtpt);
@@ -3188,6 +3184,374 @@ out:
 
 
 /**
+ ** Dev handlers
+ **/
+
+#if defined(CONFIG_SCST_DEBUG) || defined(CONFIG_SCST_TRACING)
+
+static ssize_t scst_devt_trace_level_show(struct device *device,
+	struct device_attribute *attr, char *buf)
+{
+	struct scst_dev_type *devt;
+
+	devt = scst_dev_to_devt(device);
+
+	return scst_trace_level_show(devt->trace_tbl,
+		devt->trace_flags ? *devt->trace_flags : 0, buf,
+		devt->trace_tbl_help);
+}
+
+static ssize_t scst_devt_trace_level_store(struct device *device,
+	struct device_attribute *attr, const char *buf, size_t count)
+{
+	int res;
+	struct scst_dev_type *devt;
+
+	TRACE_ENTRY();
+
+	devt = scst_dev_to_devt(device);
+
+	res = mutex_lock_interruptible(&scst_log_mutex);
+	if (res)
+		goto out;
+
+	res = scst_write_trace(buf, count, devt->trace_flags,
+		devt->default_trace_flags, devt->name, devt->trace_tbl);
+
+	mutex_unlock(&scst_log_mutex);
+
+out:
+	TRACE_EXIT_RES(res);
+	return res;
+}
+
+static struct device_attribute devt_trace_attr =
+	__ATTR(trace_level, S_IRUGO | S_IWUSR,
+	       scst_devt_trace_level_show, scst_devt_trace_level_store);
+
+#endif /* #if defined(CONFIG_SCST_DEBUG) || defined(CONFIG_SCST_TRACING) */
+
+static ssize_t scst_devt_type_show(struct device *device,
+	struct device_attribute *attr, char *buf)
+{
+	int pos;
+	struct scst_dev_type *devt;
+
+	devt = scst_dev_to_devt(device);
+
+	pos = sprintf(buf, "%d - %s\n", devt->type,
+		(unsigned)devt->type > ARRAY_SIZE(scst_dev_handler_types) ?
+			"unknown" : scst_dev_handler_types[devt->type]);
+
+	return pos;
+}
+
+struct device_attribute scst_devt_default_attrs[] = {
+	__ATTR(type, S_IRUGO, scst_devt_type_show, NULL),
+	__ATTR_NULL
+};
+
+static ssize_t scst_devt_add_device_parameters_show(struct device *device,
+				struct device_attribute *attr, char *buf)
+{
+	struct scst_dev_type *devt;
+	const char *const *p;
+	ssize_t res;
+
+	devt = scst_dev_to_devt(device);
+	res = 0;
+	for (p = devt->add_device_parameters; p && *p; p++)
+		res += scnprintf(buf + res, PAGE_SIZE - res, "%s\n", *p);
+	return res;
+}
+
+static ssize_t scst_devt_devt_attributes_show(struct device *device,
+				struct device_attribute *attr, char *buf)
+{
+	struct scst_dev_type *devt;
+	const char *const *p;
+	ssize_t res;
+
+	devt = scst_dev_to_devt(device);
+	res = 0;
+	for (p = devt->devt_optional_attributes; p && *p; p++)
+		res += scnprintf(buf + res, PAGE_SIZE - res, "%s\n", *p);
+	return res;
+}
+
+static ssize_t scst_devt_dev_attributes_show(struct device *device,
+				struct device_attribute *attr, char *buf)
+{
+	struct scst_dev_type *devt;
+	const char *const *p;
+	ssize_t res;
+
+	devt = scst_dev_to_devt(device);
+	res = 0;
+	for (p = devt->dev_optional_attributes; p && *p; p++)
+		res += scnprintf(buf + res, PAGE_SIZE - res, "%s\n", *p);
+	return res;
+}
+
+static int scst_process_devt_mgmt_store(char *buffer,
+	struct scst_dev_type *devt)
+{
+	int res = 0;
+	char *p, *pp, *dev_name;
+
+	TRACE_ENTRY();
+
+	TRACE_DBG("devt %p, buffer %s", devt, buffer);
+
+	pp = buffer;
+	if (pp[strlen(pp) - 1] == '\n')
+		pp[strlen(pp) - 1] = '\0';
+
+	p = scst_get_next_lexem(&pp);
+
+	if (strcasecmp("add_device", p) == 0) {
+		dev_name = scst_get_next_lexem(&pp);
+		if (*dev_name == '\0') {
+			PRINT_ERROR("%s", "Device name required");
+			res = -EINVAL;
+			goto out;
+		}
+		res = devt->add_device(dev_name, pp);
+	} else if (strcasecmp("del_device", p) == 0) {
+		dev_name = scst_get_next_lexem(&pp);
+		if (*dev_name == '\0') {
+			PRINT_ERROR("%s", "Device name required");
+			res = -EINVAL;
+			goto out;
+		}
+
+		p = scst_get_next_lexem(&pp);
+		if (*p != '\0')
+			goto out_syntax_err;
+
+		res = devt->del_device(dev_name);
+	} else if (devt->mgmt_cmd != NULL) {
+		scst_restore_token_str(p, pp);
+		res = devt->mgmt_cmd(buffer);
+	} else {
+		PRINT_ERROR("Unknown action \"%s\"", p);
+		res = -EINVAL;
+		goto out;
+	}
+
+out:
+	TRACE_EXIT_RES(res);
+	return res;
+
+out_syntax_err:
+	PRINT_ERROR("Syntax error on \"%s\"", p);
+	res = -EINVAL;
+	goto out;
+}
+
+static struct device_attribute scst_devt_add_device_parameters_attr =
+	__ATTR(add_device_parameters, S_IRUGO,
+	       scst_devt_add_device_parameters_show, NULL);
+static struct device_attribute scst_devt_devt_attributes_attr =
+	__ATTR(driver_attributes, S_IRUGO,
+	       scst_devt_devt_attributes_show, NULL);
+static struct device_attribute scst_devt_dev_attributes_attr =
+	__ATTR(device_attributes, S_IRUGO,
+	       scst_devt_dev_attributes_show, NULL);
+
+static int scst_process_devt_pass_through_mgmt_store(char *buffer,
+	struct scst_dev_type *devt)
+{
+	int res = 0;
+	char *p, *pp, *action;
+	unsigned long host, channel, id, lun;
+	struct scst_device *d, *dev = NULL;
+
+	TRACE_ENTRY();
+
+	scst_assert_activity_suspended();
+
+	TRACE_DBG("devt %p, buffer %s", devt, buffer);
+
+	pp = buffer;
+	if (pp[strlen(pp) - 1] == '\n')
+		pp[strlen(pp) - 1] = '\0';
+
+	action = scst_get_next_lexem(&pp);
+	p = scst_get_next_lexem(&pp);
+	if (*p == '\0') {
+		PRINT_ERROR("%s", "Device required");
+		res = -EINVAL;
+		goto out;
+	}
+
+	if (*scst_get_next_lexem(&pp) != '\0') {
+		PRINT_ERROR("%s", "Too many parameters");
+		res = -EINVAL;
+		goto out_syntax_err;
+	}
+
+	host = simple_strtoul(p, &p, 0);
+	if ((host == ULONG_MAX) || (*p != ':'))
+		goto out_syntax_err;
+	p++;
+	channel = simple_strtoul(p, &p, 0);
+	if ((channel == ULONG_MAX) || (*p != ':'))
+		goto out_syntax_err;
+	p++;
+	id = simple_strtoul(p, &p, 0);
+	if ((channel == ULONG_MAX) || (*p != ':'))
+		goto out_syntax_err;
+	p++;
+	lun = simple_strtoul(p, &p, 0);
+	if (lun == ULONG_MAX)
+		goto out_syntax_err;
+
+	TRACE_DBG("Dev %ld:%ld:%ld:%ld", host, channel, id, lun);
+
+	res = mutex_lock_interruptible(&scst_mutex);
+	if (res)
+		goto out;
+
+	list_for_each_entry(d, &scst_dev_list, dev_list_entry) {
+		if ((d->virt_id == 0) &&
+		    d->scsi_dev->host->host_no == host &&
+		    d->scsi_dev->channel == channel &&
+		    d->scsi_dev->id == id &&
+		    d->scsi_dev->lun == lun) {
+			dev = d;
+			TRACE_DBG("Dev %p (%ld:%ld:%ld:%ld) found",
+				  dev, host, channel, id, lun);
+			break;
+		}
+	}
+	if (dev == NULL) {
+		PRINT_ERROR("Device %ld:%ld:%ld:%ld not found",
+			       host, channel, id, lun);
+		res = -EINVAL;
+		goto out_unlock;
+	}
+
+	if (dev->scsi_dev->type != devt->type) {
+		PRINT_ERROR("Type %d of device %s differs from type "
+			"%d of dev handler %s", dev->type,
+			dev->virt_name, devt->type, devt->name);
+		res = -EINVAL;
+		goto out_unlock;
+	}
+
+	if (strcasecmp("add_device", action) == 0) {
+		res = scst_assign_dev_handler(dev, devt);
+		if (res == 0)
+			PRINT_INFO("Device %s assigned to dev handler %s",
+				dev->virt_name, devt->name);
+	} else if (strcasecmp("del_device", action) == 0) {
+		if (dev->handler != devt) {
+			PRINT_ERROR("Device %s is not assigned to handler %s",
+				dev->virt_name, devt->name);
+			res = -EINVAL;
+			goto out_unlock;
+		}
+		res = scst_assign_dev_handler(dev, &scst_null_devtype);
+		if (res == 0)
+			PRINT_INFO("Device %s unassigned from dev handler %s",
+				dev->virt_name, devt->name);
+	} else {
+		PRINT_ERROR("Unknown action \"%s\"", action);
+		res = -EINVAL;
+		goto out_unlock;
+	}
+
+out_unlock:
+	mutex_unlock(&scst_mutex);
+
+out:
+	TRACE_EXIT_RES(res);
+	return res;
+
+out_syntax_err:
+	PRINT_ERROR("Syntax error on \"%s\"", p);
+	res = -EINVAL;
+	goto out;
+}
+
+int scst_devt_sysfs_create(struct scst_dev_type *devt)
+{
+	int res;
+
+	TRACE_ENTRY();
+
+	if (devt->add_device_parameters) {
+		res = device_create_file(scst_sysfs_get_devt_dev(devt),
+					 &scst_devt_add_device_parameters_attr);
+		if (res) {
+			PRINT_ERROR("Can't add attribute %s for dev handler %s",
+				scst_devt_add_device_parameters_attr.attr.name,
+				devt->name);
+			goto out_err;
+		}
+	}
+
+	if (devt->devt_optional_attributes) {
+		res = device_create_file(scst_sysfs_get_devt_dev(devt),
+					 &scst_devt_devt_attributes_attr);
+		if (res) {
+			PRINT_ERROR("Can't add attribute %s for dev handler %s",
+				scst_devt_devt_attributes_attr.attr.name,
+				devt->name);
+			goto out_err;
+		}
+	}
+
+	if (devt->dev_optional_attributes) {
+		res = device_create_file(scst_sysfs_get_devt_dev(devt),
+					 &scst_devt_dev_attributes_attr);
+		if (res) {
+			PRINT_ERROR("Can't add attribute %s for dev handler %s",
+				scst_devt_dev_attributes_attr.attr.name,
+				devt->name);
+			goto out_err;
+		}
+	}
+
+	if (devt->devt_attrs) {
+		res = device_create_files(scst_sysfs_get_devt_dev(devt),
+					  devt->devt_attrs);
+		if (res) {
+			PRINT_ERROR("Can't add attributes for dev handler %s",
+				    devt->name);
+			goto out_err;
+		}
+	}
+
+#if defined(CONFIG_SCST_DEBUG) || defined(CONFIG_SCST_TRACING)
+	if (devt->trace_flags) {
+		res = device_create_file(scst_sysfs_get_devt_dev(devt),
+					 &devt_trace_attr);
+		if (res) {
+			PRINT_ERROR("Can't add devt trace_flag for dev "
+				"handler %s", devt->name);
+			goto out_err;
+		}
+	}
+#endif
+
+out:
+	TRACE_EXIT_RES(res);
+	return res;
+
+out_err:
+	scst_devt_sysfs_del(devt);
+	goto out;
+}
+
+void scst_devt_sysfs_del(struct scst_dev_type *devt)
+{
+	TRACE_ENTRY();
+	TRACE_EXIT();
+}
+
+/**
  ** SCST sysfs root directory implementation
  **/
 
@@ -3920,374 +4284,6 @@ static struct class scst_class = {
 	.dev_attrs		= scst_default_attrs,
 #endif
 };
-
-/**
- ** Dev handlers
- **/
-
-#if defined(CONFIG_SCST_DEBUG) || defined(CONFIG_SCST_TRACING)
-
-static ssize_t scst_devt_trace_level_show(struct device *device,
-	struct device_attribute *attr, char *buf)
-{
-	struct scst_dev_type *devt;
-
-	devt = scst_dev_to_devt(device);
-
-	return scst_trace_level_show(devt->trace_tbl,
-		devt->trace_flags ? *devt->trace_flags : 0, buf,
-		devt->trace_tbl_help);
-}
-
-static ssize_t scst_devt_trace_level_store(struct device *device,
-	struct device_attribute *attr, const char *buf, size_t count)
-{
-	int res;
-	struct scst_dev_type *devt;
-
-	TRACE_ENTRY();
-
-	devt = scst_dev_to_devt(device);
-
-	res = mutex_lock_interruptible(&scst_log_mutex);
-	if (res)
-		goto out;
-
-	res = scst_write_trace(buf, count, devt->trace_flags,
-		devt->default_trace_flags, devt->name, devt->trace_tbl);
-
-	mutex_unlock(&scst_log_mutex);
-
-out:
-	TRACE_EXIT_RES(res);
-	return res;
-}
-
-static struct device_attribute devt_trace_attr =
-	__ATTR(trace_level, S_IRUGO | S_IWUSR,
-	       scst_devt_trace_level_show, scst_devt_trace_level_store);
-
-#endif /* #if defined(CONFIG_SCST_DEBUG) || defined(CONFIG_SCST_TRACING) */
-
-static ssize_t scst_devt_type_show(struct device *device,
-	struct device_attribute *attr, char *buf)
-{
-	int pos;
-	struct scst_dev_type *devt;
-
-	devt = scst_dev_to_devt(device);
-
-	pos = sprintf(buf, "%d - %s\n", devt->type,
-		(unsigned)devt->type > ARRAY_SIZE(scst_dev_handler_types) ?
-			"unknown" : scst_dev_handler_types[devt->type]);
-
-	return pos;
-}
-
-struct device_attribute scst_devt_default_attrs[] = {
-	__ATTR(type, S_IRUGO, scst_devt_type_show, NULL),
-	__ATTR_NULL
-};
-
-static ssize_t scst_devt_add_device_parameters_show(struct device *device,
-				struct device_attribute *attr, char *buf)
-{
-	struct scst_dev_type *devt;
-	const char *const *p;
-	ssize_t res;
-
-	devt = scst_dev_to_devt(device);
-	res = 0;
-	for (p = devt->add_device_parameters; p && *p; p++)
-		res += scnprintf(buf + res, PAGE_SIZE - res, "%s\n", *p);
-	return res;
-}
-
-static ssize_t scst_devt_devt_attributes_show(struct device *device,
-				struct device_attribute *attr, char *buf)
-{
-	struct scst_dev_type *devt;
-	const char *const *p;
-	ssize_t res;
-
-	devt = scst_dev_to_devt(device);
-	res = 0;
-	for (p = devt->devt_optional_attributes; p && *p; p++)
-		res += scnprintf(buf + res, PAGE_SIZE - res, "%s\n", *p);
-	return res;
-}
-
-static ssize_t scst_devt_dev_attributes_show(struct device *device,
-				struct device_attribute *attr, char *buf)
-{
-	struct scst_dev_type *devt;
-	const char *const *p;
-	ssize_t res;
-
-	devt = scst_dev_to_devt(device);
-	res = 0;
-	for (p = devt->dev_optional_attributes; p && *p; p++)
-		res += scnprintf(buf + res, PAGE_SIZE - res, "%s\n", *p);
-	return res;
-}
-
-static int scst_process_devt_mgmt_store(char *buffer,
-	struct scst_dev_type *devt)
-{
-	int res = 0;
-	char *p, *pp, *dev_name;
-
-	TRACE_ENTRY();
-
-	TRACE_DBG("devt %p, buffer %s", devt, buffer);
-
-	pp = buffer;
-	if (pp[strlen(pp) - 1] == '\n')
-		pp[strlen(pp) - 1] = '\0';
-
-	p = scst_get_next_lexem(&pp);
-
-	if (strcasecmp("add_device", p) == 0) {
-		dev_name = scst_get_next_lexem(&pp);
-		if (*dev_name == '\0') {
-			PRINT_ERROR("%s", "Device name required");
-			res = -EINVAL;
-			goto out;
-		}
-		res = devt->add_device(dev_name, pp);
-	} else if (strcasecmp("del_device", p) == 0) {
-		dev_name = scst_get_next_lexem(&pp);
-		if (*dev_name == '\0') {
-			PRINT_ERROR("%s", "Device name required");
-			res = -EINVAL;
-			goto out;
-		}
-
-		p = scst_get_next_lexem(&pp);
-		if (*p != '\0')
-			goto out_syntax_err;
-
-		res = devt->del_device(dev_name);
-	} else if (devt->mgmt_cmd != NULL) {
-		scst_restore_token_str(p, pp);
-		res = devt->mgmt_cmd(buffer);
-	} else {
-		PRINT_ERROR("Unknown action \"%s\"", p);
-		res = -EINVAL;
-		goto out;
-	}
-
-out:
-	TRACE_EXIT_RES(res);
-	return res;
-
-out_syntax_err:
-	PRINT_ERROR("Syntax error on \"%s\"", p);
-	res = -EINVAL;
-	goto out;
-}
-
-static struct device_attribute scst_devt_add_device_parameters_attr =
-	__ATTR(add_device_parameters, S_IRUGO,
-	       scst_devt_add_device_parameters_show, NULL);
-static struct device_attribute scst_devt_devt_attributes_attr =
-	__ATTR(driver_attributes, S_IRUGO,
-	       scst_devt_devt_attributes_show, NULL);
-static struct device_attribute scst_devt_dev_attributes_attr =
-	__ATTR(device_attributes, S_IRUGO,
-	       scst_devt_dev_attributes_show, NULL);
-
-static int scst_process_devt_pass_through_mgmt_store(char *buffer,
-	struct scst_dev_type *devt)
-{
-	int res = 0;
-	char *p, *pp, *action;
-	unsigned long host, channel, id, lun;
-	struct scst_device *d, *dev = NULL;
-
-	TRACE_ENTRY();
-
-	scst_assert_activity_suspended();
-
-	TRACE_DBG("devt %p, buffer %s", devt, buffer);
-
-	pp = buffer;
-	if (pp[strlen(pp) - 1] == '\n')
-		pp[strlen(pp) - 1] = '\0';
-
-	action = scst_get_next_lexem(&pp);
-	p = scst_get_next_lexem(&pp);
-	if (*p == '\0') {
-		PRINT_ERROR("%s", "Device required");
-		res = -EINVAL;
-		goto out;
-	}
-
-	if (*scst_get_next_lexem(&pp) != '\0') {
-		PRINT_ERROR("%s", "Too many parameters");
-		res = -EINVAL;
-		goto out_syntax_err;
-	}
-
-	host = simple_strtoul(p, &p, 0);
-	if ((host == ULONG_MAX) || (*p != ':'))
-		goto out_syntax_err;
-	p++;
-	channel = simple_strtoul(p, &p, 0);
-	if ((channel == ULONG_MAX) || (*p != ':'))
-		goto out_syntax_err;
-	p++;
-	id = simple_strtoul(p, &p, 0);
-	if ((channel == ULONG_MAX) || (*p != ':'))
-		goto out_syntax_err;
-	p++;
-	lun = simple_strtoul(p, &p, 0);
-	if (lun == ULONG_MAX)
-		goto out_syntax_err;
-
-	TRACE_DBG("Dev %ld:%ld:%ld:%ld", host, channel, id, lun);
-
-	res = mutex_lock_interruptible(&scst_mutex);
-	if (res)
-		goto out;
-
-	list_for_each_entry(d, &scst_dev_list, dev_list_entry) {
-		if ((d->virt_id == 0) &&
-		    d->scsi_dev->host->host_no == host &&
-		    d->scsi_dev->channel == channel &&
-		    d->scsi_dev->id == id &&
-		    d->scsi_dev->lun == lun) {
-			dev = d;
-			TRACE_DBG("Dev %p (%ld:%ld:%ld:%ld) found",
-				  dev, host, channel, id, lun);
-			break;
-		}
-	}
-	if (dev == NULL) {
-		PRINT_ERROR("Device %ld:%ld:%ld:%ld not found",
-			       host, channel, id, lun);
-		res = -EINVAL;
-		goto out_unlock;
-	}
-
-	if (dev->scsi_dev->type != devt->type) {
-		PRINT_ERROR("Type %d of device %s differs from type "
-			"%d of dev handler %s", dev->type,
-			dev->virt_name, devt->type, devt->name);
-		res = -EINVAL;
-		goto out_unlock;
-	}
-
-	if (strcasecmp("add_device", action) == 0) {
-		res = scst_assign_dev_handler(dev, devt);
-		if (res == 0)
-			PRINT_INFO("Device %s assigned to dev handler %s",
-				dev->virt_name, devt->name);
-	} else if (strcasecmp("del_device", action) == 0) {
-		if (dev->handler != devt) {
-			PRINT_ERROR("Device %s is not assigned to handler %s",
-				dev->virt_name, devt->name);
-			res = -EINVAL;
-			goto out_unlock;
-		}
-		res = scst_assign_dev_handler(dev, &scst_null_devtype);
-		if (res == 0)
-			PRINT_INFO("Device %s unassigned from dev handler %s",
-				dev->virt_name, devt->name);
-	} else {
-		PRINT_ERROR("Unknown action \"%s\"", action);
-		res = -EINVAL;
-		goto out_unlock;
-	}
-
-out_unlock:
-	mutex_unlock(&scst_mutex);
-
-out:
-	TRACE_EXIT_RES(res);
-	return res;
-
-out_syntax_err:
-	PRINT_ERROR("Syntax error on \"%s\"", p);
-	res = -EINVAL;
-	goto out;
-}
-
-int scst_devt_sysfs_create(struct scst_dev_type *devt)
-{
-	int res;
-
-	TRACE_ENTRY();
-
-	if (devt->add_device_parameters) {
-		res = device_create_file(scst_sysfs_get_devt_dev(devt),
-					 &scst_devt_add_device_parameters_attr);
-		if (res) {
-			PRINT_ERROR("Can't add attribute %s for dev handler %s",
-				scst_devt_add_device_parameters_attr.attr.name,
-				devt->name);
-			goto out_err;
-		}
-	}
-
-	if (devt->devt_optional_attributes) {
-		res = device_create_file(scst_sysfs_get_devt_dev(devt),
-					 &scst_devt_devt_attributes_attr);
-		if (res) {
-			PRINT_ERROR("Can't add attribute %s for dev handler %s",
-				scst_devt_devt_attributes_attr.attr.name,
-				devt->name);
-			goto out_err;
-		}
-	}
-
-	if (devt->dev_optional_attributes) {
-		res = device_create_file(scst_sysfs_get_devt_dev(devt),
-					 &scst_devt_dev_attributes_attr);
-		if (res) {
-			PRINT_ERROR("Can't add attribute %s for dev handler %s",
-				scst_devt_dev_attributes_attr.attr.name,
-				devt->name);
-			goto out_err;
-		}
-	}
-
-	if (devt->devt_attrs) {
-		res = device_create_files(scst_sysfs_get_devt_dev(devt),
-					  devt->devt_attrs);
-		if (res) {
-			PRINT_ERROR("Can't add attributes for dev handler %s",
-				    devt->name);
-			goto out_err;
-		}
-	}
-
-#if defined(CONFIG_SCST_DEBUG) || defined(CONFIG_SCST_TRACING)
-	if (devt->trace_flags) {
-		res = device_create_file(scst_sysfs_get_devt_dev(devt),
-					 &devt_trace_attr);
-		if (res) {
-			PRINT_ERROR("Can't add devt trace_flag for dev "
-				"handler %s", devt->name);
-			goto out_err;
-		}
-	}
-#endif
-
-out:
-	TRACE_EXIT_RES(res);
-	return res;
-
-out_err:
-	scst_devt_sysfs_del(devt);
-	goto out;
-}
-
-void scst_devt_sysfs_del(struct scst_dev_type *devt)
-{
-	TRACE_ENTRY();
-	TRACE_EXIT();
-}
 
 /**
  ** Sysfs user info
