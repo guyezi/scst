@@ -130,9 +130,6 @@ static int scst_write_trace(const char *buf, size_t length,
 
 #endif /* defined(CONFIG_SCST_DEBUG) || defined(CONFIG_SCST_TRACING) */
 
-static ssize_t scst_tgt_cpu_mask_show(struct device *device,
-				      struct device_attribute *attr,
-				      char *buf);
 static ssize_t scst_rel_tgt_id_show(struct device *device,
 				   struct device_attribute *attr,
 				   char *buf);
@@ -145,12 +142,6 @@ static ssize_t scst_acg_addr_method_show(struct kobject *kobj,
 static ssize_t scst_acg_addr_method_store(struct kobject *kobj,
 				    struct kobj_attribute *attr,
 				    const char *buf, size_t count);
-static ssize_t scst_acg_cpu_mask_show(struct kobject *kobj,
-				   struct kobj_attribute *attr,
-				   char *buf);
-static int __scst_acg_process_cpu_mask_store(struct scst_tgt *tgt,
-					     struct scst_acg *acg,
-					     cpumask_t *cpu_mask);
 static ssize_t scst_acn_file_show(struct kobject *kobj,
 	struct kobj_attribute *attr, char *buf);
 static ssize_t scst_dev_set_threads_num(struct scst_device *dev, long newtn);
@@ -917,6 +908,104 @@ static struct device_attribute scst_tgt_io_grouping_type =
 	       scst_tgt_io_grouping_type_show,
 	       scst_tgt_io_grouping_type_store);
 
+static int __scst_acg_process_cpu_mask_store(struct scst_tgt *tgt,
+	struct scst_acg *acg, cpumask_t *cpu_mask)
+{
+	int res;
+	struct scst_session *sess;
+
+	TRACE_DBG("tgt %p, acg %p", tgt, acg);
+
+	res = mutex_lock_interruptible(&scst_mutex);
+	if (res)
+		goto out;
+
+	cpumask_copy(&acg->acg_cpu_mask, cpu_mask);
+
+	list_for_each_entry(sess, &acg->acg_sess_list, acg_sess_list_entry) {
+		int i;
+		for (i = 0; i < SESS_TGT_DEV_LIST_HASH_SIZE; i++) {
+			struct scst_tgt_dev *tgt_dev;
+			struct list_head *head = &sess->sess_tgt_dev_list[i];
+			list_for_each_entry(tgt_dev, head,
+						sess_tgt_dev_list_entry) {
+				struct scst_cmd_thread_t *thr;
+				if (tgt_dev->active_cmd_threads != &tgt_dev->tgt_dev_cmd_threads)
+					continue;
+				list_for_each_entry(thr,
+						&tgt_dev->active_cmd_threads->threads_list,
+						thread_list_entry) {
+					int rc;
+					rc = set_cpus_allowed_ptr(thr->cmd_thread, cpu_mask);
+					if (rc != 0)
+						PRINT_ERROR("Setting CPU "
+							"affinity failed: %d", rc);
+				}
+			}
+		}
+		if (tgt->tgtt->report_aen != NULL) {
+			struct scst_aen *aen;
+			int rc;
+
+			aen = scst_alloc_aen(sess, 0);
+			if (aen == NULL) {
+				PRINT_ERROR("Unable to notify target driver %s "
+					"about cpu_mask change", tgt->tgt_name);
+				continue;
+			}
+
+			aen->event_fn = SCST_AEN_CPU_MASK_CHANGED;
+
+			TRACE_DBG("Calling target's %s report_aen(%p)",
+				tgt->tgtt->name, aen);
+			rc = tgt->tgtt->report_aen(aen);
+			TRACE_DBG("Target's %s report_aen(%p) returned %d",
+				tgt->tgtt->name, aen, rc);
+			if (rc != SCST_AEN_RES_SUCCESS)
+				scst_free_aen(aen);
+		}
+	}
+
+	mutex_unlock(&scst_mutex);
+
+out:
+	return res;
+}
+
+static ssize_t __scst_acg_cpu_mask_show(struct scst_acg *acg, char *buf)
+{
+	int res;
+
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 28)
+	res = cpumask_scnprintf(buf, PAGE_SIZE, &acg->acg_cpu_mask);
+#else
+	res = cpumask_scnprintf(buf, PAGE_SIZE, acg->acg_cpu_mask);
+#endif
+	res += scnprintf(buf + res, PAGE_SIZE - res, "\n");
+	if (cpus_equal(acg->acg_cpu_mask, default_cpu_mask) == 0)
+		res += scnprintf(buf + res, PAGE_SIZE - res, "%s",
+				 SCST_SYSFS_KEY_MARK "\n");
+
+	return res;
+}
+
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
+static ssize_t scst_tgt_cpu_mask_show(struct class_device *device, char *buf)
+#else
+static ssize_t scst_tgt_cpu_mask_show(struct device *device,
+	struct device_attribute *attr, char *buf)
+#endif
+{
+	struct scst_acg *acg;
+	struct scst_tgt *tgt;
+
+	tgt = scst_dev_to_tgt(device);
+
+	acg = tgt->default_acg;
+
+	return __scst_acg_cpu_mask_show(acg, buf);
+}
+
 #if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
 static struct class_device_attribute scst_tgt_cpu_mask =
 #else
@@ -981,6 +1070,16 @@ static struct kobj_attribute scst_acg_io_grouping_type =
 	__ATTR(io_grouping_type, S_IRUGO | S_IWUSR,
 	       scst_acg_io_grouping_type_show,
 	       scst_acg_io_grouping_type_store);
+
+static ssize_t scst_acg_cpu_mask_show(struct kobject *kobj,
+	struct kobj_attribute *attr, char *buf)
+{
+	struct scst_acg *acg;
+
+	acg = scst_kobj_to_acg(kobj);
+
+	return __scst_acg_cpu_mask_show(acg, buf);
+}
 
 static struct kobj_attribute scst_acg_cpu_mask =
 	__ATTR(cpu_mask, S_IRUGO, scst_acg_cpu_mask_show, NULL);
@@ -2493,104 +2592,6 @@ out:
 #undef SCST_LUN_ACTION_CLEAR
 }
 
-static ssize_t __scst_acg_cpu_mask_show(struct scst_acg *acg, char *buf)
-{
-	int res;
-
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 28)
-	res = cpumask_scnprintf(buf, PAGE_SIZE, &acg->acg_cpu_mask);
-#else
-	res = cpumask_scnprintf(buf, PAGE_SIZE, acg->acg_cpu_mask);
-#endif
-	res += scnprintf(buf + res, PAGE_SIZE - res, "\n");
-	if (cpus_equal(acg->acg_cpu_mask, default_cpu_mask) == 0)
-		res += scnprintf(buf + res, PAGE_SIZE - res, "%s",
-				 SCST_SYSFS_KEY_MARK "\n");
-
-	return res;
-}
-
-static int __scst_acg_process_cpu_mask_store(struct scst_tgt *tgt,
-	struct scst_acg *acg, cpumask_t *cpu_mask)
-{
-	int res;
-	struct scst_session *sess;
-
-	TRACE_DBG("tgt %p, acg %p", tgt, acg);
-
-	res = mutex_lock_interruptible(&scst_mutex);
-	if (res)
-		goto out;
-
-	cpumask_copy(&acg->acg_cpu_mask, cpu_mask);
-
-	list_for_each_entry(sess, &acg->acg_sess_list, acg_sess_list_entry) {
-		int i;
-		for (i = 0; i < SESS_TGT_DEV_LIST_HASH_SIZE; i++) {
-			struct scst_tgt_dev *tgt_dev;
-			struct list_head *head = &sess->sess_tgt_dev_list[i];
-			list_for_each_entry(tgt_dev, head,
-						sess_tgt_dev_list_entry) {
-				struct scst_cmd_thread_t *thr;
-				if (tgt_dev->active_cmd_threads != &tgt_dev->tgt_dev_cmd_threads)
-					continue;
-				list_for_each_entry(thr,
-						&tgt_dev->active_cmd_threads->threads_list,
-						thread_list_entry) {
-					int rc;
-					rc = set_cpus_allowed_ptr(thr->cmd_thread, cpu_mask);
-					if (rc != 0)
-						PRINT_ERROR("Setting CPU "
-							"affinity failed: %d", rc);
-				}
-			}
-		}
-		if (tgt->tgtt->report_aen != NULL) {
-			struct scst_aen *aen;
-			int rc;
-
-			aen = scst_alloc_aen(sess, 0);
-			if (aen == NULL) {
-				PRINT_ERROR("Unable to notify target driver %s "
-					"about cpu_mask change", tgt->tgt_name);
-				continue;
-			}
-
-			aen->event_fn = SCST_AEN_CPU_MASK_CHANGED;
-
-			TRACE_DBG("Calling target's %s report_aen(%p)",
-				tgt->tgtt->name, aen);
-			rc = tgt->tgtt->report_aen(aen);
-			TRACE_DBG("Target's %s report_aen(%p) returned %d",
-				tgt->tgtt->name, aen, rc);
-			if (rc != SCST_AEN_RES_SUCCESS)
-				scst_free_aen(aen);
-		}
-	}
-
-	mutex_unlock(&scst_mutex);
-
-out:
-	return res;
-}
-
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
-static ssize_t scst_tgt_cpu_mask_show(struct class_device *device, char *buf)
-#else
-static ssize_t scst_tgt_cpu_mask_show(struct device *device,
-	struct device_attribute *attr, char *buf)
-#endif
-{
-	struct scst_acg *acg;
-	struct scst_tgt *tgt;
-
-	tgt = scst_dev_to_tgt(device);
-
-	acg = tgt->default_acg;
-
-	return __scst_acg_cpu_mask_show(acg, buf);
-}
-
 void scst_acg_sysfs_del(struct scst_acg *acg)
 {
 	TRACE_ENTRY();
@@ -2693,16 +2694,6 @@ static ssize_t scst_acg_addr_method_store(struct kobject *kobj,
 
 	TRACE_EXIT_RES(res);
 	return res;
-}
-
-static ssize_t scst_acg_cpu_mask_show(struct kobject *kobj,
-	struct kobj_attribute *attr, char *buf)
-{
-	struct scst_acg *acg;
-
-	acg = scst_kobj_to_acg(kobj);
-
-	return __scst_acg_cpu_mask_show(acg, buf);
 }
 
 static int scst_process_ini_group_mgmt_store(char *buffer,
