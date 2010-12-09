@@ -144,9 +144,6 @@ static ssize_t scst_acg_addr_method_store(struct kobject *kobj,
 				    const char *buf, size_t count);
 static ssize_t scst_acn_file_show(struct kobject *kobj,
 	struct kobj_attribute *attr, char *buf);
-static ssize_t scst_dev_set_threads_num(struct scst_device *dev, long newtn);
-static ssize_t scst_dev_set_thread_pool_type(struct scst_device *dev,
-				enum scst_dev_type_threads_pool_type newtpt);
 
 #if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 34)
 /**
@@ -1303,47 +1300,6 @@ void scst_tgt_sysfs_del(struct scst_tgt *tgt)
 /**
  ** Devices directory implementation
  **/
-
-static int scst_process_dev_mgmt_store(char *cmd, struct scst_device *dev)
-{
-	int res;
-
-	TRACE_ENTRY();
-
-	res = -EINVAL;
-	if (strncmp(cmd, "set_filename ", 13) == 0) {
-		res = -EPERM;
-		if (!dev->handler->set_filename)
-			goto out;
-		res = dev->handler->set_filename(dev, cmd + 13);
-	} else if (strncmp(cmd, "set_threads_num ", 16) == 0) {
-		long num_threads;
-
-		res = strict_strtol(cmd + 16, 0, &num_threads);
-		if (res) {
-			PRINT_ERROR("Bad thread count %s", cmd + 16);
-			goto out;
-		}
-		if (num_threads < 0) {
-			PRINT_ERROR("Invalid thread count %ld", num_threads);
-			goto out;
-		}
-		res = scst_dev_set_threads_num(dev, num_threads);
-	} else if (strncmp(cmd, "set_thread_pool_type ", 21) == 0) {
-		enum scst_dev_type_threads_pool_type newtpt;
-
-		newtpt = scst_parse_threads_pool_type(cmd + 21,
-						      strlen(cmd + 21));
-		if (newtpt == SCST_THREADS_POOL_TYPE_INVALID) {
-			PRINT_ERROR("Invalid thread pool type %s", cmd + 21);
-			goto out;
-		}
-		res = scst_dev_set_thread_pool_type(dev, newtpt);
-	}
-out:
-	TRACE_EXIT_RES(res);
-	return res;
-}
 
 static ssize_t scst_dev_sysfs_type_show(struct device *device,
 				struct device_attribute *attr, char *buf)
@@ -3235,6 +3191,10 @@ static ssize_t scst_devt_add_device_parameters_show(struct device *device,
 	return res;
 }
 
+static struct device_attribute scst_devt_add_device_parameters_attr =
+	__ATTR(add_device_parameters, S_IRUGO,
+	       scst_devt_add_device_parameters_show, NULL);
+
 static ssize_t scst_devt_devt_attributes_show(struct device *device,
 				struct device_attribute *attr, char *buf)
 {
@@ -3249,6 +3209,10 @@ static ssize_t scst_devt_devt_attributes_show(struct device *device,
 	return res;
 }
 
+static struct device_attribute scst_devt_devt_attributes_attr =
+	__ATTR(driver_attributes, S_IRUGO,
+	       scst_devt_devt_attributes_show, NULL);
+
 static ssize_t scst_devt_dev_attributes_show(struct device *device,
 				struct device_attribute *attr, char *buf)
 {
@@ -3260,6 +3224,51 @@ static ssize_t scst_devt_dev_attributes_show(struct device *device,
 	res = 0;
 	for (p = devt->dev_optional_attributes; p && *p; p++)
 		res += scnprintf(buf + res, PAGE_SIZE - res, "%s\n", *p);
+	return res;
+}
+
+static struct device_attribute scst_devt_dev_attributes_attr =
+	__ATTR(device_attributes, S_IRUGO,
+	       scst_devt_dev_attributes_show, NULL);
+
+static int scst_process_dev_mgmt_store(char *cmd, struct scst_device *dev)
+{
+	int res;
+
+	TRACE_ENTRY();
+
+	res = -EINVAL;
+	if (strncmp(cmd, "set_filename ", 13) == 0) {
+		res = -EPERM;
+		if (!dev->handler->set_filename)
+			goto out;
+		res = dev->handler->set_filename(dev, cmd + 13);
+	} else if (strncmp(cmd, "set_threads_num ", 16) == 0) {
+		long num_threads;
+
+		res = strict_strtol(cmd + 16, 0, &num_threads);
+		if (res) {
+			PRINT_ERROR("Bad thread count %s", cmd + 16);
+			goto out;
+		}
+		if (num_threads < 0) {
+			PRINT_ERROR("Invalid thread count %ld", num_threads);
+			goto out;
+		}
+		res = scst_dev_set_threads_num(dev, num_threads);
+	} else if (strncmp(cmd, "set_thread_pool_type ", 21) == 0) {
+		enum scst_dev_type_threads_pool_type newtpt;
+
+		newtpt = scst_parse_threads_pool_type(cmd + 21,
+						      strlen(cmd + 21));
+		if (newtpt == SCST_THREADS_POOL_TYPE_INVALID) {
+			PRINT_ERROR("Invalid thread pool type %s", cmd + 21);
+			goto out;
+		}
+		res = scst_dev_set_thread_pool_type(dev, newtpt);
+	}
+out:
+	TRACE_EXIT_RES(res);
 	return res;
 }
 
@@ -3318,16 +3327,6 @@ out_syntax_err:
 	res = -EINVAL;
 	goto out;
 }
-
-static struct device_attribute scst_devt_add_device_parameters_attr =
-	__ATTR(add_device_parameters, S_IRUGO,
-	       scst_devt_add_device_parameters_show, NULL);
-static struct device_attribute scst_devt_devt_attributes_attr =
-	__ATTR(driver_attributes, S_IRUGO,
-	       scst_devt_devt_attributes_show, NULL);
-static struct device_attribute scst_devt_dev_attributes_attr =
-	__ATTR(device_attributes, S_IRUGO,
-	       scst_devt_dev_attributes_show, NULL);
 
 static int scst_process_devt_pass_through_mgmt_store(char *buffer,
 	struct scst_dev_type *devt)
