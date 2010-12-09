@@ -130,12 +130,6 @@ static int scst_write_trace(const char *buf, size_t length,
 
 #endif /* defined(CONFIG_SCST_DEBUG) || defined(CONFIG_SCST_TRACING) */
 
-static ssize_t scst_tgt_addr_method_show(struct device *device,
-					 struct device_attribute *attr,
-					 char *buf);
-static ssize_t scst_tgt_addr_method_store(struct device *device,
-					  struct device_attribute *attr,
-					  const char *buf, size_t count);
 static ssize_t scst_tgt_io_grouping_type_show(struct device *device,
 					      struct device_attribute *attr,
 					      char *buf);
@@ -693,6 +687,91 @@ static ssize_t scst_lun_parameters_show(struct kobject *kobj,
 
 static struct kobj_attribute scst_lun_parameters =
 	__ATTR(parameters, S_IRUGO, scst_lun_parameters_show, NULL);
+
+static ssize_t __scst_acg_addr_method_show(struct scst_acg *acg, char *buf)
+{
+	int res;
+
+	switch (acg->addr_method) {
+	case SCST_LUN_ADDR_METHOD_FLAT:
+		res = sprintf(buf, "FLAT\n");
+		break;
+	case SCST_LUN_ADDR_METHOD_PERIPHERAL:
+		res = sprintf(buf, "PERIPHERAL\n");
+		break;
+	case SCST_LUN_ADDR_METHOD_LUN:
+		res = sprintf(buf, "LUN\n");
+		break;
+	default:
+		res = sprintf(buf, "UNKNOWN\n");
+		break;
+	}
+
+	if (acg->addr_method != acg->tgt->tgtt->preferred_addr_method)
+		res += sprintf(&buf[res], "%s\n", SCST_SYSFS_KEY_MARK);
+
+	return res;
+}
+
+static ssize_t __scst_acg_addr_method_store(struct scst_acg *acg,
+	const char *buf, size_t count)
+{
+	int res = count;
+
+	if (strncasecmp(buf, "FLAT", min_t(int, 4, count)) == 0)
+		acg->addr_method = SCST_LUN_ADDR_METHOD_FLAT;
+	else if (strncasecmp(buf, "PERIPHERAL", min_t(int, 10, count)) == 0)
+		acg->addr_method = SCST_LUN_ADDR_METHOD_PERIPHERAL;
+	else if (strncasecmp(buf, "LUN", min_t(int, 3, count)) == 0)
+		acg->addr_method = SCST_LUN_ADDR_METHOD_LUN;
+	else {
+		PRINT_ERROR("Unknown address method %s", buf);
+		res = -EINVAL;
+	}
+
+	TRACE_DBG("acg %p, addr_method %d", acg, acg->addr_method);
+
+	return res;
+}
+
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
+static ssize_t scst_tgt_addr_method_show(struct class_device *device, char *buf)
+#else
+static ssize_t scst_tgt_addr_method_show(struct device *device,
+				struct device_attribute *attr, char *buf)
+#endif
+{
+	struct scst_acg *acg;
+	struct scst_tgt *tgt;
+
+	tgt = scst_dev_to_tgt(device);
+
+	acg = tgt->default_acg;
+
+	return __scst_acg_addr_method_show(acg, buf);
+}
+
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
+static ssize_t scst_tgt_addr_method_store(struct class_device *device,
+					  const char *buf, size_t count)
+#else
+static ssize_t scst_tgt_addr_method_store(struct device *device,
+	struct device_attribute *attr, const char *buf, size_t count)
+#endif
+{
+	int res;
+	struct scst_acg *acg;
+	struct scst_tgt *tgt;
+
+	tgt = scst_dev_to_tgt(device);
+
+	acg = tgt->default_acg;
+
+	res = __scst_acg_addr_method_store(acg, buf, count);
+
+	TRACE_EXIT_RES(res);
+	return res;
+}
 
 #if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
 static struct class_device_attribute scst_tgt_addr_method =
@@ -2256,91 +2335,6 @@ out:
 #undef SCST_LUN_ACTION_DEL
 #undef SCST_LUN_ACTION_REPLACE
 #undef SCST_LUN_ACTION_CLEAR
-}
-
-static ssize_t __scst_acg_addr_method_show(struct scst_acg *acg, char *buf)
-{
-	int res;
-
-	switch (acg->addr_method) {
-	case SCST_LUN_ADDR_METHOD_FLAT:
-		res = sprintf(buf, "FLAT\n");
-		break;
-	case SCST_LUN_ADDR_METHOD_PERIPHERAL:
-		res = sprintf(buf, "PERIPHERAL\n");
-		break;
-	case SCST_LUN_ADDR_METHOD_LUN:
-		res = sprintf(buf, "LUN\n");
-		break;
-	default:
-		res = sprintf(buf, "UNKNOWN\n");
-		break;
-	}
-
-	if (acg->addr_method != acg->tgt->tgtt->preferred_addr_method)
-		res += sprintf(&buf[res], "%s\n", SCST_SYSFS_KEY_MARK);
-
-	return res;
-}
-
-static ssize_t __scst_acg_addr_method_store(struct scst_acg *acg,
-	const char *buf, size_t count)
-{
-	int res = count;
-
-	if (strncasecmp(buf, "FLAT", min_t(int, 4, count)) == 0)
-		acg->addr_method = SCST_LUN_ADDR_METHOD_FLAT;
-	else if (strncasecmp(buf, "PERIPHERAL", min_t(int, 10, count)) == 0)
-		acg->addr_method = SCST_LUN_ADDR_METHOD_PERIPHERAL;
-	else if (strncasecmp(buf, "LUN", min_t(int, 3, count)) == 0)
-		acg->addr_method = SCST_LUN_ADDR_METHOD_LUN;
-	else {
-		PRINT_ERROR("Unknown address method %s", buf);
-		res = -EINVAL;
-	}
-
-	TRACE_DBG("acg %p, addr_method %d", acg, acg->addr_method);
-
-	return res;
-}
-
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
-static ssize_t scst_tgt_addr_method_show(struct class_device *device, char *buf)
-#else
-static ssize_t scst_tgt_addr_method_show(struct device *device,
-				struct device_attribute *attr, char *buf)
-#endif
-{
-	struct scst_acg *acg;
-	struct scst_tgt *tgt;
-
-	tgt = scst_dev_to_tgt(device);
-
-	acg = tgt->default_acg;
-
-	return __scst_acg_addr_method_show(acg, buf);
-}
-
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
-static ssize_t scst_tgt_addr_method_store(struct class_device *device,
-					  const char *buf, size_t count)
-#else
-static ssize_t scst_tgt_addr_method_store(struct device *device,
-	struct device_attribute *attr, const char *buf, size_t count)
-#endif
-{
-	int res;
-	struct scst_acg *acg;
-	struct scst_tgt *tgt;
-
-	tgt = scst_dev_to_tgt(device);
-
-	acg = tgt->default_acg;
-
-	res = __scst_acg_addr_method_store(acg, buf, count);
-
-	TRACE_EXIT_RES(res);
-	return res;
 }
 
 static ssize_t __scst_acg_io_grouping_type_show(struct scst_acg *acg, char *buf)
