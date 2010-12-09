@@ -130,15 +130,6 @@ static int scst_write_trace(const char *buf, size_t length,
 
 #endif /* defined(CONFIG_SCST_DEBUG) || defined(CONFIG_SCST_TRACING) */
 
-static ssize_t scst_acg_addr_method_show(struct kobject *kobj,
-				   struct kobj_attribute *attr,
-				   char *buf);
-static ssize_t scst_acg_addr_method_store(struct kobject *kobj,
-				    struct kobj_attribute *attr,
-				    const char *buf, size_t count);
-static ssize_t scst_acn_file_show(struct kobject *kobj,
-	struct kobj_attribute *attr, char *buf);
-
 #if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 34)
 /**
  ** Backported sysfs functions.
@@ -1109,6 +1100,30 @@ static const struct device_attribute *scst_tgt_attr[] = {
 	&scst_tgt_cpu_mask,
 	NULL
 };
+
+static ssize_t scst_acg_addr_method_show(struct kobject *kobj,
+	struct kobj_attribute *attr, char *buf)
+{
+	struct scst_acg *acg;
+
+	acg = scst_kobj_to_acg(kobj);
+
+	return __scst_acg_addr_method_show(acg, buf);
+}
+
+static ssize_t scst_acg_addr_method_store(struct kobject *kobj,
+	struct kobj_attribute *attr, const char *buf, size_t count)
+{
+	int res;
+	struct scst_acg *acg;
+
+	acg = scst_kobj_to_acg(kobj);
+
+	res = __scst_acg_addr_method_store(acg, buf, count);
+
+	TRACE_EXIT_RES(res);
+	return res;
+}
 
 static struct kobj_attribute scst_acg_addr_method =
 	__ATTR(addr_method, S_IRUGO | S_IWUSR, scst_acg_addr_method_show,
@@ -2708,30 +2723,6 @@ out_del:
 	goto out;
 }
 
-static ssize_t scst_acg_addr_method_show(struct kobject *kobj,
-	struct kobj_attribute *attr, char *buf)
-{
-	struct scst_acg *acg;
-
-	acg = scst_kobj_to_acg(kobj);
-
-	return __scst_acg_addr_method_show(acg, buf);
-}
-
-static ssize_t scst_acg_addr_method_store(struct kobject *kobj,
-	struct kobj_attribute *attr, const char *buf, size_t count)
-{
-	int res;
-	struct scst_acg *acg;
-
-	acg = scst_kobj_to_acg(kobj);
-
-	res = __scst_acg_addr_method_store(acg, buf, count);
-
-	TRACE_EXIT_RES(res);
-	return res;
-}
-
 static int scst_process_ini_group_mgmt_store(char *buffer,
 	struct scst_tgt *tgt)
 {
@@ -2832,6 +2823,13 @@ out:
 #undef SCST_LUN_ACTION_DEL
 }
 
+static ssize_t scst_acn_file_show(struct kobject *kobj,
+	struct kobj_attribute *attr, char *buf)
+{
+	return scnprintf(buf, SCST_SYSFS_BLOCK_SIZE, "%s\n",
+		attr->attr.name);
+}
+
 int scst_acn_sysfs_create(struct scst_acn *acn)
 {
 	int res = 0;
@@ -2910,13 +2908,6 @@ void scst_acn_sysfs_del(struct scst_acn *acn)
 
 	TRACE_EXIT();
 	return;
-}
-
-static ssize_t scst_acn_file_show(struct kobject *kobj,
-	struct kobj_attribute *attr, char *buf)
-{
-	return scnprintf(buf, SCST_SYSFS_BLOCK_SIZE, "%s\n",
-		attr->attr.name);
 }
 
 static int scst_process_acg_ini_mgmt_store(char *buffer,
