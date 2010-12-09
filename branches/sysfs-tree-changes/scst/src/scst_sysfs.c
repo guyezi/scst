@@ -924,7 +924,11 @@ static int __scst_acg_process_cpu_mask_store(struct scst_tgt *tgt,
 						&tgt_dev->active_cmd_threads->threads_list,
 						thread_list_entry) {
 					int rc;
+#ifdef RHEL_MAJOR
+					rc = set_cpus_allowed(thr->cmd_thread, *cpu_mask);
+#else
 					rc = set_cpus_allowed_ptr(thr->cmd_thread, cpu_mask);
+#endif
 					if (rc != 0)
 						PRINT_ERROR("Setting CPU "
 							"affinity failed: %d", rc);

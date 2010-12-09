@@ -3795,8 +3795,12 @@ static int vcdrom_set_filename(struct scst_device *dev, char *buf)
 
 #ifndef CONFIG_SCST_PROC
 
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
+static ssize_t vdev_sysfs_size_show(struct class_device *device, char *buf)
+#else
 static ssize_t vdev_sysfs_size_show(struct device *device,
 				    struct device_attribute *attr, char *buf)
+#endif
 {
 	int pos = 0;
 	struct scst_device *dev;
@@ -3813,8 +3817,13 @@ static ssize_t vdev_sysfs_size_show(struct device *device,
 	return pos;
 }
 
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
+static ssize_t vdisk_sysfs_blocksize_show(struct class_device *device,
+					  char *buf)
+#else
 static ssize_t vdisk_sysfs_blocksize_show(struct device *device,
 				struct device_attribute *attr, char *buf)
+#endif
 {
 	int pos = 0;
 	struct scst_device *dev;
@@ -3833,8 +3842,12 @@ static ssize_t vdisk_sysfs_blocksize_show(struct device *device,
 	return pos;
 }
 
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
+static ssize_t vdisk_sysfs_rd_only_show(struct class_device *device, char *buf)
+#else
 static ssize_t vdisk_sysfs_rd_only_show(struct device *device,
 				struct device_attribute *attr, char *buf)
+#endif
 {
 	int pos = 0;
 	struct scst_device *dev;
@@ -3853,8 +3866,12 @@ static ssize_t vdisk_sysfs_rd_only_show(struct device *device,
 	return pos;
 }
 
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
+static ssize_t vdisk_sysfs_wt_show(struct class_device *device, char *buf)
+#else
 static ssize_t vdisk_sysfs_wt_show(struct device *device,
 				   struct device_attribute *attr, char *buf)
+#endif
 {
 	int pos = 0;
 	struct scst_device *dev;
@@ -3873,8 +3890,12 @@ static ssize_t vdisk_sysfs_wt_show(struct device *device,
 	return pos;
 }
 
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
+static ssize_t vdisk_sysfs_tp_show(struct class_device *device, char *buf)
+#else
 static ssize_t vdisk_sysfs_tp_show(struct device *device,
 				   struct device_attribute *attr, char *buf)
+#endif
 {
 	int pos = 0;
 	struct scst_device *dev;
@@ -3893,8 +3914,13 @@ static ssize_t vdisk_sysfs_tp_show(struct device *device,
 	return pos;
 }
 
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
+static ssize_t vdisk_sysfs_nv_cache_show(struct class_device *device,
+					 char *buf)
+#else
 static ssize_t vdisk_sysfs_nv_cache_show(struct device *device,
 	struct device_attribute *attr, char *buf)
+#endif
 {
 	int pos = 0;
 	struct scst_device *dev;
@@ -3913,8 +3939,13 @@ static ssize_t vdisk_sysfs_nv_cache_show(struct device *device,
 	return pos;
 }
 
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
+static ssize_t vdisk_sysfs_o_direct_show(struct class_device *device,
+					 char *buf)
+#else
 static ssize_t vdisk_sysfs_o_direct_show(struct device *device,
 	struct device_attribute *attr, char *buf)
+#endif
 {
 	int pos = 0;
 	struct scst_device *dev;
@@ -3933,8 +3964,13 @@ static ssize_t vdisk_sysfs_o_direct_show(struct device *device,
 	return pos;
 }
 
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
+static ssize_t vdisk_sysfs_removable_show(struct class_device *device,
+					  char *buf)
+#else
 static ssize_t vdisk_sysfs_removable_show(struct device *device,
 				struct device_attribute *attr, char *buf)
+#endif
 {
 	int pos;
 	struct scst_device *dev;
@@ -3955,8 +3991,12 @@ static ssize_t vdisk_sysfs_removable_show(struct device *device,
 	return pos;
 }
 
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
+static ssize_t vdev_sysfs_filename_show(struct class_device *device, char *buf)
+#else
 static ssize_t vdev_sysfs_filename_show(struct device *device,
 				struct device_attribute *attr, char *buf)
+#endif
 {
 	struct scst_device *dev;
 	struct scst_vdisk_dev *virt_dev;
@@ -3996,8 +4036,13 @@ static int vdisk_sysfs_process_resync_size_store(struct scst_device *dev)
 	return res;
 }
 
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
+static ssize_t vdisk_sysfs_resync_size_store(struct class_device *device,
+					     const char *buf, size_t count)
+#else
 static ssize_t vdisk_sysfs_resync_size_store(struct device *device,
 	struct device_attribute *attr, const char *buf, size_t count)
+#endif
 {
 	int res;
 	struct scst_device *dev;
@@ -4014,8 +4059,13 @@ static ssize_t vdisk_sysfs_resync_size_store(struct device *device,
 	return res;
 }
 
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
+static ssize_t vdev_sysfs_t10_dev_id_store(struct class_device *device,
+					   const char *buf, size_t count)
+#else
 static ssize_t vdev_sysfs_t10_dev_id_store(struct device *device,
 	struct device_attribute *attr, const char *buf, size_t count)
+#endif
 {
 	int res, i;
 	struct scst_device *dev;
@@ -4063,8 +4113,13 @@ out_unlock:
 	return res;
 }
 
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
+static ssize_t vdev_sysfs_t10_dev_id_show(struct class_device *device,
+					  char *buf)
+#else
 static ssize_t vdev_sysfs_t10_dev_id_show(struct device *device,
 	struct device_attribute *attr, char *buf)
+#endif
 {
 	int pos;
 	struct scst_device *dev;
@@ -4084,8 +4139,12 @@ static ssize_t vdev_sysfs_t10_dev_id_show(struct device *device,
 	return pos;
 }
 
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
+static ssize_t vdev_sysfs_usn_show(struct class_device *device, char *buf)
+#else
 static ssize_t vdev_sysfs_usn_show(struct device *device,
 				   struct device_attribute *attr, char *buf)
+#endif
 {
 	int pos;
 	struct scst_device *dev;
@@ -4104,36 +4163,92 @@ static ssize_t vdev_sysfs_usn_show(struct device *device,
 
 #ifndef CONFIG_SCST_PROC
 
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
+static struct class_device_attribute vdev_size_attr =
+#else
 static struct device_attribute vdev_size_attr =
+#endif
 	__ATTR(size_mb, S_IRUGO, vdev_sysfs_size_show, NULL);
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
+static struct class_device_attribute vdisk_blocksize_attr =
+#else
 static struct device_attribute vdisk_blocksize_attr =
+#endif
 	__ATTR(blocksize, S_IRUGO, vdisk_sysfs_blocksize_show, NULL);
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
+static struct class_device_attribute vdisk_rd_only_attr =
+#else
 static struct device_attribute vdisk_rd_only_attr =
+#endif
 	__ATTR(read_only, S_IRUGO, vdisk_sysfs_rd_only_show, NULL);
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
+static struct class_device_attribute vdisk_wt_attr =
+#else
 static struct device_attribute vdisk_wt_attr =
+#endif
 	__ATTR(write_through, S_IRUGO, vdisk_sysfs_wt_show, NULL);
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
+static struct class_device_attribute vdisk_tp_attr =
+#else
 static struct device_attribute vdisk_tp_attr =
+#endif
 	__ATTR(thin_provisioned, S_IRUGO, vdisk_sysfs_tp_show, NULL);
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
+static struct class_device_attribute vdisk_nv_cache_attr =
+#else
 static struct device_attribute vdisk_nv_cache_attr =
+#endif
 	__ATTR(nv_cache, S_IRUGO, vdisk_sysfs_nv_cache_show, NULL);
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
+static struct class_device_attribute vdisk_o_direct_attr =
+#else
 static struct device_attribute vdisk_o_direct_attr =
+#endif
 	__ATTR(o_direct, S_IRUGO, vdisk_sysfs_o_direct_show, NULL);
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
+static struct class_device_attribute vdisk_removable_attr =
+#else
 static struct device_attribute vdisk_removable_attr =
+#endif
 	__ATTR(removable, S_IRUGO, vdisk_sysfs_removable_show, NULL);
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
+static struct class_device_attribute vdisk_filename_attr =
+#else
 static struct device_attribute vdisk_filename_attr =
+#endif
 	__ATTR(filename, S_IRUGO, vdev_sysfs_filename_show, NULL);
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
+static struct class_device_attribute vdisk_resync_size_attr =
+#else
 static struct device_attribute vdisk_resync_size_attr =
+#endif
 	__ATTR(resync_size, S_IWUSR, NULL, vdisk_sysfs_resync_size_store);
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
+static struct class_device_attribute vdev_t10_dev_id_attr =
+#else
 static struct device_attribute vdev_t10_dev_id_attr =
+#endif
 	__ATTR(t10_dev_id, S_IWUSR|S_IRUGO, vdev_sysfs_t10_dev_id_show,
 		vdev_sysfs_t10_dev_id_store);
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
+static struct class_device_attribute vdev_usn_attr =
+#else
 static struct device_attribute vdev_usn_attr =
+#endif
 	__ATTR(usn, S_IRUGO, vdev_sysfs_usn_show, NULL);
 
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
+static struct class_device_attribute vcdrom_filename_attr =
+#else
 static struct device_attribute vcdrom_filename_attr =
+#endif
 	__ATTR(filename, S_IRUGO, vdev_sysfs_filename_show, NULL);
 
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
+static const struct class_device_attribute *vdisk_fileio_attrs[] = {
+#else
 static const struct device_attribute *vdisk_fileio_attrs[] = {
+#endif
 	&vdev_size_attr,
 	&vdisk_blocksize_attr,
 	&vdisk_rd_only_attr,
@@ -4149,7 +4264,11 @@ static const struct device_attribute *vdisk_fileio_attrs[] = {
 	NULL,
 };
 
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
+static const struct class_device_attribute *vdisk_blockio_attrs[] = {
+#else
 static const struct device_attribute *vdisk_blockio_attrs[] = {
+#endif
 	&vdev_size_attr,
 	&vdisk_blocksize_attr,
 	&vdisk_rd_only_attr,
@@ -4163,7 +4282,11 @@ static const struct device_attribute *vdisk_blockio_attrs[] = {
 	NULL,
 };
 
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
+static const struct class_device_attribute *vdisk_nullio_attrs[] = {
+#else
 static const struct device_attribute *vdisk_nullio_attrs[] = {
+#endif
 	&vdev_size_attr,
 	&vdisk_blocksize_attr,
 	&vdisk_rd_only_attr,
@@ -4173,7 +4296,11 @@ static const struct device_attribute *vdisk_nullio_attrs[] = {
 	NULL,
 };
 
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
+static const struct class_device_attribute *vcdrom_attrs[] = {
+#else
 static const struct device_attribute *vcdrom_attrs[] = {
+#endif
 	&vdev_size_attr,
 	&vcdrom_filename_attr,
 	&vdev_t10_dev_id_attr,
