@@ -106,8 +106,8 @@ static inline unsigned int cpumask_next(int n, const cpumask_t *srcp)
  *
  * After the loop, cpu is >= nr_cpu_ids.
  */
-#define for_each_cpu(cpu, mask)                         \
-	for ((cpu) = -1;                                \
+#define for_each_cpu(cpu, mask)				\
+	for ((cpu) = -1;				\
 		(cpu) = cpumask_next((cpu), (mask)),    \
 		(cpu) < nr_cpu_ids;)
 
@@ -132,6 +132,12 @@ static inline int set_cpus_allowed_ptr(struct task_struct *p,
 #endif
 
 #if !defined(CONFIG_SCST_PROC) && LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
+#define kobject_init2(kobj, kt)			\
+	({					\
+		kobject_init(kobj);		\
+		(kobj)->ktype = (kt);		\
+	})
+
 struct kobj_attribute {
 	struct attribute attr;
 	ssize_t (*show)(struct kobject *kobj, struct kobj_attribute *attr,
@@ -166,8 +172,8 @@ static inline ssize_t kobj_attr_store(struct kobject *kobj,
 }
 
 static struct sysfs_ops kobj_sysfs_ops = {
-        .show   = kobj_attr_show,
-        .store  = kobj_attr_store,
+	.show   = kobj_attr_show,
+	.store  = kobj_attr_store,
 };
 
 static inline void dynamic_kobj_release(struct kobject *kobj)
@@ -176,22 +182,34 @@ static inline void dynamic_kobj_release(struct kobject *kobj)
 }
 
 static struct kobj_type dynamic_kobj_ktype = {
-	.release        = dynamic_kobj_release,
-	.sysfs_ops      = &kobj_sysfs_ops,
+	.release	= dynamic_kobj_release,
+	.sysfs_ops	= &kobj_sysfs_ops,
 };
 
 static inline struct kobject * __must_check kobject_create(void)
 {
-        struct kobject *kobj;
+	struct kobject *kobj;
 
-        kobj = kzalloc(sizeof(*kobj), GFP_KERNEL);
-        if (!kobj)
-                return NULL;
+	kobj = kzalloc(sizeof(*kobj), GFP_KERNEL);
+	if (!kobj)
+		return NULL;
 
-        kobject_init(kobj);
-	kobj->ktype = &dynamic_kobj_ktype;
-        return kobj;
+	kobject_init2(kobj, &dynamic_kobj_ktype);
+	return kobj;
 }
+
+#define kobject_add2(kobj, p, fmt...)		\
+	({					\
+		(kobj)->parent = (p);		\
+		kobject_set_name((kobj), fmt);	\
+		kobject_add(kobj);		\
+	})
+
+#define kobject_init_and_add2(kobj, kt, p, fmt...)	\
+	({						\
+		kobject_init2((kobj), (kt));		\
+		kobject_add2((kobj), (p), fmt);		\
+	})
 
 static inline struct kobject * __must_check kobject_create_and_add(
 			   const char *name, struct kobject *parent)
@@ -203,9 +221,7 @@ static inline struct kobject * __must_check kobject_create_and_add(
 	if (!kobj)
 		return NULL;
 
-	kobject_set_name(kobj, "%s", name);
-	kobj->parent = parent;
-	retval = kobject_add(kobj);
+	retval = kobject_add2(kobj, parent, "%s", name);
 	if (retval) {
 		printk(KERN_WARNING "%s: kobject_add error: %d\n", __func__,
 		       retval);
@@ -1495,10 +1511,18 @@ struct scst_dev_type {
 	const char *const *dev_optional_attributes;
 
 	/* sysfs attributes, if any */
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
+	const struct class_device_attribute **devt_attrs;
+#else
 	const struct device_attribute **devt_attrs;
+#endif
 
 	/* sysfs device attributes, if any */
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
+	const struct class_device_attribute **dev_attrs;
+#else
 	const struct device_attribute **dev_attrs;
+#endif
 #endif
 
 	/* Pointer to dev handler's private data */
