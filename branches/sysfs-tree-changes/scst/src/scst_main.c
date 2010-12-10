@@ -518,15 +518,6 @@ static void scst_release_target(struct class_device *dev);
 static void scst_release_target(struct device *dev);
 #endif
 
-static struct class scst_tgt_class = {
-	.name		= "target_instance",
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
-	.release	= scst_release_target,
-#else
-	.dev_release	= scst_release_target,
-#endif
-};
-
 /**
  * scst_register_target() - register target
  *
@@ -584,7 +575,11 @@ struct scst_tgt *scst_register_target(struct scst_tgt_template *vtt,
 		tgt_num++;
 	}
 
-	tgt->tgt_dev.class = &scst_tgt_class;
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
+	tgt->tgt_dev.dev_release = scst_release_target,
+#else
+	tgt->tgt_dev.release = scst_release_target,
+#endif
 #if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
 	tgt->tgt_dev.dev = tgt->tgtt->tgtt_dev.dev;
 #else
@@ -2558,13 +2553,9 @@ static int __init init_scst(void)
 	if (res)
 		goto out_destroy_aen_mempool;
 
-	res = class_register(&scst_tgt_class);
-	if (res)
-		goto out_unregister_tgtt_class;
-
 	res = class_register(&scst_devt_class);
 	if (res)
-		goto out_unregister_tgt_class;
+		goto out_unregister_tgtt_class;
 
 	res = class_register(&scst_dev_class);
 	if (res)
@@ -2669,9 +2660,6 @@ out_unregister_dev_class:
 out_unregister_devt_class:
 	class_unregister(&scst_devt_class);
 
-out_unregister_tgt_class:
-	class_unregister(&scst_tgt_class);
-
 out_unregister_tgtt_class:
 	class_unregister(&scst_tgtt_class);
 
@@ -2751,7 +2739,6 @@ static void __exit exit_scst(void)
 
 	class_unregister(&scst_dev_class);
 	class_unregister(&scst_devt_class);
-	class_unregister(&scst_tgt_class);
 	class_unregister(&scst_tgtt_class);
 
 	scst_sysfs_cleanup();
