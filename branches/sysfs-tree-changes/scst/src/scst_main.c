@@ -679,7 +679,6 @@ static inline int test_sess_list(struct scst_tgt *tgt)
 void scst_unregister_target(struct scst_tgt *tgt)
 {
 	struct scst_session *sess;
-	struct scst_tgt_template *vtt = tgt->tgtt;
 #ifndef CONFIG_SCST_PROC
 	struct scst_acg *acg, *acg_tmp;
 #endif
@@ -734,13 +733,14 @@ again:
 	scst_tgt_sysfs_del(tgt);
 #endif
 
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
+	class_device_unregister(&tgt->tgt_dev);
+#else
+	device_unregister(&tgt->tgt_dev);
+#endif
+
 	mutex_unlock(&scst_mutex);
 	scst_resume_activity();
-
-	PRINT_INFO("Target %s for template %s unregistered successfully",
-		tgt->tgt_name, vtt->name);
-
-	scst_free_tgt(tgt);
 
 	TRACE_DBG("Unregistering tgt %p finished", tgt);
 
@@ -759,6 +759,10 @@ static void scst_release_target(struct device *dev)
 
 	TRACE_ENTRY();
 	tgt = scst_dev_to_tgt(dev);
+
+	PRINT_INFO("Target %s for template %s unregistered successfully",
+		   tgt->tgt_name, tgt->tgtt->name);
+
 	scst_free_tgt(tgt);
 	TRACE_EXIT();
 }
