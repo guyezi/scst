@@ -4455,6 +4455,13 @@ static void scst_release_device(struct device *device)
 	TRACE_EXIT();
 }
 
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
+static struct class scst_class = {
+	.name		= "scst",
+	.release	= scst_release_device,
+};
+#endif
+
 /**
  ** Sysfs user info
  **/
@@ -4673,14 +4680,30 @@ int __init scst_sysfs_init(void)
 
 	TRACE_ENTRY();
 
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
+	res = class_register(&scst_class);
+	if (res) {
+		goto out;
+		PRINT_ERROR("Registering class SCST failed (%d)", res);
+	}
+#endif
+
 	res = -ENOMEM;
 	scst_device = kzalloc(sizeof *scst_device, GFP_KERNEL);
 	if (!scst_device) {
 		PRINT_ERROR("%s", "Allocating memory for SCST device failed.");
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
+		goto out_unregister_class;
+#else
 		goto out;
+#endif
 	}
 
-	scst_device->release = &scst_release_device;
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
+	scst_device->class = &scst_class;
+#else
+	scst_device->release = scst_release_device;
+#endif
 #if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
 	snprintf(scst_device->class_id, BUS_ID_SIZE, "%s", "scst");
 #elif LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 30)
@@ -4714,6 +4737,10 @@ out:
 	TRACE_EXIT_RES(res);
 	return res;
 
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
+out_unregister_class:
+	class_unregister(&scst_class);
+#endif
 out_remove_files:
 	device_remove_files(scst_device, scst_default_attr);
 out_unregister_device:
@@ -4733,6 +4760,10 @@ void scst_sysfs_cleanup(void)
 	TRACE_ENTRY();
 
 	PRINT_INFO("%s", "Exiting SCST sysfs hierarchy...");
+
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
+	class_unregister(&scst_class);
+#endif
 
 	scst_del_put_sgv_kobj();
 
