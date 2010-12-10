@@ -2654,6 +2654,9 @@ out_free_acg:
 out_destroy_sgv_pool:
 	scst_sgv_pools_deinit();
 
+out_sysfs_cleanup:
+	scst_sysfs_cleanup();
+
 out_unregister_dev_class:
 	class_unregister(&scst_dev_class);
 
@@ -2662,9 +2665,6 @@ out_unregister_devt_class:
 
 out_unregister_tgtt_class:
 	class_unregister(&scst_tgtt_class);
-
-out_sysfs_cleanup:
-	scst_sysfs_cleanup();
 
 out_destroy_aen_mempool:
 	mempool_destroy(scst_aen_mempool);
