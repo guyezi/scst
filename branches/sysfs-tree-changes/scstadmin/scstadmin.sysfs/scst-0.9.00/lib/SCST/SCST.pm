@@ -19,7 +19,7 @@ use constant {
 TRUE             => 1,
 FALSE            => 0,
 
-SCST_ROOT        => '/sys/class/scst/scst',
+SCST_ROOT        => '/sys/devices/scst',
 
 # Root-level
 SCST_HANDLERS    => '/sys/class/device_driver',
@@ -41,7 +41,7 @@ SCST_SESSIONS    => 'sessions',
 SCST_LUNS        => 'luns',
 
 # Files
-SCST_MGMT_IO     => '/sys/class/scst/scst/mgmt',
+SCST_MGMT_IO     => '/sys/devices/scst/mgmt',
 SCST_PARAM_ATTR  => 'parameters',
 SCST_VERSION_IO  => 'version',
 SCST_TRACE_IO    => 'trace_level',

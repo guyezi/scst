@@ -63,8 +63,6 @@ enum mgmt_path_type {
 	ACG_INITIATOR_GROUPS_PATH,
 };
 
-static DECLARE_COMPLETION(scst_sysfs_root_release_completion);
-
 #if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
 static struct class_device *scst_device;
 #else
@@ -4392,9 +4390,9 @@ static ssize_t scst_version_show(struct device *device,
 
 
 #if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
-static struct class_device_attribute scst_default_attrs[] = {
+static struct class_device_attribute scst_default_attr[] = {
 #else
-static struct device_attribute scst_default_attrs[] = {
+static struct device_attribute scst_default_attr[] = {
 #endif
 	__ATTR(mgmt, S_IRUGO | S_IWUSR, scst_mgmt_show, scst_mgmt_store),
 	__ATTR(threads, S_IRUGO | S_IWUSR, scst_threads_show,
@@ -4415,21 +4413,10 @@ static void scst_release_device(struct class_device *device)
 static void scst_release_device(struct device *device)
 #endif
 {
-	WARN_ON(device != scst_device);
-	complete_all(&scst_sysfs_root_release_completion);
+	TRACE_ENTRY();
 	kfree(device);
+	TRACE_EXIT();
 }
-
-static struct class scst_class = {
-	.name = "scst",
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
-	.release		= scst_release_device,
-	.class_dev_attrs	= scst_default_attrs,
-#else
-	.dev_release		= scst_release_device,
-	.dev_attrs		= scst_default_attrs,
-#endif
-};
 
 /**
  ** Sysfs user info
@@ -4645,6 +4632,11 @@ EXPORT_SYMBOL_GPL(scst_wait_info_completion);
 
 int __init scst_sysfs_init(void)
 {
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
+	struct class_device_attribute *p;
+#else
+	struct device_attribute *p;
+#endif
 	int res;
 
 	TRACE_ENTRY();
@@ -4654,11 +4646,7 @@ int __init scst_sysfs_init(void)
 	if (!scst_device)
 		goto out;
 
-	res = class_register(&scst_class);
-	if (res)
-		goto out_free;
-
-	scst_device->class = &scst_class;
+	scst_device->release = &scst_release_device;
 #if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
 	snprintf(scst_device->class_id, BUS_ID_SIZE, "%s", "scst");
 #elif LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 30)
@@ -4672,7 +4660,10 @@ int __init scst_sysfs_init(void)
 	res = device_register(scst_device);
 #endif
 	if (res)
-		goto out_unregister_class;
+		goto out_free;
+
+	for (p = scst_default_attr; p->attr.name; ++p)
+		device_create_file(scst_device, p);
 
 	res = scst_add_sgv_kobj(&scst_device->kobj, "sgv");
 	if (res)
@@ -4689,8 +4680,6 @@ out_unregister_device:
 	device_unregister(scst_device);
 #endif
 	scst_device = NULL;
-out_unregister_class:
-	class_unregister(&scst_class);
 out_free:
 	kfree(scst_device);
 	goto out;
@@ -4698,11 +4687,20 @@ out_free:
 
 void scst_sysfs_cleanup(void)
 {
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
+	struct class_device_attribute *p;
+#else
+	struct device_attribute *p;
+#endif
+
 	TRACE_ENTRY();
 
 	PRINT_INFO("%s", "Exiting SCST sysfs hierarchy...");
 
 	scst_del_put_sgv_kobj();
+
+	for (p = scst_default_attr; p->attr.name; ++p)
+		device_remove_file(scst_device, p);
 
 #if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
 	class_device_unregister(scst_device);
@@ -4710,13 +4708,6 @@ void scst_sysfs_cleanup(void)
 	device_unregister(scst_device);
 #endif
 
-	class_unregister(&scst_class);
-
-	/*
-	 * Wait until the root object has been released and hence all child
-	 * objects have been deleted from the sysfs hierarchy.
-	 */
-	wait_for_completion(&scst_sysfs_root_release_completion);
 	/*
 	 * Wait until the release method of the sysfs root object has returned.
 	 */

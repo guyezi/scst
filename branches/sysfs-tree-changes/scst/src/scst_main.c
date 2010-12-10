@@ -1040,9 +1040,9 @@ static int scst_register_device(struct scsi_device *scsidp)
 
 	dev->dev_dev.class = &scst_dev_class;
 #if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
-	dev->dev_dev.dev = scsidp->sdev_classdev.dev;
+	dev->dev_dev.dev = NULL;
 #else
-	dev->dev_dev.parent = &scsidp->sdev_dev;
+	dev->dev_dev.parent = NULL;
 #endif
 #if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
 	snprintf(dev->dev_dev.class_id, BUS_ID_SIZE, "%s", dev->virt_name);
