@@ -4675,8 +4675,10 @@ int __init scst_sysfs_init(void)
 
 	res = -ENOMEM;
 	scst_device = kzalloc(sizeof *scst_device, GFP_KERNEL);
-	if (!scst_device)
+	if (!scst_device) {
+		PRINT_ERROR("%s", "Allocating memory for SCST device failed.");
 		goto out;
+	}
 
 	scst_device->release = &scst_release_device;
 #if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
@@ -4691,16 +4693,22 @@ int __init scst_sysfs_init(void)
 #else
 	res = device_register(scst_device);
 #endif
-	if (res)
+	if (res) {
+		PRINT_ERROR("Registration of SCST device failed (%d).", res);
 		goto out_free;
+	}
 
 	res = device_create_files(scst_device, scst_default_attr);
-	if (res)
+	if (res) {
+		PRINT_ERROR("%s", "Creating SCST device attributes failed.");
 		goto out_unregister_device;
+	}
 
 	res = scst_add_sgv_kobj(&scst_device->kobj, "sgv");
-	if (res)
+	if (res) {
+		PRINT_ERROR("%s", "Creation of SCST sgv kernel object failed.");
 		goto out_remove_files;
+	}
 
 out:
 	TRACE_EXIT_RES(res);
