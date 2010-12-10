@@ -4390,21 +4390,58 @@ static ssize_t scst_version_show(struct device *device,
 
 
 #if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
-static struct class_device_attribute scst_default_attr[] = {
+static struct class_device_attribute scst_mgmt_attr =
 #else
-static struct device_attribute scst_default_attr[] = {
+static struct device_attribute scst_mgmt_attr =
 #endif
-	__ATTR(mgmt, S_IRUGO | S_IWUSR, scst_mgmt_show, scst_mgmt_store),
+	__ATTR(mgmt, S_IRUGO | S_IWUSR, scst_mgmt_show, scst_mgmt_store);
+
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
+static struct class_device_attribute scst_threads_attr =
+#else
+static struct device_attribute scst_threads_attr =
+#endif
 	__ATTR(threads, S_IRUGO | S_IWUSR, scst_threads_show,
-	       scst_threads_store),
-	__ATTR(setup_id, S_IRUGO | S_IWUSR, scst_setup_id_show,
-	       scst_setup_id_store),
-#if defined(CONFIG_SCST_DEBUG) || defined(CONFIG_SCST_TRACING)
-	__ATTR(trace_level, S_IRUGO | S_IWUSR, scst_main_trace_level_show,
-	       scst_main_trace_level_store),
+	       scst_threads_store);
+
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
+static struct class_device_attribute scst_setup_id_attr =
+#else
+static struct device_attribute scst_setup_id_attr =
 #endif
-	__ATTR(version, S_IRUGO, scst_version_show, NULL),
-	__ATTR_NULL
+	__ATTR(setup_id, S_IRUGO | S_IWUSR, scst_setup_id_show,
+	       scst_setup_id_store);
+
+#if defined(CONFIG_SCST_DEBUG) || defined(CONFIG_SCST_TRACING)
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
+static struct class_device_attribute scst_main_trace_level_attr =
+#else
+static struct device_attribute scst_main_trace_level_attr =
+#endif
+	__ATTR(trace_level, S_IRUGO | S_IWUSR, scst_main_trace_level_show,
+	       scst_main_trace_level_store);
+#endif
+
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
+static struct class_device_attribute scst_version_attr =
+#else
+static struct device_attribute scst_version_attr =
+#endif
+	__ATTR(version, S_IRUGO, scst_version_show, NULL);
+
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
+static const struct class_device_attribute *scst_default_attr[] = {
+#else
+static const struct device_attribute *scst_default_attr[] = {
+#endif
+	&scst_mgmt_attr,
+	&scst_threads_attr,
+	&scst_setup_id_attr,
+#if defined(CONFIG_SCST_DEBUG) || defined(CONFIG_SCST_TRACING)
+	&scst_main_trace_level_attr,
+#endif
+	&scst_version_attr,
+	NULL
 };
 
 #if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
@@ -4632,11 +4669,6 @@ EXPORT_SYMBOL_GPL(scst_wait_info_completion);
 
 int __init scst_sysfs_init(void)
 {
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
-	struct class_device_attribute *p;
-#else
-	struct device_attribute *p;
-#endif
 	int res;
 
 	TRACE_ENTRY();
@@ -4662,17 +4694,20 @@ int __init scst_sysfs_init(void)
 	if (res)
 		goto out_free;
 
-	for (p = scst_default_attr; p->attr.name; ++p)
-		device_create_file(scst_device, p);
+	res = device_create_files(scst_device, scst_default_attr);
+	if (res)
+		goto out_unregister_device;
 
 	res = scst_add_sgv_kobj(&scst_device->kobj, "sgv");
 	if (res)
-		goto out_unregister_device;
+		goto out_remove_files;
 
 out:
 	TRACE_EXIT_RES(res);
 	return res;
 
+out_remove_files:
+	device_remove_files(scst_device, scst_default_attr);
 out_unregister_device:
 #if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
 	class_device_unregister(scst_device);
@@ -4687,20 +4722,13 @@ out_free:
 
 void scst_sysfs_cleanup(void)
 {
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
-	struct class_device_attribute *p;
-#else
-	struct device_attribute *p;
-#endif
-
 	TRACE_ENTRY();
 
 	PRINT_INFO("%s", "Exiting SCST sysfs hierarchy...");
 
 	scst_del_put_sgv_kobj();
 
-	for (p = scst_default_attr; p->attr.name; ++p)
-		device_remove_file(scst_device, p);
+	device_remove_files(scst_device, scst_default_attr);
 
 #if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
 	class_device_unregister(scst_device);

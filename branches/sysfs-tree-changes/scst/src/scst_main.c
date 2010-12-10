@@ -575,11 +575,7 @@ struct scst_tgt *scst_register_target(struct scst_tgt_template *vtt,
 		tgt_num++;
 	}
 
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
-	tgt->tgt_dev.dev_release = scst_release_target,
-#else
 	tgt->tgt_dev.release = scst_release_target,
-#endif
 #if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
 	tgt->tgt_dev.dev = tgt->tgtt->tgtt_dev.dev;
 #else
