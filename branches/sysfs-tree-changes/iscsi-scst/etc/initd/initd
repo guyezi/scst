@@ -9,7 +9,7 @@ SCST_CMD=/usr/local/sbin/scstadmin
 SCST_CFG=/etc/scst.conf
 
 # Additional modules to load/unload
-ADD_MODULES="scst_disk scst_vdisk scst"
+ADD_MODULES="ib_srpt scst_local scst_disk scst_vdisk scst"
 
 configure_memsize()
 {
@@ -51,7 +51,7 @@ start_server()
 		modprobe ${module} || return $?
 	done
 
-        find /sys/kernel/scst_tgt -name trace_level | while read f; do
+        find /sys -name trace_level | while read f; do
 	    #echo add entryexit >$f
 	    #echo add debug >$f
 	    :
