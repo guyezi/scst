@@ -275,8 +275,13 @@ restart:
 		}
 	}
 
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
+	res = kobject_add2(&conn->conn_kobj,
+		scst_sysfs_get_sess_kobj(session->scst_sess), addr);
+#else
 	res = kobject_add(&conn->conn_kobj,
 		scst_sysfs_get_sess_kobj(session->scst_sess), addr);
+#endif
 	if (res != 0) {
 		PRINT_ERROR("Unable create sysfs entries for conn %s",
 			addr);
@@ -817,7 +822,11 @@ static int iscsi_conn_alloc(struct iscsi_session *session,
 		goto out_err;
 	}
 
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
+	kobject_init2(&conn->conn_kobj, &iscsi_conn_ktype);
+#else
 	kobject_init(&conn->conn_kobj, &iscsi_conn_ktype);
+#endif
 
 	TRACE_MGMT_DBG("Creating connection %p for sid %#Lx, cid %u", conn,
 		       (long long unsigned int)session->sid, info->cid);

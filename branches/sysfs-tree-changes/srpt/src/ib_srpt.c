@@ -3323,16 +3323,11 @@ static uint16_t srpt_get_scsi_transport_version(struct scst_tgt *scst_tgt)
 	return 0x0940; /* SRP */
 }
 
-#if defined(CONFIG_SCST_PROC)
 #if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
 static ssize_t show_login_info(struct class_device *dev, char *buf)
 #else
 static ssize_t show_login_info(struct device *dev,
 			       struct device_attribute *attr, char *buf)
-#endif
-#else
-static ssize_t show_login_info(struct kobject *kobj,
-			       struct kobj_attribute *attr, char *buf)
 #endif
 {
 #if !defined(CONFIG_SCST_PROC)
@@ -3346,7 +3341,7 @@ static ssize_t show_login_info(struct kobject *kobj,
 #if defined(CONFIG_SCST_PROC)
 	sdev = container_of(dev, struct srpt_device, dev);
 #else
-	scst_tgt = container_of(kobj, struct scst_tgt, tgt_kobj);
+	scst_tgt = scst_dev_to_tgt(dev);
 	sdev = scst_tgt_get_tgt_priv(scst_tgt);
 #endif
 	len = 0;
@@ -3374,11 +3369,19 @@ static ssize_t show_login_info(struct kobject *kobj,
 }
 
 #if !defined(CONFIG_SCST_PROC)
-static struct kobj_attribute srpt_show_login_info_attr =
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
+static struct class_device_attribute srpt_show_login_info_attr =
+#else
+static struct device_attribute srpt_show_login_info_attr =
+#endif
 	__ATTR(login_info, S_IRUGO, show_login_info, NULL);
 
-static const struct attribute *srpt_tgt_attrs[] = {
-	&srpt_show_login_info_attr.attr,
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
+static const struct class_device_attribute *srpt_tgt_attrs[] = {
+#else
+static const struct device_attribute *srpt_tgt_attrs[] = {
+#endif
+	&srpt_show_login_info_attr,
 	NULL
 };
 

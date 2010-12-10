@@ -343,8 +343,12 @@ static const char *scst_local_info(struct Scsi_Host *shp)
  ** Tgtt attributes
  **/
 
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
+static ssize_t scst_local_version_show(struct class_device *dev, char *buf)
+#else
 static ssize_t scst_local_version_show(struct device *dev,
 	struct device_attribute *attr, char *buf)
+#endif
 {
 	sprintf(buf, "%s/%s\n", SCST_LOCAL_VERSION, scst_local_version_date);
 
@@ -364,11 +368,19 @@ static ssize_t scst_local_version_show(struct device *dev,
 	return strlen(buf);
 }
 
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
+static struct class_device_attribute scst_local_version_attr =
+#else
 static struct device_attribute scst_local_version_attr =
+#endif
 	__ATTR(version, S_IRUGO, scst_local_version_show, NULL);
 
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
+static ssize_t scst_local_stats_show(struct class_device *dev, char *buf)
+#else
 static ssize_t scst_local_stats_show(struct device *dev,
-	struct device_attribute *attr, char *buf)
+				     struct device_attribute *attr, char *buf)
+#endif
 
 {
 	return sprintf(buf, "Aborts: %d, Device Resets: %d, Target Resets: %d",
@@ -376,10 +388,18 @@ static ssize_t scst_local_stats_show(struct device *dev,
 		atomic_read(&num_target_resets));
 }
 
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
+static struct class_device_attribute scst_local_stats_attr =
+#else
 static struct device_attribute scst_local_stats_attr =
+#endif
 	__ATTR(stats, S_IRUGO, scst_local_stats_show, NULL);
 
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
+static const struct class_device_attribute *scst_local_tgtt_attrs[] = {
+#else
 static const struct device_attribute *scst_local_tgtt_attrs[] = {
+#endif
 	&scst_local_version_attr,
 	&scst_local_stats_attr,
 	NULL,
@@ -389,8 +409,13 @@ static const struct device_attribute *scst_local_tgtt_attrs[] = {
  ** Tgt attributes
  **/
 
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
+static ssize_t scst_local_scsi_transport_version_show(struct class_device *dev,
+						      char *buf)
+#else
 static ssize_t scst_local_scsi_transport_version_show(struct device *dev,
-	struct device_attribute *attr, char *buf)
+				struct device_attribute *attr, char *buf)
+#endif
 {
 	struct scst_tgt *scst_tgt;
 	struct scst_local_tgt *tgt;
@@ -417,8 +442,14 @@ out:
 	return res;
 }
 
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
+static ssize_t scst_local_scsi_transport_version_store(struct class_device *dev,
+						       const char *buffer,
+						       size_t size)
+#else
 static ssize_t scst_local_scsi_transport_version_store(struct device *dev,
 	struct device_attribute *attr, const char *buffer, size_t size)
+#endif
 {
 	ssize_t res = -ENOENT;
 	struct scst_tgt *scst_tgt;
@@ -450,13 +481,22 @@ out:
 	return res;
 }
 
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
+static struct class_device_attribute scst_local_scsi_transport_version_attr =
+#else
 static struct device_attribute scst_local_scsi_transport_version_attr =
+#endif
 	__ATTR(scsi_transport_version, S_IRUGO | S_IWUSR,
 		scst_local_scsi_transport_version_show,
 		scst_local_scsi_transport_version_store);
 
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
+static ssize_t scst_local_phys_transport_version_show(struct class_device *dev,
+						      char *buf)
+#else
 static ssize_t scst_local_phys_transport_version_show(struct device *dev,
 	struct device_attribute *attr, char *buf)
+#endif
 {
 	struct scst_tgt *scst_tgt;
 	struct scst_local_tgt *tgt;
@@ -481,8 +521,14 @@ out:
 	return res;
 }
 
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
+static ssize_t scst_local_phys_transport_version_store(struct class_device *dev,
+						       const char *buffer,
+						       size_t size)
+#else
 static ssize_t scst_local_phys_transport_version_store(struct device *dev,
 	struct device_attribute *attr, const char *buffer, size_t size)
+#endif
 {
 	ssize_t res = -ENOENT;
 	struct scst_tgt *scst_tgt;
@@ -514,12 +560,20 @@ out:
 	return res;
 }
 
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
+static struct class_device_attribute scst_local_phys_transport_version_attr =
+#else
 static struct device_attribute scst_local_phys_transport_version_attr =
+#endif
 	__ATTR(phys_transport_version, S_IRUGO | S_IWUSR,
 		scst_local_phys_transport_version_show,
 		scst_local_phys_transport_version_store);
 
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
+static const struct class_device_attribute *scst_local_tgt_attrs[] = {
+#else
 static const struct device_attribute *scst_local_tgt_attrs[] = {
+#endif
 	&scst_local_scsi_transport_version_attr,
 	&scst_local_phys_transport_version_attr,
 	NULL,
@@ -1639,7 +1693,12 @@ static int __scst_local_add_adapter(struct scst_local_tgt *tgt,
 
 #ifndef CONFIG_SCST_PROC
 	res = sysfs_create_link(scst_sysfs_get_sess_kobj(sess->scst_sess),
-		&sess->shost->shost_dev.kobj, "host");
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
+				&sess->shost->shost_classdev.kobj,
+#else
+				&sess->shost->shost_dev.kobj,
+#endif
+				"host");
 	if (res != 0) {
 		PRINT_ERROR("Unable to create \"host\" link for target "
 			"%s", scst_get_tgt_name(tgt->scst_tgt));
