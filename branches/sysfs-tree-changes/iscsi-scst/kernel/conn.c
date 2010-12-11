@@ -119,6 +119,8 @@ void conn_info_show(struct seq_file *seq, struct iscsi_session *session)
 	}
 }
 
+#endif /*CONFIG_SCST_PROC*/
+
 static void iscsi_conn_release(struct kobject *kobj)
 {
 	struct iscsi_conn *conn;
@@ -141,7 +143,7 @@ static void iscsi_conn_release(struct kobject *kobj)
 	TRACE_EXIT();
 }
 
-#else /* CONFIG_SCST_PROC */
+#ifndef CONFIG_SCST_PROC
 
 static ssize_t iscsi_get_initiator_ip(struct iscsi_conn *conn,
 	char *buf, int size)

@@ -912,6 +912,9 @@ static int scst_register_device(struct scsi_device *scsidp)
 		}
 	}
 #else
+	res = scst_dev_sysfs_init(dev);
+	if (res)
+		goto out_free_dev;
 	res = scst_dev_sysfs_create(dev);
 	if (res)
 		goto out_free_dev;
@@ -1133,6 +1136,9 @@ int scst_register_virtual_device(struct scst_dev_type *dev_handler,
 		goto out_free_dev;
 
 #ifndef CONFIG_SCST_PROC
+	res = scst_dev_sysfs_init(dev);
+	if (res)
+		goto out_pr_clear_dev;
 	res = scst_dev_sysfs_create(dev);
 	if (res)
 		goto out_pr_clear_dev;
@@ -1169,7 +1175,7 @@ out_free_dev:
 #ifdef CONFIG_SCST_PROC
 	scst_free_device(dev);
 #else
-	scst_sysfs_put(&dev->dev_dev);
+	scst_dev_sysfs_put(dev);
 #endif
 out_unlock:
 	mutex_unlock(&scst_mutex);
@@ -1361,8 +1367,9 @@ out:
 #ifndef CONFIG_SCST_PROC
 out_put:
 	scst_devt_sysfs_put(dev_type);
-#endif
+#else
 out_del:
+#endif
 	list_del(&dev_type->dev_type_list_entry);
 out_unlock:
 	mutex_unlock(&scst_mutex);
@@ -1504,9 +1511,10 @@ out:
 
 #ifndef CONFIG_SCST_PROC
 out_put:
-	scst_devt_sysfs_put(&dev_type->devt_dev);
-#endif
+	scst_devt_sysfs_put(dev_type);
+#else
 out_del:
+#endif
 	list_del(&dev_type->dev_type_list_entry);
 	mutex_unlock(&scst_mutex);
 	goto out;
@@ -1523,7 +1531,7 @@ void scst_unregister_virtual_dev_driver(struct scst_dev_type *dev_type)
 	mutex_lock(&scst_mutex);
 
 #ifndef CONFIG_SCST_PROC
-	scst_devt_sysfs_del(&dev_type->devt_dev);
+	scst_devt_sysfs_del(dev_type);
 #endif
 
 	/* Disable sysfs mgmt calls (e.g. addition of new devices) */
@@ -1787,7 +1795,6 @@ int scst_assign_dev_handler(struct scst_device *dev,
 	 * objects.
 	 */
 	scst_devt_dev_sysfs_del(dev);
-	scst_devt_dev_sysfs_put(dev);
 #endif
 
 	if (dev->handler->detach) {
@@ -1811,16 +1818,18 @@ assign:
 		TRACE_DBG("Calling new dev handler's attach(%p)", dev);
 		res = handler->attach(dev);
 		TRACE_DBG("New dev handler's attach() returned %d", res);
-		if (res != 0) {
+		if (res) {
 			PRINT_ERROR("New device handler's %s attach() "
 				"failed: %d", handler->name, res);
 			goto out;
 		}
 	}
 
+#ifndef CONFIG_SCST_PROC
 	res = scst_devt_dev_sysfs_create(dev);
-	if (res != 0)
+	if (res)
 		goto out_detach;
+#endif
 
 	if (handler->attach_tgt) {
 		list_for_each_entry(tgt_dev, &dev->dev_tgt_dev_list,
@@ -1840,7 +1849,7 @@ assign:
 	}
 
 	res = scst_create_dev_threads(dev);
-	if (res != 0)
+	if (res)
 		goto out_err_detach_tgt;
 
 out:
@@ -1861,16 +1870,13 @@ out_err_detach_tgt:
 out_err_remove_sysfs:
 #ifndef CONFIG_SCST_PROC
 	scst_devt_dev_sysfs_del(dev);
-	scst_devt_dev_sysfs_put(dev);
 #endif
-
 out_detach:
 	if (handler && handler->detach) {
 		TRACE_DBG("%s", "Calling handler's detach()");
 		handler->detach(dev);
 		TRACE_DBG("%s", "Handler's detach() returned");
 	}
-
 	dev->handler = &scst_null_devtype;
 	dev->threads_num = scst_null_devtype.threads_num;
 	dev->threads_pool_type = scst_null_devtype.threads_pool_type;

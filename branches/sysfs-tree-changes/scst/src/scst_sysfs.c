@@ -495,14 +495,14 @@ int scst_tgtt_sysfs_create(struct scst_tgt_template *tgtt)
 
 	TRACE_ENTRY();
 
-	vtt->tgtt_dev.class = &scst_tgtt_class;
-	vtt->tgtt_dev.parent = NULL;
+	tgtt->tgtt_dev.class = &scst_tgtt_class;
+	tgtt->tgtt_dev.parent = NULL;
 #if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 30)
-	snprintf(vtt->tgtt_dev.bus_id, BUS_ID_SIZE, "%s", vtt->name);
+	snprintf(tgtt->tgtt_dev.bus_id, BUS_ID_SIZE, "%s", tgtt->name);
 #else
-	dev_set_name(&vtt->tgtt_dev, "%s", vtt->name);
+	dev_set_name(&tgtt->tgtt_dev, "%s", tgtt->name);
 #endif
-	res = device_register(&vtt->tgtt_dev);
+	res = device_register(&tgtt->tgtt_dev);
 	if (res)
 		goto out_del;
 
@@ -1230,10 +1230,10 @@ int scst_tgt_sysfs_create(struct scst_tgt *tgt)
 #else
 	dev_set_name(&tgt->tgt_dev, "%s", tgt->tgt_name);
 #endif
-	rc = device_register(&tgt->tgt_dev);
-	if (rc) {
+	res = device_register(&tgt->tgt_dev);
+	if (res) {
 		PRINT_ERROR("Registration of device %s failed (%d)",
-			    tgt->tgt_name, rc);
+			    tgt->tgt_name, res);
 		goto out_err;
 	}
 
@@ -1551,22 +1551,25 @@ struct device_attribute scst_dev_attrs[] = {
 	__ATTR_NULL,
 };
 
+static void scst_release_dev(struct device *device)
+{
+	struct scst_device *dev;
+
+	dev = scst_dev_to_dev(device);
+	scst_free_device(dev);
+}
+
+static struct class scst_dev_class = {
+	.name			= "target_device",
+	.dev_release		= scst_release_dev,
+	.dev_attrs		= scst_dev_attrs,
+};
+
 int scst_devt_dev_sysfs_create(struct scst_device *dev)
 {
 	int res = 0;
 
 	TRACE_ENTRY();
-
-	dev->dev_dev.class = &scst_dev_class;
-	dev->dev_dev.parent = NULL;
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 30)
-	snprintf(dev->dev_dev.bus_id, BUS_ID_SIZE, "%s", dev->virt_name);
-#else
-	dev_set_name(&dev->dev_dev, "%s", dev->virt_name);
-#endif
-	res = device_register(&dev->dev_dev);
-	if (res)
-		goto out_err;
 
 	if (dev->handler == &scst_null_devtype)
 		goto out;
@@ -1643,19 +1646,17 @@ void scst_devt_dev_sysfs_put(struct scst_device *dev)
 	TRACE_EXIT();
 }
 
-static void scst_release_dev(struct device *device)
+int scst_dev_sysfs_init(struct scst_device *dev)
 {
-	struct scst_device *dev;
-
-	dev = scst_dev_to_dev(device);
-	scst_free_device(dev);
+	dev->dev_dev.class = &scst_dev_class;
+	dev->dev_dev.parent = NULL;
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 30)
+	snprintf(dev->dev_dev.bus_id, BUS_ID_SIZE, "%s", dev->virt_name);
+#else
+	dev_set_name(&dev->dev_dev, "%s", dev->virt_name);
+#endif
+	return device_register(&dev->dev_dev);
 }
-
-static struct class scst_dev_class = {
-	.name			= "target_device",
-	.dev_release		= scst_release_dev,
-	.dev_attrs		= scst_dev_attrs,
-};
 
 int scst_dev_sysfs_create(struct scst_device *dev)
 {
@@ -1663,7 +1664,8 @@ int scst_dev_sysfs_create(struct scst_device *dev)
 
 	TRACE_ENTRY();
 
-	dev->dev_exp_kobj = kobject_create_and_add("exported", scst_sysfs_get_dev_kobj(dev));
+	dev->dev_exp_kobj = kobject_create_and_add("exported",
+						scst_sysfs_get_dev_kobj(dev));
 	if (dev->dev_exp_kobj == NULL) {
 		PRINT_ERROR("Can't create exported link for device %s",
 			dev->virt_name);
@@ -1713,7 +1715,7 @@ void scst_dev_sysfs_del(struct scst_device *dev)
 void scst_dev_sysfs_put(struct scst_device *dev)
 {
 	TRACE_ENTRY();
-	kobject_put(dev->dev_exp_kobj);
+	device_unregister(&dev->dev_dev);
 	TRACE_EXIT();
 }
 
@@ -3422,14 +3424,14 @@ int scst_devt_sysfs_create(struct scst_dev_type *devt)
 
 	TRACE_ENTRY();
 
-	dev_type->devt_dev.class = &scst_devt_class;
-	dev_type->devt_dev.parent = NULL;
+	devt->devt_dev.class = &scst_devt_class;
+	devt->devt_dev.parent = NULL;
 #if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 30)
-	snprintf(dev_type->devt_dev.bus_id, BUS_ID_SIZE, "%s", dev_type->name);
+	snprintf(devt->devt_dev.bus_id, BUS_ID_SIZE, "%s", devt->name);
 #else
-	dev_set_name(&dev_type->devt_dev, "%s", dev_type->name);
+	dev_set_name(&devt->devt_dev, "%s", devt->name);
 #endif
-	res = device_register(&dev_type->devt_dev);
+	res = device_register(&devt->devt_dev);
 	if (res)
 		goto out_err;
 
@@ -3506,7 +3508,7 @@ void scst_devt_sysfs_del(struct scst_dev_type *devt)
 void scst_devt_sysfs_put(struct scst_dev_type *devt)
 {
 	TRACE_ENTRY();
-	device_unregister(&dev_type->devt_dev);
+	device_unregister(&devt->devt_dev);
 	TRACE_EXIT();
 }
 
