@@ -192,7 +192,7 @@ int __add_target(struct iscsi_kern_target_info *info)
 
 		attr_info->name[sizeof(attr_info->name)-1] = '\0';
 
-		err = iscsi_add_attr(target, attr_info);
+		err = iscsi_tgt_add_attr(target, attr_info);
 		if (err != 0)
 			goto out_del_unlock;
 
@@ -221,7 +221,7 @@ out_del_unlock:
 static void target_destroy(struct iscsi_target *target)
 {
 #ifndef CONFIG_SCST_PROC
-	struct iscsi_attr *attr, *t;
+	struct iscsi_tgt_attr *attr, *t;
 #endif
 
 	TRACE_MGMT_DBG("Destroying target tid %u", target->tid);
@@ -229,7 +229,7 @@ static void target_destroy(struct iscsi_target *target)
 #ifndef CONFIG_SCST_PROC
 	list_for_each_entry_safe(attr, t, &target->attrs_list,
 				attrs_list_entry) {
-		__iscsi_del_attr(target, attr);
+		__iscsi_tgt_del_attr(target, attr);
 	}
 #endif
 

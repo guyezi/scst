@@ -3418,6 +3418,7 @@ static const struct attribute *srpt_sess_attrs[] = {
 /* SCST target template for the SRP target implementation. */
 static struct scst_tgt_template srpt_template = {
 	.name				 = DRV_NAME,
+	.owner				 = THIS_MODULE,
 	.sg_tablesize			 = SRPT_DEF_SG_TABLESIZE,
 	.max_hw_pending_time		 = 60/*seconds*/,
 #if !defined(CONFIG_SCST_PROC)

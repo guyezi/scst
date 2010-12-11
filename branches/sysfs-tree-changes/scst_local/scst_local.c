@@ -343,8 +343,7 @@ static const char *scst_local_info(struct Scsi_Host *shp)
  ** Tgtt attributes
  **/
 
-static ssize_t scst_local_version_show(struct device *dev,
-	struct device_attribute *attr, char *buf)
+static ssize_t scst_local_version_show(struct device_driver *drv, char *buf)
 {
 	sprintf(buf, "%s/%s\n", SCST_LOCAL_VERSION, scst_local_version_date);
 
@@ -364,21 +363,20 @@ static ssize_t scst_local_version_show(struct device *dev,
 	return strlen(buf);
 }
 
-static struct device_attribute scst_local_version_attr =
+static struct driver_attribute scst_local_version_attr =
 	__ATTR(version, S_IRUGO, scst_local_version_show, NULL);
 
-static ssize_t scst_local_stats_show(struct device *dev,
-				     struct device_attribute *attr, char *buf)
+static ssize_t scst_local_stats_show(struct device_driver *drv, char *buf)
 {
 	return sprintf(buf, "Aborts: %d, Device Resets: %d, Target Resets: %d",
 		atomic_read(&num_aborts), atomic_read(&num_dev_resets),
 		atomic_read(&num_target_resets));
 }
 
-static struct device_attribute scst_local_stats_attr =
+static struct driver_attribute scst_local_stats_attr =
 	__ATTR(stats, S_IRUGO, scst_local_stats_show, NULL);
 
-static const struct device_attribute *scst_local_tgtt_attrs[] = {
+static const struct driver_attribute *scst_local_tgtt_attrs[] = {
 	&scst_local_version_attr,
 	&scst_local_stats_attr,
 	NULL,
@@ -1360,6 +1358,7 @@ static const char *add_target_parameters[] = {
 
 static struct scst_tgt_template scst_local_targ_tmpl = {
 	.name			= "scst_local",
+	.owner = THIS_MODULE,
 #if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 20)
 	.sg_tablesize		= SG_MAX_SINGLE_ALLOC,
 #else

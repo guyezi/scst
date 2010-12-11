@@ -1236,6 +1236,7 @@ static struct class ibmvstgt_class = {
 
 static struct scst_tgt_template ibmvstgt_template = {
 	.name			= TGT_NAME,
+	.owner			= THIS_MODULE,
 	.preferred_addr_method	= SCST_LUN_ADDR_METHOD_LUN,
 #ifdef RHEL_MAJOR
 	.sg_tablesize		= 1024,

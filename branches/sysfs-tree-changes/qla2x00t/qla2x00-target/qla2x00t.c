@@ -198,6 +198,7 @@ static struct scst_tgt_template tgt2x_template = {
 #else
 	.name = "qla2x00t",
 #endif
+	.owner	= THIS_MODULE,
 	.sg_tablesize = 0,
 	.use_clustering = 1,
 #ifdef CONFIG_QLA_TGT_DEBUG_WORK_IN_THREAD

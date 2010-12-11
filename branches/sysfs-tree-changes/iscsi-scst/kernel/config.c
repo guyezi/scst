@@ -237,8 +237,7 @@ err:
 /* Protected by target_mgmt_mutex */
 static LIST_HEAD(iscsi_attrs_list);
 
-static ssize_t iscsi_version_show(struct device *dev,
-	struct device_attribute *attr, char *buf)
+static ssize_t iscsi_version_show(struct device_driver *drv, char *buf)
 {
 	TRACE_ENTRY();
 
@@ -264,11 +263,10 @@ static ssize_t iscsi_version_show(struct device *dev,
 	return strlen(buf);
 }
 
-static struct device_attribute iscsi_version_attr =
+static struct driver_attribute iscsi_version_attr =
 	__ATTR(version, S_IRUGO, iscsi_version_show, NULL);
 
-static ssize_t iscsi_open_state_show(struct device *dev,
-				     struct device_attribute *attr, char *buf)
+static ssize_t iscsi_open_state_show(struct device_driver *drv, char *buf)
 {
 	switch (ctr_open_state) {
 	case ISCSI_CTR_OPEN_STATE_CLOSED:
@@ -288,10 +286,10 @@ static ssize_t iscsi_open_state_show(struct device *dev,
 	return strlen(buf);
 }
 
-static struct device_attribute iscsi_open_state_attr =
+static struct driver_attribute iscsi_open_state_attr =
 	__ATTR(open_state, S_IRUGO, iscsi_open_state_show, NULL);
 
-const struct device_attribute *iscsi_attrs[] = {
+const struct driver_attribute *iscsi_attrs[] = {
 	&iscsi_version_attr,
 	&iscsi_open_state_attr,
 	NULL,
@@ -631,20 +629,71 @@ out_status:
 	goto out_complete;
 }
 
-static ssize_t iscsi_attr_show(struct kobject *kobj,
-	struct kobj_attribute *attr, char *buf)
+#define TGTT_ATTR_SHOW_STORE(a)						\
+static ssize_t iscsi_tgtt_##a##_show(struct device_driver *drv, char *buf) \
+{									\
+	static const char attr_name[] = #a;				\
+	int pos;							\
+	void *value;							\
+									\
+	TRACE_ENTRY();							\
+									\
+	pos = iscsi_sysfs_send_event(0, E_GET_ATTR_VALUE,		\
+				     attr_name, NULL, &value);		\
+	if (pos)							\
+		goto out;						\
+	pos = scnprintf(buf, SCST_SYSFS_BLOCK_SIZE, "%s\n", (char *)value); \
+	kfree(value);							\
+out:									\
+	TRACE_EXIT_RES(pos);						\
+	return pos;							\
+}									\
+									\
+static ssize_t iscsi_tgtt_##a##_store(struct device_driver *drv,	\
+				   const char *buf, size_t count)	\
+{									\
+	static const char attr_name[] = #a;				\
+	int res;							\
+	char *buffer;							\
+									\
+	TRACE_ENTRY();							\
+									\
+	res = -ENOMEM;							\
+	buffer = kasprintf(GFP_KERNEL, "%.*s", (int)count, buf);	\
+	if (!buffer)							\
+		goto out;						\
+									\
+	TRACE_DBG("attr %s, buffer %s", attr_name, buffer);		\
+									\
+	res = iscsi_sysfs_send_event(0, E_SET_ATTR_VALUE, attr_name,	\
+				     buffer, NULL);			\
+	kfree(buffer);							\
+	if (res == 0)							\
+		res = count;						\
+out:									\
+	TRACE_EXIT_RES(res);						\
+	return res;							\
+}
+
+TGTT_ATTR_SHOW_STORE(enabled)
+TGTT_ATTR_SHOW_STORE(iSNSServer)
+TGTT_ATTR_SHOW_STORE(open_state)
+TGTT_ATTR_SHOW_STORE(trace_level)
+TGTT_ATTR_SHOW_STORE(version)
+
+static ssize_t iscsi_tgt_attr_show(struct device *dev,
+				   struct device_attribute *attr, char *buf)
 {
 	int pos;
-	struct iscsi_attr *tgt_attr;
+	struct iscsi_tgt_attr *tgt_attr;
 	void *value;
 
 	TRACE_ENTRY();
 
-	tgt_attr = container_of(attr, struct iscsi_attr, attr);
+	tgt_attr = container_of(attr, struct iscsi_tgt_attr, attr);
 
-	pos = iscsi_sysfs_send_event(
-		(tgt_attr->target != NULL) ? tgt_attr->target->tid : 0,
-		E_GET_ATTR_VALUE, tgt_attr->name, NULL, &value);
+	pos = iscsi_sysfs_send_event(tgt_attr->target->tid, E_GET_ATTR_VALUE,
+				     tgt_attr->name, NULL, &value);
 
 	if (pos != 0)
 		goto out;
@@ -658,50 +707,75 @@ out:
 	return pos;
 }
 
-static ssize_t iscsi_attr_store(struct kobject *kobj,
-	struct kobj_attribute *attr, const char *buf, size_t count)
+static ssize_t iscsi_tgt_attr_store(struct device *dev,
+				    struct device_attribute *attr,
+				    const char *buf, size_t count)
 {
 	int res;
 	char *buffer;
-	struct iscsi_attr *tgt_attr;
+	struct iscsi_tgt_attr *tgt_attr;
 
 	TRACE_ENTRY();
 
-	buffer = kzalloc(count+1, GFP_KERNEL);
-	if (buffer == NULL) {
-		res = -ENOMEM;
+	res = -ENOMEM;
+	buffer = kasprintf(GFP_KERNEL, "%.*s", (int)count, buf);
+	if (!buffer)
 		goto out;
-	}
-	memcpy(buffer, buf, count);
-	buffer[count] = '\0';
 
-	tgt_attr = container_of(attr, struct iscsi_attr, attr);
-
+	tgt_attr = container_of(attr, struct iscsi_tgt_attr, attr);
 	TRACE_DBG("attr %s, buffer %s", tgt_attr->attr.attr.name, buffer);
-
-	res = iscsi_sysfs_send_event(
-		(tgt_attr->target != NULL) ? tgt_attr->target->tid : 0,
-		E_SET_ATTR_VALUE, tgt_attr->name, buffer, NULL);
+	res = iscsi_sysfs_send_event(tgt_attr->target->tid, E_SET_ATTR_VALUE,
+				     tgt_attr->name, buffer, NULL);
 
 	kfree(buffer);
-
 	if (res == 0)
 		res = count;
-
 out:
 	TRACE_EXIT_RES(res);
 	return res;
 }
 
+typedef ssize_t (*driver_show_method)(struct device_driver *driver, char *buf);
+static driver_show_method get_show_method(const char *name)
+{
+	if (strcmp(name, "enabled") == 0)
+		return iscsi_tgtt_enabled_show;
+	else if (strcmp(name, "iSNSServer") == 0)
+		return iscsi_tgtt_iSNSServer_show;
+	else if (strcmp(name, "open_state") == 0)
+		return iscsi_tgtt_open_state_show;
+	else if (strcmp(name, "trace_level") == 0)
+		return iscsi_tgtt_trace_level_show;
+	else if (strcmp(name, "version") == 0)
+		return iscsi_tgtt_version_show;
+	else
+		return (driver_show_method)0;
+}
+
+typedef ssize_t (*driver_store_method)(struct device_driver *driver, const char *buf, size_t count);
+static driver_store_method get_store_method(const char *name)
+{
+	if (strcmp(name, "enabled") == 0)
+		return iscsi_tgtt_enabled_store;
+	else if (strcmp(name, "iSNSServer") == 0)
+		return iscsi_tgtt_iSNSServer_store;
+	else if (strcmp(name, "open_state") == 0)
+		return iscsi_tgtt_open_state_store;
+	else if (strcmp(name, "trace_level") == 0)
+		return iscsi_tgtt_trace_level_store;
+	else if (strcmp(name, "version") == 0)
+		return iscsi_tgtt_version_store;
+	else
+		return (driver_store_method)0;
+}
+		
 /*
- * target_mgmt_mutex supposed to be locked. If target != 0, target_mutex
- * supposed to be locked as well.
+ * target_mgmt_mutex supposed to be locked.
  */
-int iscsi_add_attr(struct iscsi_target *target,
-	const struct iscsi_kern_attr *attr_info)
+int iscsi_tgtt_add_attr(const struct iscsi_kern_attr *attr_info)
 {
 	int res = 0;
-	struct iscsi_attr *tgt_attr;
+	struct iscsi_tgtt_attr *tgtt_attr;
 	struct list_head *attrs_list;
 	const char *name;
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 34)
@@ -712,31 +786,168 @@ int iscsi_add_attr(struct iscsi_target *target,
 
 	TRACE_ENTRY();
 
-	if (target != NULL) {
-		attrs_list = &target->attrs_list;
-		name = target->name;
-	} else {
-		attrs_list = &iscsi_attrs_list;
-		name = "global";
-	}
+	attrs_list = &iscsi_attrs_list;
+	name = "global";
 
-	list_for_each_entry(tgt_attr, attrs_list, attrs_list_entry) {
-		/* Both for sure NULL-terminated */
-		if (strcmp(tgt_attr->name, attr_info->name) == 0) {
+	list_for_each_entry(tgtt_attr, attrs_list, attrs_list_entry) {
+		if (strcmp(tgtt_attr->name, attr_info->name) == 0) {
 			PRINT_ERROR("Attribute %s for %s already exist",
-				attr_info->name, name);
+				    attr_info->name, name);
 			res = -EEXIST;
 			goto out;
 		}
 	}
 
 	TRACE_DBG("Adding %s's attr %s with mode %x", name,
-		attr_info->name, attr_info->mode);
+		  attr_info->name, attr_info->mode);
+
+	tgtt_attr = kzalloc(sizeof(*tgtt_attr), GFP_KERNEL);
+	if (tgtt_attr == NULL) {
+		PRINT_ERROR("Unable to allocate user (size %zd)",
+			    sizeof(*tgtt_attr));
+		res = -ENOMEM;
+		goto out;
+	}
+
+	tgtt_attr->name = kstrdup(attr_info->name, GFP_KERNEL);
+	if (tgtt_attr->name == NULL) {
+		PRINT_ERROR("Unable to allocate attr %s name/value (target %s)",
+			    attr_info->name, name);
+		res = -ENOMEM;
+		goto out_free;
+	}
+
+	list_add(&tgtt_attr->attrs_list_entry, attrs_list);
+
+	tgtt_attr->attr.attr.name = tgtt_attr->name;
+#if LINUX_VERSION_CODE <= KERNEL_VERSION(2, 6, 35)
+	tgtt_attr->attr.attr.owner = THIS_MODULE;
+#endif
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 34)
+#ifdef CONFIG_DEBUG_LOCK_ALLOC
+	tgtt_attr->attr.attr.key = &__key;
+#endif
+#endif
+	tgtt_attr->attr.attr.mode = attr_info->mode & (S_IRUGO | S_IWUGO);
+	tgtt_attr->attr.show = get_show_method(attr_info->name);
+	tgtt_attr->attr.store = get_store_method(attr_info->name);
+
+	TRACE_DBG("tgtt_attr %p, attr %p", tgtt_attr, &tgtt_attr->attr.attr);
+
+	res = driver_create_file(scst_sysfs_get_tgtt_drv(&iscsi_template),
+				 &tgtt_attr->attr);
+	if (res) {
+		PRINT_ERROR("Unable to create file '%s' for target '%s'",
+			tgtt_attr->attr.attr.name, name);
+		goto out_del;
+	}
+
+out:
+	TRACE_EXIT_RES(res);
+	return res;
+
+out_del:
+	list_del(&tgtt_attr->attrs_list_entry);
+
+out_free:
+	kfree(tgtt_attr->name);
+	kfree(tgtt_attr);
+	goto out;
+}
+
+static void __iscsi_tgtt_del_attr(struct iscsi_tgtt_attr *tgtt_attr)
+{
+	TRACE_ENTRY();
+
+	TRACE_DBG("Deleting attr %s (target %s, tgtt_attr %p, attr %p)",
+		  tgtt_attr->name, "global", tgtt_attr, &tgtt_attr->attr.attr);
+
+	list_del(&tgtt_attr->attrs_list_entry);
+
+	driver_remove_file(scst_sysfs_get_tgtt_drv(&iscsi_template),
+			   &tgtt_attr->attr);
+
+	kfree(tgtt_attr->name);
+	kfree(tgtt_attr);
+
+	TRACE_EXIT();
+	return;
+}
+
+/*
+ * target_mgmt_mutex supposed to be locked.
+ */
+int iscsi_tgtt_del_attr(const char *attr_name)
+{
+	int res = 0;
+	struct iscsi_tgtt_attr *tgtt_attr, *a;
+	struct list_head *attrs_list;
+
+	TRACE_ENTRY();
+
+	attrs_list = &iscsi_attrs_list;
+
+	tgtt_attr = NULL;
+	list_for_each_entry(a, attrs_list, attrs_list_entry) {
+		if (strcmp(a->name, attr_name) == 0) {
+			tgtt_attr = a;
+			break;
+		}
+	}
+
+	if (tgtt_attr == NULL) {
+		PRINT_ERROR("attr %s not found (target %s)", attr_name,
+			    "global");
+		res = -ENOENT;
+		goto out;
+	}
+
+	__iscsi_tgtt_del_attr(tgtt_attr);
+
+out:
+	TRACE_EXIT_RES(res);
+	return res;
+}
+
+/*
+ * target_mgmt_mutex supposed to be locked. If target != 0, target_mutex
+ * supposed to be locked as well.
+ */
+int iscsi_tgt_add_attr(struct iscsi_target *target,
+		       const struct iscsi_kern_attr *attr_info)
+{
+	int res = 0;
+	struct iscsi_tgt_attr *tgt_attr;
+	struct list_head *attrs_list;
+	const char *name;
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 34)
+#ifdef CONFIG_DEBUG_LOCK_ALLOC
+	static struct lock_class_key __key;
+#endif
+#endif
+
+	TRACE_ENTRY();
+
+	BUG_ON(!target);
+	attrs_list = &target->attrs_list;
+	name = target->name;
+
+	list_for_each_entry(tgt_attr, attrs_list, attrs_list_entry) {
+		if (strcmp(tgt_attr->name, attr_info->name) == 0) {
+			PRINT_ERROR("Attribute %s for %s already exist",
+				    attr_info->name, name);
+			res = -EEXIST;
+			goto out;
+		}
+	}
+
+	TRACE_DBG("Adding %s's attr %s with mode %x", name,
+		  attr_info->name, attr_info->mode);
 
 	tgt_attr = kzalloc(sizeof(*tgt_attr), GFP_KERNEL);
 	if (tgt_attr == NULL) {
 		PRINT_ERROR("Unable to allocate user (size %zd)",
-			sizeof(*tgt_attr));
+			    sizeof(*tgt_attr));
 		res = -ENOMEM;
 		goto out;
 	}
@@ -746,7 +957,7 @@ int iscsi_add_attr(struct iscsi_target *target,
 	tgt_attr->name = kstrdup(attr_info->name, GFP_KERNEL);
 	if (tgt_attr->name == NULL) {
 		PRINT_ERROR("Unable to allocate attr %s name/value (target %s)",
-			attr_info->name, name);
+			    attr_info->name, name);
 		res = -ENOMEM;
 		goto out_free;
 	}
@@ -763,16 +974,14 @@ int iscsi_add_attr(struct iscsi_target *target,
 #endif
 #endif
 	tgt_attr->attr.attr.mode = attr_info->mode & (S_IRUGO | S_IWUGO);
-	tgt_attr->attr.show = iscsi_attr_show;
-	tgt_attr->attr.store = iscsi_attr_store;
+	tgt_attr->attr.show = iscsi_tgt_attr_show;
+	tgt_attr->attr.store = iscsi_tgt_attr_store;
 
 	TRACE_DBG("tgt_attr %p, attr %p", tgt_attr, &tgt_attr->attr.attr);
 
-	res = sysfs_create_file(
-		(target != NULL) ? scst_sysfs_get_tgt_kobj(target->scst_tgt) :
-				scst_sysfs_get_tgtt_kobj(&iscsi_template),
-		&tgt_attr->attr.attr);
-	if (res != 0) {
+	res = device_create_file(scst_sysfs_get_tgt_dev(target->scst_tgt),
+				 &tgt_attr->attr);
+	if (res) {
 		PRINT_ERROR("Unable to create file '%s' for target '%s'",
 			tgt_attr->attr.attr.name, name);
 		goto out_del;
@@ -791,50 +1000,44 @@ out_free:
 	goto out;
 }
 
-void __iscsi_del_attr(struct iscsi_target *target,
-	struct iscsi_attr *tgt_attr)
+void __iscsi_tgt_del_attr(struct iscsi_target *target,
+			  struct iscsi_tgt_attr *tgt_attr)
 {
 	TRACE_ENTRY();
 
+	BUG_ON(!target);
+
 	TRACE_DBG("Deleting attr %s (target %s, tgt_attr %p, attr %p)",
-		tgt_attr->name, (target != NULL) ? target->name : "global",
-		tgt_attr, &tgt_attr->attr.attr);
+		  tgt_attr->name, target->name,
+		  tgt_attr, &tgt_attr->attr.attr);
 
 	list_del(&tgt_attr->attrs_list_entry);
 
-	sysfs_remove_file((target != NULL) ?
-			scst_sysfs_get_tgt_kobj(target->scst_tgt) :
-			scst_sysfs_get_tgtt_kobj(&iscsi_template),
-		&tgt_attr->attr.attr);
+	device_remove_file(scst_sysfs_get_tgt_dev(target->scst_tgt),
+			   &tgt_attr->attr);
 
 	kfree(tgt_attr->name);
 	kfree(tgt_attr);
 
 	TRACE_EXIT();
-	return;
 }
 
 /*
- * target_mgmt_mutex supposed to be locked. If target != 0, target_mutex
- * supposed to be locked as well.
+ * target_mgmt_mutex and target_mutex supposed to be locked.
  */
-static int iscsi_del_attr(struct iscsi_target *target,
-	const char *attr_name)
+int iscsi_tgt_del_attr(struct iscsi_target *target, const char *attr_name)
 {
 	int res = 0;
-	struct iscsi_attr *tgt_attr, *a;
+	struct iscsi_tgt_attr *tgt_attr, *a;
 	struct list_head *attrs_list;
 
 	TRACE_ENTRY();
 
-	if (target != NULL)
-		attrs_list = &target->attrs_list;
-	else
-		attrs_list = &iscsi_attrs_list;
+	BUG_ON(!target);
+	attrs_list = &target->attrs_list;
 
 	tgt_attr = NULL;
 	list_for_each_entry(a, attrs_list, attrs_list_entry) {
-		/* Both for sure NULL-terminated */
 		if (strcmp(a->name, attr_name) == 0) {
 			tgt_attr = a;
 			break;
@@ -843,12 +1046,12 @@ static int iscsi_del_attr(struct iscsi_target *target,
 
 	if (tgt_attr == NULL) {
 		PRINT_ERROR("attr %s not found (target %s)", attr_name,
-			(target != NULL) ? target->name : "global");
+			    (target != NULL) ? target->name : "global");
 		res = -ENOENT;
 		goto out;
 	}
 
-	__iscsi_del_attr(target, tgt_attr);
+	__iscsi_tgt_del_attr(target, tgt_attr);
 
 out:
 	TRACE_EXIT_RES(res);
@@ -884,23 +1087,30 @@ static int iscsi_attr_cmd(void __user *ptr, unsigned int cmd)
 	}
 
 	target = target_lookup_by_id(info.tid);
-
-	if (target != NULL)
+	if (!target) {
+		switch (cmd) {
+		case ISCSI_ATTR_ADD:
+			err = iscsi_tgtt_add_attr(&info.attr);
+			break;
+		case ISCSI_ATTR_DEL:
+			err = iscsi_tgtt_del_attr(info.attr.name);
+			break;
+		default:
+			sBUG();
+		}
+	} else {
 		mutex_lock(&target->target_mutex);
-
-	switch (cmd) {
-	case ISCSI_ATTR_ADD:
-		err = iscsi_add_attr(target, &info.attr);
-		break;
-	case ISCSI_ATTR_DEL:
-		err = iscsi_del_attr(target, info.attr.name);
-		break;
-	default:
-		sBUG();
+		switch (cmd) {
+		case ISCSI_ATTR_ADD:
+			err = iscsi_tgt_add_attr(target, &info.attr);
+			break;
+		case ISCSI_ATTR_DEL:
+			err = iscsi_tgt_del_attr(target, info.attr.name);
+			break;
+		default:
+			sBUG();
+		}
 	}
-
-	if (target != NULL)
-		mutex_unlock(&target->target_mutex);
 
 	if (i != NULL) {
 		i->info_status = err;
@@ -1169,7 +1379,7 @@ static int open(struct inode *inode, struct file *file)
 static int release(struct inode *inode, struct file *filp)
 {
 #ifndef CONFIG_SCST_PROC
-	struct iscsi_attr *attr, *t;
+	struct iscsi_tgtt_attr *attr, *t;
 #endif
 
 	TRACE(TRACE_MGMT, "%s", "Releasing allocated resources");
@@ -1185,7 +1395,7 @@ static int release(struct inode *inode, struct file *filp)
 #ifndef CONFIG_SCST_PROC
 	list_for_each_entry_safe(attr, t, &iscsi_attrs_list,
 					attrs_list_entry) {
-		__iscsi_del_attr(NULL, attr);
+		__iscsi_tgtt_del_attr(attr);
 	}
 #endif
 

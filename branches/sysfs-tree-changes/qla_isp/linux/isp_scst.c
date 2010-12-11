@@ -1588,8 +1588,9 @@ static uint16_t isp_get_scsi_transport_version(struct scst_tgt *scst_tgt)
 
 static struct scst_tgt_template isp_tgt_template =
 {
-    .sg_tablesize = SG_ALL, /* we set this value lately based on hardware */
     .name = "qla_isp",
+    .owner = THIS_MODULE,
+    .sg_tablesize = SG_ALL, /* we set this value lately based on hardware */
     .unchecked_isa_dma = 0,
     .use_clustering = 1,
     .xmit_response_atomic = 1,

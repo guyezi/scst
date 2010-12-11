@@ -3787,6 +3787,7 @@ static const char *tgt_attributes[] = {
 
 struct scst_tgt_template iscsi_template = {
 	.name = "iscsi",
+	.owner = THIS_MODULE,
 	.sg_tablesize = 0xFFFF /* no limit */,
 	.threads_num = 0,
 	.no_clustering = 1,

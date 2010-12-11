@@ -92,9 +92,17 @@ struct iscsi_target;
 struct iscsi_cmnd;
 
 #ifndef CONFIG_SCST_PROC
-struct iscsi_attr {
+struct iscsi_tgtt_attr {
 	struct list_head attrs_list_entry;
-	struct kobj_attribute attr;
+	struct driver_attribute attr;
+	const char *name;
+	ssize_t (*show)(struct device_driver *driver, char *buf);
+	ssize_t (*store)(struct device_driver *driver, const char *buf,
+			 size_t count);
+};
+struct iscsi_tgt_attr {
+	struct list_head attrs_list_entry;
+	struct device_attribute attr;
 	struct iscsi_target *target;
 	const char *name;
 };
@@ -595,11 +603,14 @@ extern void target_del_all(void);
 extern int iscsi_procfs_init(void);
 extern void iscsi_procfs_exit(void);
 #else
-extern const struct device_attribute *iscsi_attrs[];
-extern int iscsi_add_attr(struct iscsi_target *target,
-	const struct iscsi_kern_attr *user_info);
-extern void __iscsi_del_attr(struct iscsi_target *target,
-	struct iscsi_attr *tgt_attr);
+extern const struct driver_attribute *iscsi_attrs[];
+extern int iscsi_tgtt_add_attr(const struct iscsi_kern_attr *attr_info);
+extern int iscsi_tgtt_del_attr(const char *name);
+extern int iscsi_tgt_add_attr(struct iscsi_target *target,
+			      const struct iscsi_kern_attr *user_info);
+extern void __iscsi_tgt_del_attr(struct iscsi_target *target,
+				 struct iscsi_tgt_attr *tgt_attr);
+extern int iscsi_tgt_del_attr(struct iscsi_target *target, const char* name);
 #endif
 
 /* session.c */

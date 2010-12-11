@@ -611,6 +611,9 @@ typedef enum dma_data_direction scst_data_direction;
 struct scst_tgt_template {
 	/* public: */
 
+	/* Module that owns this target template structure. */
+	struct module *owner;
+
 	/*
 	 * SG tablesize allows to check whether scatter/gather can be used
 	 * or not.
@@ -1002,7 +1005,7 @@ struct scst_tgt_template {
 
 #ifndef CONFIG_SCST_PROC
 	/* sysfs attributes, if any */
-	const struct device_attribute **tgtt_attrs;
+	const struct driver_attribute **tgtt_attrs;
 
 	/* sysfs target attributes, if any */
 	const struct device_attribute **tgt_attrs;
@@ -1046,7 +1049,7 @@ struct scst_tgt_template {
 	/* Device number in /proc */
 	int proc_dev_num;
 #else
-	struct device tgtt_dev;
+	struct device_driver tgtt_drv;
 #endif
 
 	/*
@@ -3757,21 +3760,16 @@ const struct sysfs_ops *scst_sysfs_get_sysfs_ops(void);
 struct sysfs_ops *scst_sysfs_get_sysfs_ops(void);
 #endif
 
-static inline struct device *scst_sysfs_get_tgtt_dev(
+static inline struct device_driver *scst_sysfs_get_tgtt_drv(
 	struct scst_tgt_template *tgtt)
 {
-	return &tgtt->tgtt_dev;
+	return &tgtt->tgtt_drv;
 }
 
-static inline struct kobject *scst_sysfs_get_tgtt_kobj(
-	struct scst_tgt_template *tgtt)
+static inline struct scst_tgt_template *scst_drv_to_tgtt(
+					struct device_driver *drv)
 {
-	return &tgtt->tgtt_dev.kobj;
-}
-
-static inline struct scst_tgt_template *scst_dev_to_tgtt(struct device *dev)
-{
-	return container_of(dev, struct scst_tgt_template, tgtt_dev);
+	return container_of(drv, struct scst_tgt_template, tgtt_drv);
 }
 
 static inline struct device *scst_sysfs_get_tgt_dev(struct scst_tgt *tgt)

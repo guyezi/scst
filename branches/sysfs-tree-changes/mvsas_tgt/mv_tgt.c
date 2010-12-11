@@ -73,6 +73,7 @@ struct mvst_msg_queue tgt_msg_queue;
 
 struct scst_tgt_template tgt_template = {
 	.name = MVST_NAME,
+	.owner	= THIS_MODULE,
 	.sg_tablesize = 0,
 	.use_clustering = 1,
 #ifdef DEBUG_WORK_IN_THREAD

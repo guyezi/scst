@@ -289,6 +289,7 @@ static int mpt_send_cmd_to_scst(struct mpt_cmd *cmd,
 
 static struct scst_tgt_template tgt_template = {
 	.name = MYNAM,
+	.owner		= THIS_MODULE,
 	.sg_tablesize = 128, /* FIXME */
 	.use_clustering = 1,
 #ifdef DEBUG_WORK_IN_THREAD
