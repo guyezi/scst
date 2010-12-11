@@ -1005,10 +1005,18 @@ struct scst_tgt_template {
 
 #ifndef CONFIG_SCST_PROC
 	/* sysfs attributes, if any */
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 34)
+	struct driver_attribute **tgtt_attrs;
+#else
 	const struct driver_attribute **tgtt_attrs;
+#endif
 
 	/* sysfs target attributes, if any */
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 34)
+	struct device_attribute **tgt_attrs;
+#else
 	const struct device_attribute **tgt_attrs;
+#endif
 
 	/* sysfs session attributes, if any */
 	const struct attribute **sess_attrs;
@@ -1404,10 +1412,18 @@ struct scst_dev_type {
 	const char *const *dev_optional_attributes;
 
 	/* sysfs attributes, if any */
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 34)
+	struct device_attribute **devt_attrs;
+#else
 	const struct device_attribute **devt_attrs;
+#endif
 
 	/* sysfs device attributes, if any */
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 34)
+	struct device_attribute **dev_attrs;
+#else
 	const struct device_attribute **dev_attrs;
+#endif
 #endif
 
 	/* Pointer to dev handler's private data */

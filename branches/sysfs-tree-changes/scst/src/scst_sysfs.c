@@ -513,7 +513,9 @@ int scst_tgtt_sysfs_create(struct scst_tgt_template *tgtt)
 	tgtt->tgtt_drv.bus  = &scst_target_bus;
 	tgtt->tgtt_drv.name = tgtt->name;
 	tgtt->tgtt_drv.owner = tgtt->owner;
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 32)
 	tgtt->tgtt_drv.suppress_bind_attrs = true;
+#endif
 	res = driver_register(&tgtt->tgtt_drv);
 	if (res)
 		goto out_del;
