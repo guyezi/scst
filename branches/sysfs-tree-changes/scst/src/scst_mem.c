@@ -1664,7 +1664,12 @@ struct sgv_pool *sgv_pool_create(const char *name,
 		goto out_unlock;
 	}
 
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
+	kobject_init(&pool->sgv_kobj);
+	pool->sgv_kobj.ktype = &pool_ktype;
+#else
 	kobject_init(&pool->sgv_kobj, &pool_ktype);
+#endif
 
 	rc = sgv_pool_init(pool, name, clustering_type, single_alloc_pages,
 				purge_interval);

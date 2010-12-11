@@ -308,10 +308,8 @@ struct iscsi_conn {
 	spinlock_t nop_req_list_lock;
 	u32 nop_in_ttt;
 
-#ifndef CONFIG_SCST_PROC
 	/* Don't need any protection */
 	struct kobject conn_kobj;
-#endif /* CONFIG_SCST_PROC */
 };
 
 struct iscsi_pdu {
@@ -324,12 +322,12 @@ struct iscsi_pdu {
 #ifdef CONFIG_SCST_PROC
 typedef void (iscsi_show_info_t)(struct seq_file *seq,
 				 struct iscsi_target *target);
-#else
+#endif
+
 static inline struct iscsi_conn *scst_kobj_to_conn(struct kobject *kobj)
 {
 	return container_of(kobj, struct iscsi_conn, conn_kobj);
 }
-#endif
 
 /** Commands' states **/
 

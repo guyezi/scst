@@ -1045,8 +1045,9 @@ struct scst_tgt_template {
 
 	/* Device number in /proc */
 	int proc_dev_num;
-#endif
+#else
 	struct device tgtt_dev;
+#endif
 
 	/*
 	 * Optional vendor to be reported via the SCSI inquiry data. If NULL,
@@ -1419,11 +1420,11 @@ struct scst_dev_type {
 	/* list entry in scst_(virtual_)dev_type_list */
 	struct list_head dev_type_list_entry;
 
-	struct device devt_dev;
-
 #ifdef CONFIG_SCST_PROC
 	/* The pointer to the /proc directory entry */
 	struct proc_dir_entry *proc_dev_type_root;
+#else
+	struct device devt_dev;
 #endif
 };
 
@@ -1480,12 +1481,12 @@ struct scst_tgt {
 
 	uint16_t rel_tgt_id;
 
-	struct device tgt_dev;
-
 #ifdef CONFIG_SCST_PROC
 	/* Name of the default security group ("Default_target_name") */
 	char *default_group_name;
 #else
+	struct device tgt_dev;
+
 	struct kobject *tgt_sess_kobj; /* target/sessions/ */
 	struct kobject *tgt_luns_kobj; /* target/luns/ */
 	struct kobject *tgt_ini_grp_kobj; /* target/ini_groups/ */
@@ -2268,9 +2269,9 @@ struct scst_device {
 	/* Threads pool type of the device. Valid only if threads_num > 0. */
 	enum scst_dev_type_threads_pool_type threads_pool_type;
 
+#ifndef CONFIG_SCST_PROC
 	struct device dev_dev;
 
-#ifndef CONFIG_SCST_PROC
 	struct kobject *dev_exp_kobj; /* exported groups */
 
 	/* Export number in the dev's sysfs list. Protected by scst_mutex */
@@ -3823,6 +3824,7 @@ static inline struct scst_device *scst_dev_to_dev(struct device *dev)
 {
 	return container_of(dev, struct scst_device, dev_dev);
 }
+#endif /*CONFIG_SCST_PROC*/
 
 /*
  * Returns session's root sysfs kobject.
@@ -3879,8 +3881,6 @@ static inline struct scst_acg_dev *scst_kobj_to_acg_dev(struct kobject *kobj)
 {
 	return container_of(kobj, struct scst_acg_dev, acg_dev_kobj);
 }
-
-#endif /* CONFIG_SCST_PROC */
 
 /* Returns target name */
 static inline const char *scst_get_tgt_name(const struct scst_tgt *tgt)

@@ -119,8 +119,6 @@ void conn_info_show(struct seq_file *seq, struct iscsi_session *session)
 	}
 }
 
-#else /* CONFIG_SCST_PROC */
-
 static void iscsi_conn_release(struct kobject *kobj)
 {
 	struct iscsi_conn *conn;
@@ -142,6 +140,8 @@ static void iscsi_conn_release(struct kobject *kobj)
 
 	TRACE_EXIT();
 }
+
+#else /* CONFIG_SCST_PROC */
 
 static ssize_t iscsi_get_initiator_ip(struct iscsi_conn *conn,
 	char *buf, int size)
@@ -817,7 +817,12 @@ static int iscsi_conn_alloc(struct iscsi_session *session,
 		goto out_err;
 	}
 
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
+	kobject_init(&conn->conn_kobj);
+	conn->conn_kobj.ktype = &iscsi_conn_ktype;
+#else
 	kobject_init(&conn->conn_kobj, &iscsi_conn_ktype);
+#endif
 
 	TRACE_MGMT_DBG("Creating connection %p for sid %#Lx, cid %u", conn,
 		       (long long unsigned int)session->sid, info->cid);

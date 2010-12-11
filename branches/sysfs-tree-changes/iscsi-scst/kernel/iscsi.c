@@ -3775,6 +3775,7 @@ static uint16_t iscsi_get_scsi_transport_version(struct scst_tgt *scst_tgt)
 	return 0x0960; /* iSCSI */
 }
 
+#ifndef CONFIG_SCST_PROC
 static const char *tgtt_attributes[] = {
 	"IncomingUser", "OutgoingUser", NULL
 };
@@ -3782,6 +3783,7 @@ static const char *tgtt_attributes[] = {
 static const char *tgt_attributes[] = {
 	"IncomingUser", "OutgoingUser", "allowed_portal", NULL
 };
+#endif
 
 struct scst_tgt_template iscsi_template = {
 	.name = "iscsi",

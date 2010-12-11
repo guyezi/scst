@@ -476,11 +476,35 @@ static struct device_attribute scst_tgtt_tgt_attributes_attr =
 	__ATTR(target_attributes, S_IRUGO,
 	       scst_tgtt_tgt_attributes_show, NULL);
 
+static void scst_release_tgtt(struct device *dev)
+{
+	/*
+	 * Since target template objects reside in a data segment, no memory
+	 * has to be deallocated here.
+	 */
+}
+
+static struct class scst_tgtt_class = {
+	.name		= "target_driver",
+	.dev_release	= scst_release_tgtt,
+};
+
 int scst_tgtt_sysfs_create(struct scst_tgt_template *tgtt)
 {
 	int res;
 
 	TRACE_ENTRY();
+
+	vtt->tgtt_dev.class = &scst_tgtt_class;
+	vtt->tgtt_dev.parent = NULL;
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 30)
+	snprintf(vtt->tgtt_dev.bus_id, BUS_ID_SIZE, "%s", vtt->name);
+#else
+	dev_set_name(&vtt->tgtt_dev, "%s", vtt->name);
+#endif
+	res = device_register(&vtt->tgtt_dev);
+	if (res)
+		goto out_del;
 
 	if (tgtt->add_target) {
 		res = device_create_file(scst_sysfs_get_tgtt_dev(tgtt),
@@ -553,6 +577,13 @@ out_del:
 void scst_tgtt_sysfs_del(struct scst_tgt_template *tgtt)
 {
 	TRACE_ENTRY();
+	TRACE_EXIT();
+}
+
+void scst_tgtt_sysfs_put(struct scst_tgt_template *tgtt)
+{
+	TRACE_ENTRY();
+	device_unregister(scst_sysfs_get_tgtt_dev(tgtt));
 	TRACE_EXIT();
 }
 
@@ -1172,11 +1203,40 @@ out:
 static struct device_attribute tgt_enable_attr =
 	__ATTR(enabled, S_IRUGO, scst_tgt_enable_show, NULL);
 
+static void scst_release_target(struct device *dev)
+{
+	struct scst_tgt *tgt;
+
+	TRACE_ENTRY();
+	tgt = scst_dev_to_tgt(dev);
+
+	PRINT_INFO("Target %s for template %s unregistered successfully",
+		   tgt->tgt_name, tgt->tgtt->name);
+
+	scst_free_tgt(tgt);
+	TRACE_EXIT();
+}
+
 int scst_tgt_sysfs_create(struct scst_tgt *tgt)
 {
 	int res;
 
 	TRACE_ENTRY();
+
+	tgt->tgt_dev.release = scst_release_target;
+	tgt->tgt_dev.parent = &tgt->tgtt->tgtt_dev;
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 30)
+	snprintf(tgt->tgt_dev.bus_id, BUS_ID_SIZE, "%s", tgt->tgt_name);
+#else
+	dev_set_name(&tgt->tgt_dev, "%s", tgt->tgt_name);
+#endif
+	rc = device_register(&tgt->tgt_dev);
+	if (rc) {
+		PRINT_ERROR("Registration of device %s failed (%d)",
+			    tgt->tgt_name, rc);
+		goto out_err;
+	}
+
 
 	if (tgt->tgtt->enable_target && tgt->tgtt->is_target_enabled) {
 		res = device_create_file(scst_sysfs_get_tgt_dev(tgt),
@@ -1259,8 +1319,15 @@ void scst_tgt_sysfs_del(struct scst_tgt *tgt)
 	kobject_put(tgt->tgt_ini_grp_kobj);
 
 	TRACE_EXIT();
-	return;
 }
+
+void scst_tgt_sysfs_put(struct scst_tgt *tgt)
+{
+	TRACE_ENTRY();
+	device_unregister(&tgt->tgt_dev);
+	TRACE_EXIT();
+}
+
 
 /**
  ** Devices directory implementation
@@ -1490,16 +1557,27 @@ int scst_devt_dev_sysfs_create(struct scst_device *dev)
 
 	TRACE_ENTRY();
 
+	dev->dev_dev.class = &scst_dev_class;
+	dev->dev_dev.parent = NULL;
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 30)
+	snprintf(dev->dev_dev.bus_id, BUS_ID_SIZE, "%s", dev->virt_name);
+#else
+	dev_set_name(&dev->dev_dev, "%s", dev->virt_name);
+#endif
+	res = device_register(&dev->dev_dev);
+	if (res)
+		goto out_err;
+
 	if (dev->handler == &scst_null_devtype)
 		goto out;
 
 	res = sysfs_create_link(scst_sysfs_get_dev_kobj(dev),
 				scst_sysfs_get_devt_kobj(dev->handler),
 				"handler");
-	if (res != 0) {
+	if (res) {
 		PRINT_ERROR("Can't create handler link for dev %s",
 			    dev->virt_name);
-		goto out;
+		goto out_err;
 	}
 
 	res = sysfs_create_link(scst_sysfs_get_devt_kobj(dev->handler),
@@ -1558,6 +1636,27 @@ out:
 	TRACE_EXIT();
 }
 
+void scst_devt_dev_sysfs_put(struct scst_device *dev)
+{
+	TRACE_ENTRY();
+	device_unregister(&dev->dev_dev);
+	TRACE_EXIT();
+}
+
+static void scst_release_dev(struct device *device)
+{
+	struct scst_device *dev;
+
+	dev = scst_dev_to_dev(device);
+	scst_free_device(dev);
+}
+
+static struct class scst_dev_class = {
+	.name			= "target_device",
+	.dev_release		= scst_release_dev,
+	.dev_attrs		= scst_dev_attrs,
+};
+
 int scst_dev_sysfs_create(struct scst_device *dev)
 {
 	int res;
@@ -1608,6 +1707,12 @@ void scst_dev_sysfs_del(struct scst_device *dev)
 {
 	TRACE_ENTRY();
 	kobject_del(dev->dev_exp_kobj);
+	TRACE_EXIT();
+}
+
+void scst_dev_sysfs_put(struct scst_device *dev)
+{
+	TRACE_ENTRY();
 	kobject_put(dev->dev_exp_kobj);
 	TRACE_EXIT();
 }
@@ -3297,11 +3402,36 @@ out_syntax_err:
 	goto out;
 }
 
+static void scst_release_devt(struct device *dev)
+{
+	/*
+	 * Since device type objects reside in a data segment, no memory
+	 * has to be deallocated here.
+	 */
+}
+
+static struct class scst_devt_class = {
+	.name			= "device_driver",
+	.dev_release		= scst_release_devt,
+	.dev_attrs		= scst_devt_default_attrs,
+};
+
 int scst_devt_sysfs_create(struct scst_dev_type *devt)
 {
 	int res;
 
 	TRACE_ENTRY();
+
+	dev_type->devt_dev.class = &scst_devt_class;
+	dev_type->devt_dev.parent = NULL;
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 30)
+	snprintf(dev_type->devt_dev.bus_id, BUS_ID_SIZE, "%s", dev_type->name);
+#else
+	dev_set_name(&dev_type->devt_dev, "%s", dev_type->name);
+#endif
+	res = device_register(&dev_type->devt_dev);
+	if (res)
+		goto out_err;
 
 	if (devt->add_device_parameters) {
 		res = device_create_file(scst_sysfs_get_devt_dev(devt),
@@ -3370,6 +3500,13 @@ out_err:
 void scst_devt_sysfs_del(struct scst_dev_type *devt)
 {
 	TRACE_ENTRY();
+	TRACE_EXIT();
+}
+
+void scst_devt_sysfs_put(struct scst_dev_type *devt)
+{
+	TRACE_ENTRY();
+	device_unregister(&dev_type->devt_dev);
 	TRACE_EXIT();
 }
 
@@ -4330,11 +4467,23 @@ int __init scst_sysfs_init(void)
 
 	TRACE_ENTRY();
 
+	res = class_register(&scst_tgtt_class);
+	if (res)
+		goto out;
+
+	res = class_register(&scst_devt_class);
+	if (res)
+		goto out_unregister_tgtt_class;
+
+	res = class_register(&scst_dev_class);
+	if (res)
+		goto out_unregister_devt_class;
+
 	res = -ENOMEM;
 	scst_device = kzalloc(sizeof *scst_device, GFP_KERNEL);
 	if (!scst_device) {
 		PRINT_ERROR("%s", "Allocating memory for SCST device failed.");
-		goto out;
+		goto out_unregister_dev_class;
 	}
 
 	scst_device->release = scst_release_device;
@@ -4372,6 +4521,12 @@ out_unregister_device:
 	scst_device = NULL;
 out_free:
 	kfree(scst_device);
+out_unregister_dev_class:
+	class_unregister(&scst_dev_class);
+out_unregister_devt_class:
+	class_unregister(&scst_devt_class);
+out_unregister_tgtt_class:
+	class_unregister(&scst_tgtt_class);
 	goto out;
 }
 
@@ -4386,6 +4541,12 @@ void scst_sysfs_cleanup(void)
 	device_remove_files(scst_device, scst_default_attr);
 
 	device_unregister(scst_device);
+
+	class_unregister(&scst_dev_class);
+
+	class_unregister(&scst_devt_class);
+
+	class_unregister(&scst_tgtt_class);
 
 	/*
 	 * Wait until the release method of the sysfs root object has returned.
