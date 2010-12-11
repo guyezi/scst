@@ -254,6 +254,13 @@ static int num_threads = DEF_NUM_THREADS;
 module_param_named(num_threads, num_threads, int, S_IRUGO);
 MODULE_PARM_DESC(num_threads, "vdisk threads count");
 
+static int vdisk_attach(struct scst_device *dev);
+static void vdisk_detach(struct scst_device *dev);
+static int vdisk_attach_tgt(struct scst_tgt_dev *tgt_dev);
+static void vdisk_detach_tgt(struct scst_tgt_dev *tgt_dev);
+static int vdisk_parse(struct scst_cmd *);
+static int vdisk_do_job(struct scst_cmd *cmd);
+static int vcdrom_parse(struct scst_cmd *);
 static int vcdrom_exec(struct scst_cmd *cmd);
 static void vdisk_exec_read(struct scst_cmd *cmd,
 	struct scst_vdisk_thr *thr, loff_t loff);
@@ -286,7 +293,127 @@ static int vcdrom_read_proc(struct seq_file *seq,
 	struct scst_dev_type *dev_type);
 static int vcdrom_write_proc(char *buffer, char **start, off_t offset,
 	int length, int *eof, struct scst_dev_type *dev_type);
+#else
+static ssize_t vdisk_add_fileio_device(const char *device_name, char *params);
+static ssize_t vdisk_add_blockio_device(const char *device_name, char *params);
+static ssize_t vdisk_add_nullio_device(const char *device_name, char *params);
+static ssize_t vdisk_del_device(const char *device_name);
+static ssize_t vcdrom_add_device(const char *device_name, char *params);
+static ssize_t vcdrom_del_device(const char *device_name);
 #endif
+static int vdisk_task_mgmt_fn(struct scst_mgmt_cmd *mcmd,
+	struct scst_tgt_dev *tgt_dev);
+static uint64_t vdisk_gen_dev_id_num(const char *virt_dev_name);
+
+/** SYSFS **/
+
+#ifndef CONFIG_SCST_PROC
+
+static ssize_t vdev_sysfs_size_show(struct device *device,
+	struct device_attribute *attr, char *buf);
+static ssize_t vdisk_sysfs_blocksize_show(struct device *device,
+	struct device_attribute *attr, char *buf);
+static ssize_t vdisk_sysfs_rd_only_show(struct device *device,
+	struct device_attribute *attr, char *buf);
+static ssize_t vdisk_sysfs_wt_show(struct device *device,
+	struct device_attribute *attr, char *buf);
+static ssize_t vdisk_sysfs_tp_show(struct device *device,
+	struct device_attribute *attr, char *buf);
+static ssize_t vdisk_sysfs_nv_cache_show(struct device *device,
+	struct device_attribute *attr, char *buf);
+static ssize_t vdisk_sysfs_o_direct_show(struct device *device,
+	struct device_attribute *attr, char *buf);
+static ssize_t vdisk_sysfs_removable_show(struct device *device,
+	struct device_attribute *attr, char *buf);
+static ssize_t vdev_sysfs_filename_show(struct device *device,
+	struct device_attribute *attr, char *buf);
+static ssize_t vdisk_sysfs_resync_size_store(struct device *device,
+	struct device_attribute *attr, const char *buf, size_t count);
+static ssize_t vdev_sysfs_t10_dev_id_store(struct device *device,
+	struct device_attribute *attr, const char *buf, size_t count);
+static ssize_t vdev_sysfs_t10_dev_id_show(struct device *device,
+	struct device_attribute *attr, char *buf);
+static ssize_t vdev_sysfs_usn_show(struct device *device,
+	struct device_attribute *attr, char *buf);
+
+static struct device_attribute vdev_size_attr =
+	__ATTR(size_mb, S_IRUGO, vdev_sysfs_size_show, NULL);
+static struct device_attribute vdisk_blocksize_attr =
+	__ATTR(blocksize, S_IRUGO, vdisk_sysfs_blocksize_show, NULL);
+static struct device_attribute vdisk_rd_only_attr =
+	__ATTR(read_only, S_IRUGO, vdisk_sysfs_rd_only_show, NULL);
+static struct device_attribute vdisk_wt_attr =
+	__ATTR(write_through, S_IRUGO, vdisk_sysfs_wt_show, NULL);
+static struct device_attribute vdisk_tp_attr =
+	__ATTR(thin_provisioned, S_IRUGO, vdisk_sysfs_tp_show, NULL);
+static struct device_attribute vdisk_nv_cache_attr =
+	__ATTR(nv_cache, S_IRUGO, vdisk_sysfs_nv_cache_show, NULL);
+static struct device_attribute vdisk_o_direct_attr =
+	__ATTR(o_direct, S_IRUGO, vdisk_sysfs_o_direct_show, NULL);
+static struct device_attribute vdisk_removable_attr =
+	__ATTR(removable, S_IRUGO, vdisk_sysfs_removable_show, NULL);
+static struct device_attribute vdisk_filename_attr =
+	__ATTR(filename, S_IRUGO, vdev_sysfs_filename_show, NULL);
+static struct device_attribute vdisk_resync_size_attr =
+	__ATTR(resync_size, S_IWUSR, NULL, vdisk_sysfs_resync_size_store);
+static struct device_attribute vdev_t10_dev_id_attr =
+	__ATTR(t10_dev_id, S_IWUSR|S_IRUGO, vdev_sysfs_t10_dev_id_show,
+		vdev_sysfs_t10_dev_id_store);
+static struct device_attribute vdev_usn_attr =
+	__ATTR(usn, S_IRUGO, vdev_sysfs_usn_show, NULL);
+
+static struct device_attribute vcdrom_filename_attr =
+	__ATTR(filename, S_IRUGO, vdev_sysfs_filename_show, NULL);
+
+static const struct device_attribute *vdisk_fileio_attrs[] = {
+	&vdev_size_attr,
+	&vdisk_blocksize_attr,
+	&vdisk_rd_only_attr,
+	&vdisk_wt_attr,
+	&vdisk_tp_attr,
+	&vdisk_nv_cache_attr,
+	&vdisk_o_direct_attr,
+	&vdisk_removable_attr,
+	&vdisk_filename_attr,
+	&vdisk_resync_size_attr,
+	&vdev_t10_dev_id_attr,
+	&vdev_usn_attr,
+	NULL,
+};
+
+static const struct device_attribute *vdisk_blockio_attrs[] = {
+	&vdev_size_attr,
+	&vdisk_blocksize_attr,
+	&vdisk_rd_only_attr,
+	&vdisk_nv_cache_attr,
+	&vdisk_removable_attr,
+	&vdisk_filename_attr,
+	&vdisk_resync_size_attr,
+	&vdev_t10_dev_id_attr,
+	&vdev_usn_attr,
+	&vdisk_tp_attr,
+	NULL,
+};
+
+static const struct device_attribute *vdisk_nullio_attrs[] = {
+	&vdev_size_attr,
+	&vdisk_blocksize_attr,
+	&vdisk_rd_only_attr,
+	&vdisk_removable_attr,
+	&vdev_t10_dev_id_attr,
+	&vdev_usn_attr,
+	NULL,
+};
+
+static const struct device_attribute *vcdrom_attrs[] = {
+	&vdev_size_attr,
+	&vcdrom_filename_attr,
+	&vdev_t10_dev_id_attr,
+	&vdev_usn_attr,
+	NULL,
+};
+
+#endif /* CONFIG_SCST_PROC */
 
 /* Protects vdisks addition/deletion and related activities, like search */
 static DEFINE_MUTEX(scst_vdisk_mutex);
@@ -296,13 +423,160 @@ static DEFINE_RWLOCK(vdisk_t10_dev_id_rwlock);
 static LIST_HEAD(vdev_list);
 
 static struct kmem_cache *vdisk_thr_cachep;
-static struct kmem_cache *blockio_work_cachep;
-static struct scst_vdisk_thr nullio_thr_data;
 
-static struct scst_dev_type vdisk_file_devtype;
-static struct scst_dev_type vdisk_blk_devtype;
-static struct scst_dev_type vdisk_null_devtype;
-static struct scst_dev_type vcdrom_devtype;
+/*
+ * Be careful changing "name" field, since it is the name of the corresponding
+ * /sys/kernel/scst_tgt entry, hence a part of user space ABI.
+ */
+
+static const char* vdisk_fileio_add_device_parameters[] = {
+	"filename", "blocksize", "write_through", "nv_cache", "o_direct",
+	"read_only", "removable", "thin_provisioned", NULL
+};
+
+static struct scst_dev_type vdisk_file_devtype = {
+	.name =			"vdisk_fileio",
+	.type =			TYPE_DISK,
+	.exec_sync =		1,
+	.threads_num =		-1,
+	.parse_atomic =		1,
+	.dev_done_atomic =	1,
+	.attach =		vdisk_attach,
+	.detach =		vdisk_detach,
+	.attach_tgt =		vdisk_attach_tgt,
+	.detach_tgt =		vdisk_detach_tgt,
+	.parse =		vdisk_parse,
+	.exec =			vdisk_do_job,
+	.task_mgmt_fn =		vdisk_task_mgmt_fn,
+#ifdef CONFIG_SCST_PROC
+	.read_proc =		vdisk_read_proc,
+	.write_proc =		vdisk_write_proc,
+#else
+	.add_device =		vdisk_add_fileio_device,
+	.del_device =		vdisk_del_device,
+	.dev_attrs =		vdisk_fileio_attrs,
+	.add_device_parameters = vdisk_fileio_add_device_parameters,
+#endif
+#if defined(CONFIG_SCST_DEBUG) || defined(CONFIG_SCST_TRACING)
+	.default_trace_flags =	SCST_DEFAULT_DEV_LOG_FLAGS,
+	.trace_flags =		&trace_flag,
+	.trace_tbl =		vdisk_local_trace_tbl,
+#ifndef CONFIG_SCST_PROC
+	.trace_tbl_help =	VDISK_TRACE_TLB_HELP,
+#endif
+#endif
+};
+
+static struct kmem_cache *blockio_work_cachep;
+
+static const char* vdisk_blockio_add_device_parameters[] = {
+	"filename", "blocksize", "nv_cache", "read_only", "removable",
+	"thin_provisioned", NULL
+};
+
+static struct scst_dev_type vdisk_blk_devtype = {
+	.name =			"vdisk_blockio",
+	.type =			TYPE_DISK,
+	.threads_num =		1,
+	.parse_atomic =		1,
+	.dev_done_atomic =	1,
+#ifdef CONFIG_SCST_PROC
+	.no_proc =		1,
+#endif
+	.attach =		vdisk_attach,
+	.detach =		vdisk_detach,
+	.attach_tgt =		vdisk_attach_tgt,
+	.detach_tgt =		vdisk_detach_tgt,
+	.parse =		vdisk_parse,
+	.exec =			vdisk_do_job,
+	.task_mgmt_fn =		vdisk_task_mgmt_fn,
+#ifndef CONFIG_SCST_PROC
+	.add_device =		vdisk_add_blockio_device,
+	.del_device =		vdisk_del_device,
+	.dev_attrs =		vdisk_blockio_attrs,
+	.add_device_parameters = vdisk_blockio_add_device_parameters,
+#endif
+#if defined(CONFIG_SCST_DEBUG) || defined(CONFIG_SCST_TRACING)
+	.default_trace_flags =	SCST_DEFAULT_DEV_LOG_FLAGS,
+	.trace_flags =		&trace_flag,
+	.trace_tbl =		vdisk_local_trace_tbl,
+#ifndef CONFIG_SCST_PROC
+	.trace_tbl_help =	VDISK_TRACE_TLB_HELP,
+#endif
+#endif
+};
+
+static const char* vdisk_nullio_add_device_parameters[] = {
+	"blocksize", "read_only", "removable", NULL
+};
+
+static struct scst_dev_type vdisk_null_devtype = {
+	.name =			"vdisk_nullio",
+	.type =			TYPE_DISK,
+	.threads_num =		0,
+	.parse_atomic =		1,
+	.dev_done_atomic =	1,
+#ifdef CONFIG_SCST_PROC
+	.no_proc =		1,
+#endif
+	.attach =		vdisk_attach,
+	.detach =		vdisk_detach,
+	.attach_tgt =		vdisk_attach_tgt,
+	.detach_tgt =		vdisk_detach_tgt,
+	.parse =		vdisk_parse,
+	.exec =			vdisk_do_job,
+	.task_mgmt_fn =		vdisk_task_mgmt_fn,
+#ifndef CONFIG_SCST_PROC
+	.add_device =		vdisk_add_nullio_device,
+	.del_device =		vdisk_del_device,
+	.dev_attrs =		vdisk_nullio_attrs,
+	.add_device_parameters = vdisk_nullio_add_device_parameters,
+#endif
+#if defined(CONFIG_SCST_DEBUG) || defined(CONFIG_SCST_TRACING)
+	.default_trace_flags =	SCST_DEFAULT_DEV_LOG_FLAGS,
+	.trace_flags =		&trace_flag,
+	.trace_tbl =		vdisk_local_trace_tbl,
+#ifndef CONFIG_SCST_PROC
+	.trace_tbl_help =	VDISK_TRACE_TLB_HELP,
+#endif
+#endif
+};
+
+static struct scst_dev_type vcdrom_devtype = {
+	.name =			"vcdrom",
+	.type =			TYPE_ROM,
+	.exec_sync =		1,
+	.threads_num =		-1,
+	.parse_atomic =		1,
+	.dev_done_atomic =	1,
+	.attach =		vdisk_attach,
+	.detach =		vdisk_detach,
+	.attach_tgt =		vdisk_attach_tgt,
+	.detach_tgt =		vdisk_detach_tgt,
+	.parse =		vcdrom_parse,
+	.exec =			vcdrom_exec,
+	.task_mgmt_fn =		vdisk_task_mgmt_fn,
+	.set_filename =		vcdrom_set_filename,
+#ifdef CONFIG_SCST_PROC
+	.read_proc =		vcdrom_read_proc,
+	.write_proc =		vcdrom_write_proc,
+#else
+	.add_device =		vcdrom_add_device,
+	.del_device =		vcdrom_del_device,
+	.dev_attrs =		vcdrom_attrs,
+	.add_device_parameters = NULL,
+#endif
+#if defined(CONFIG_SCST_DEBUG) || defined(CONFIG_SCST_TRACING)
+	.default_trace_flags =	SCST_DEFAULT_DEV_LOG_FLAGS,
+	.trace_flags =		&trace_flag,
+	.trace_tbl =		vdisk_local_trace_tbl,
+#ifndef CONFIG_SCST_PROC
+	.trace_tbl_help =	VDISK_TRACE_TLB_HELP,
+#endif
+#endif
+};
+
+static struct scst_vdisk_thr nullio_thr_data;
 
 #ifdef CONFIG_SCST_PROC
 
@@ -3795,12 +4069,8 @@ static int vcdrom_set_filename(struct scst_device *dev, char *buf)
 
 #ifndef CONFIG_SCST_PROC
 
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
-static ssize_t vdev_sysfs_size_show(struct class_device *device, char *buf)
-#else
 static ssize_t vdev_sysfs_size_show(struct device *device,
 				    struct device_attribute *attr, char *buf)
-#endif
 {
 	int pos = 0;
 	struct scst_device *dev;
@@ -3817,13 +4087,8 @@ static ssize_t vdev_sysfs_size_show(struct device *device,
 	return pos;
 }
 
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
-static ssize_t vdisk_sysfs_blocksize_show(struct class_device *device,
-					  char *buf)
-#else
 static ssize_t vdisk_sysfs_blocksize_show(struct device *device,
 				struct device_attribute *attr, char *buf)
-#endif
 {
 	int pos = 0;
 	struct scst_device *dev;
@@ -3842,12 +4107,8 @@ static ssize_t vdisk_sysfs_blocksize_show(struct device *device,
 	return pos;
 }
 
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
-static ssize_t vdisk_sysfs_rd_only_show(struct class_device *device, char *buf)
-#else
 static ssize_t vdisk_sysfs_rd_only_show(struct device *device,
 				struct device_attribute *attr, char *buf)
-#endif
 {
 	int pos = 0;
 	struct scst_device *dev;
@@ -3866,12 +4127,8 @@ static ssize_t vdisk_sysfs_rd_only_show(struct device *device,
 	return pos;
 }
 
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
-static ssize_t vdisk_sysfs_wt_show(struct class_device *device, char *buf)
-#else
 static ssize_t vdisk_sysfs_wt_show(struct device *device,
 				   struct device_attribute *attr, char *buf)
-#endif
 {
 	int pos = 0;
 	struct scst_device *dev;
@@ -3890,12 +4147,8 @@ static ssize_t vdisk_sysfs_wt_show(struct device *device,
 	return pos;
 }
 
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
-static ssize_t vdisk_sysfs_tp_show(struct class_device *device, char *buf)
-#else
 static ssize_t vdisk_sysfs_tp_show(struct device *device,
 				   struct device_attribute *attr, char *buf)
-#endif
 {
 	int pos = 0;
 	struct scst_device *dev;
@@ -3914,13 +4167,8 @@ static ssize_t vdisk_sysfs_tp_show(struct device *device,
 	return pos;
 }
 
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
-static ssize_t vdisk_sysfs_nv_cache_show(struct class_device *device,
-					 char *buf)
-#else
 static ssize_t vdisk_sysfs_nv_cache_show(struct device *device,
 	struct device_attribute *attr, char *buf)
-#endif
 {
 	int pos = 0;
 	struct scst_device *dev;
@@ -3939,13 +4187,8 @@ static ssize_t vdisk_sysfs_nv_cache_show(struct device *device,
 	return pos;
 }
 
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
-static ssize_t vdisk_sysfs_o_direct_show(struct class_device *device,
-					 char *buf)
-#else
 static ssize_t vdisk_sysfs_o_direct_show(struct device *device,
 	struct device_attribute *attr, char *buf)
-#endif
 {
 	int pos = 0;
 	struct scst_device *dev;
@@ -3964,13 +4207,8 @@ static ssize_t vdisk_sysfs_o_direct_show(struct device *device,
 	return pos;
 }
 
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
-static ssize_t vdisk_sysfs_removable_show(struct class_device *device,
-					  char *buf)
-#else
 static ssize_t vdisk_sysfs_removable_show(struct device *device,
 				struct device_attribute *attr, char *buf)
-#endif
 {
 	int pos;
 	struct scst_device *dev;
@@ -3991,12 +4229,8 @@ static ssize_t vdisk_sysfs_removable_show(struct device *device,
 	return pos;
 }
 
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
-static ssize_t vdev_sysfs_filename_show(struct class_device *device, char *buf)
-#else
 static ssize_t vdev_sysfs_filename_show(struct device *device,
 				struct device_attribute *attr, char *buf)
-#endif
 {
 	struct scst_device *dev;
 	struct scst_vdisk_dev *virt_dev;
@@ -4036,13 +4270,8 @@ static int vdisk_sysfs_process_resync_size_store(struct scst_device *dev)
 	return res;
 }
 
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
-static ssize_t vdisk_sysfs_resync_size_store(struct class_device *device,
-					     const char *buf, size_t count)
-#else
 static ssize_t vdisk_sysfs_resync_size_store(struct device *device,
 	struct device_attribute *attr, const char *buf, size_t count)
-#endif
 {
 	int res;
 	struct scst_device *dev;
@@ -4059,13 +4288,8 @@ static ssize_t vdisk_sysfs_resync_size_store(struct device *device,
 	return res;
 }
 
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
-static ssize_t vdev_sysfs_t10_dev_id_store(struct class_device *device,
-					   const char *buf, size_t count)
-#else
 static ssize_t vdev_sysfs_t10_dev_id_store(struct device *device,
 	struct device_attribute *attr, const char *buf, size_t count)
-#endif
 {
 	int res, i;
 	struct scst_device *dev;
@@ -4113,13 +4337,8 @@ out_unlock:
 	return res;
 }
 
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
-static ssize_t vdev_sysfs_t10_dev_id_show(struct class_device *device,
-					  char *buf)
-#else
 static ssize_t vdev_sysfs_t10_dev_id_show(struct device *device,
 	struct device_attribute *attr, char *buf)
-#endif
 {
 	int pos;
 	struct scst_device *dev;
@@ -4139,12 +4358,8 @@ static ssize_t vdev_sysfs_t10_dev_id_show(struct device *device,
 	return pos;
 }
 
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
-static ssize_t vdev_sysfs_usn_show(struct class_device *device, char *buf)
-#else
 static ssize_t vdev_sysfs_usn_show(struct device *device,
 				   struct device_attribute *attr, char *buf)
-#endif
 {
 	int pos;
 	struct scst_device *dev;
@@ -4160,155 +4375,6 @@ static ssize_t vdev_sysfs_usn_show(struct device *device,
 	TRACE_EXIT_RES(pos);
 	return pos;
 }
-
-#ifndef CONFIG_SCST_PROC
-
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
-static struct class_device_attribute vdev_size_attr =
-#else
-static struct device_attribute vdev_size_attr =
-#endif
-	__ATTR(size_mb, S_IRUGO, vdev_sysfs_size_show, NULL);
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
-static struct class_device_attribute vdisk_blocksize_attr =
-#else
-static struct device_attribute vdisk_blocksize_attr =
-#endif
-	__ATTR(blocksize, S_IRUGO, vdisk_sysfs_blocksize_show, NULL);
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
-static struct class_device_attribute vdisk_rd_only_attr =
-#else
-static struct device_attribute vdisk_rd_only_attr =
-#endif
-	__ATTR(read_only, S_IRUGO, vdisk_sysfs_rd_only_show, NULL);
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
-static struct class_device_attribute vdisk_wt_attr =
-#else
-static struct device_attribute vdisk_wt_attr =
-#endif
-	__ATTR(write_through, S_IRUGO, vdisk_sysfs_wt_show, NULL);
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
-static struct class_device_attribute vdisk_tp_attr =
-#else
-static struct device_attribute vdisk_tp_attr =
-#endif
-	__ATTR(thin_provisioned, S_IRUGO, vdisk_sysfs_tp_show, NULL);
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
-static struct class_device_attribute vdisk_nv_cache_attr =
-#else
-static struct device_attribute vdisk_nv_cache_attr =
-#endif
-	__ATTR(nv_cache, S_IRUGO, vdisk_sysfs_nv_cache_show, NULL);
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
-static struct class_device_attribute vdisk_o_direct_attr =
-#else
-static struct device_attribute vdisk_o_direct_attr =
-#endif
-	__ATTR(o_direct, S_IRUGO, vdisk_sysfs_o_direct_show, NULL);
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
-static struct class_device_attribute vdisk_removable_attr =
-#else
-static struct device_attribute vdisk_removable_attr =
-#endif
-	__ATTR(removable, S_IRUGO, vdisk_sysfs_removable_show, NULL);
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
-static struct class_device_attribute vdisk_filename_attr =
-#else
-static struct device_attribute vdisk_filename_attr =
-#endif
-	__ATTR(filename, S_IRUGO, vdev_sysfs_filename_show, NULL);
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
-static struct class_device_attribute vdisk_resync_size_attr =
-#else
-static struct device_attribute vdisk_resync_size_attr =
-#endif
-	__ATTR(resync_size, S_IWUSR, NULL, vdisk_sysfs_resync_size_store);
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
-static struct class_device_attribute vdev_t10_dev_id_attr =
-#else
-static struct device_attribute vdev_t10_dev_id_attr =
-#endif
-	__ATTR(t10_dev_id, S_IWUSR|S_IRUGO, vdev_sysfs_t10_dev_id_show,
-		vdev_sysfs_t10_dev_id_store);
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
-static struct class_device_attribute vdev_usn_attr =
-#else
-static struct device_attribute vdev_usn_attr =
-#endif
-	__ATTR(usn, S_IRUGO, vdev_sysfs_usn_show, NULL);
-
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
-static struct class_device_attribute vcdrom_filename_attr =
-#else
-static struct device_attribute vcdrom_filename_attr =
-#endif
-	__ATTR(filename, S_IRUGO, vdev_sysfs_filename_show, NULL);
-
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
-static const struct class_device_attribute *vdisk_fileio_attrs[] = {
-#else
-static const struct device_attribute *vdisk_fileio_attrs[] = {
-#endif
-	&vdev_size_attr,
-	&vdisk_blocksize_attr,
-	&vdisk_rd_only_attr,
-	&vdisk_wt_attr,
-	&vdisk_tp_attr,
-	&vdisk_nv_cache_attr,
-	&vdisk_o_direct_attr,
-	&vdisk_removable_attr,
-	&vdisk_filename_attr,
-	&vdisk_resync_size_attr,
-	&vdev_t10_dev_id_attr,
-	&vdev_usn_attr,
-	NULL,
-};
-
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
-static const struct class_device_attribute *vdisk_blockio_attrs[] = {
-#else
-static const struct device_attribute *vdisk_blockio_attrs[] = {
-#endif
-	&vdev_size_attr,
-	&vdisk_blocksize_attr,
-	&vdisk_rd_only_attr,
-	&vdisk_nv_cache_attr,
-	&vdisk_removable_attr,
-	&vdisk_filename_attr,
-	&vdisk_resync_size_attr,
-	&vdev_t10_dev_id_attr,
-	&vdev_usn_attr,
-	&vdisk_tp_attr,
-	NULL,
-};
-
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
-static const struct class_device_attribute *vdisk_nullio_attrs[] = {
-#else
-static const struct device_attribute *vdisk_nullio_attrs[] = {
-#endif
-	&vdev_size_attr,
-	&vdisk_blocksize_attr,
-	&vdisk_rd_only_attr,
-	&vdisk_removable_attr,
-	&vdev_t10_dev_id_attr,
-	&vdev_usn_attr,
-	NULL,
-};
-
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
-static const struct class_device_attribute *vcdrom_attrs[] = {
-#else
-static const struct device_attribute *vcdrom_attrs[] = {
-#endif
-	&vdev_size_attr,
-	&vcdrom_filename_attr,
-	&vdev_t10_dev_id_attr,
-	&vdev_usn_attr,
-	NULL,
-};
-
-#endif /* CONFIG_SCST_PROC */
 
 #else /* CONFIG_SCST_PROC */
 
@@ -5077,156 +5143,6 @@ static void exit_scst_vdisk(struct scst_dev_type *devtype)
 	TRACE_EXIT();
 	return;
 }
-
-static const char* vdisk_fileio_add_device_parameters[] = {
-	"filename", "blocksize", "write_through", "nv_cache", "o_direct",
-	"read_only", "removable", "thin_provisioned", NULL
-};
-
-/*
- * Be careful changing "name" field, since it is the name of the corresponding
- * /sys/kernel/scst_tgt entry, hence a part of user space ABI.
- */
-
-static struct scst_dev_type vdisk_file_devtype = {
-	.name =			"vdisk_fileio",
-	.type =			TYPE_DISK,
-	.exec_sync =		1,
-	.threads_num =		-1,
-	.parse_atomic =		1,
-	.dev_done_atomic =	1,
-	.attach =		vdisk_attach,
-	.detach =		vdisk_detach,
-	.attach_tgt =		vdisk_attach_tgt,
-	.detach_tgt =		vdisk_detach_tgt,
-	.parse =		vdisk_parse,
-	.exec =			vdisk_do_job,
-	.task_mgmt_fn =		vdisk_task_mgmt_fn,
-#ifdef CONFIG_SCST_PROC
-	.read_proc =		vdisk_read_proc,
-	.write_proc =		vdisk_write_proc,
-#else
-	.add_device =		vdisk_add_fileio_device,
-	.del_device =		vdisk_del_device,
-	.dev_attrs =		vdisk_fileio_attrs,
-	.add_device_parameters = vdisk_fileio_add_device_parameters,
-#endif
-#if defined(CONFIG_SCST_DEBUG) || defined(CONFIG_SCST_TRACING)
-	.default_trace_flags =	SCST_DEFAULT_DEV_LOG_FLAGS,
-	.trace_flags =		&trace_flag,
-	.trace_tbl =		vdisk_local_trace_tbl,
-#ifndef CONFIG_SCST_PROC
-	.trace_tbl_help =	VDISK_TRACE_TLB_HELP,
-#endif
-#endif
-};
-
-static const char* vdisk_blockio_add_device_parameters[] = {
-	"filename", "blocksize", "nv_cache", "read_only", "removable",
-	"thin_provisioned", NULL
-};
-
-static struct scst_dev_type vdisk_blk_devtype = {
-	.name =			"vdisk_blockio",
-	.type =			TYPE_DISK,
-	.threads_num =		1,
-	.parse_atomic =		1,
-	.dev_done_atomic =	1,
-#ifdef CONFIG_SCST_PROC
-	.no_proc =		1,
-#endif
-	.attach =		vdisk_attach,
-	.detach =		vdisk_detach,
-	.attach_tgt =		vdisk_attach_tgt,
-	.detach_tgt =		vdisk_detach_tgt,
-	.parse =		vdisk_parse,
-	.exec =			vdisk_do_job,
-	.task_mgmt_fn =		vdisk_task_mgmt_fn,
-#ifndef CONFIG_SCST_PROC
-	.add_device =		vdisk_add_blockio_device,
-	.del_device =		vdisk_del_device,
-	.dev_attrs =		vdisk_blockio_attrs,
-	.add_device_parameters = vdisk_blockio_add_device_parameters,
-#endif
-#if defined(CONFIG_SCST_DEBUG) || defined(CONFIG_SCST_TRACING)
-	.default_trace_flags =	SCST_DEFAULT_DEV_LOG_FLAGS,
-	.trace_flags =		&trace_flag,
-	.trace_tbl =		vdisk_local_trace_tbl,
-#ifndef CONFIG_SCST_PROC
-	.trace_tbl_help =	VDISK_TRACE_TLB_HELP,
-#endif
-#endif
-};
-
-static const char* vdisk_nullio_add_device_parameters[] = {
-	"blocksize", "read_only", "removable", NULL
-};
-
-static struct scst_dev_type vdisk_null_devtype = {
-	.name =			"vdisk_nullio",
-	.type =			TYPE_DISK,
-	.threads_num =		0,
-	.parse_atomic =		1,
-	.dev_done_atomic =	1,
-#ifdef CONFIG_SCST_PROC
-	.no_proc =		1,
-#endif
-	.attach =		vdisk_attach,
-	.detach =		vdisk_detach,
-	.attach_tgt =		vdisk_attach_tgt,
-	.detach_tgt =		vdisk_detach_tgt,
-	.parse =		vdisk_parse,
-	.exec =			vdisk_do_job,
-	.task_mgmt_fn =		vdisk_task_mgmt_fn,
-#ifndef CONFIG_SCST_PROC
-	.add_device =		vdisk_add_nullio_device,
-	.del_device =		vdisk_del_device,
-	.dev_attrs =		vdisk_nullio_attrs,
-	.add_device_parameters = vdisk_nullio_add_device_parameters,
-#endif
-#if defined(CONFIG_SCST_DEBUG) || defined(CONFIG_SCST_TRACING)
-	.default_trace_flags =	SCST_DEFAULT_DEV_LOG_FLAGS,
-	.trace_flags =		&trace_flag,
-	.trace_tbl =		vdisk_local_trace_tbl,
-#ifndef CONFIG_SCST_PROC
-	.trace_tbl_help =	VDISK_TRACE_TLB_HELP,
-#endif
-#endif
-};
-
-static struct scst_dev_type vcdrom_devtype = {
-	.name =			"vcdrom",
-	.type =			TYPE_ROM,
-	.exec_sync =		1,
-	.threads_num =		-1,
-	.parse_atomic =		1,
-	.dev_done_atomic =	1,
-	.attach =		vdisk_attach,
-	.detach =		vdisk_detach,
-	.attach_tgt =		vdisk_attach_tgt,
-	.detach_tgt =		vdisk_detach_tgt,
-	.parse =		vcdrom_parse,
-	.exec =			vcdrom_exec,
-	.task_mgmt_fn =		vdisk_task_mgmt_fn,
-	.set_filename =		vcdrom_set_filename,
-#ifdef CONFIG_SCST_PROC
-	.read_proc =		vcdrom_read_proc,
-	.write_proc =		vcdrom_write_proc,
-#else
-	.add_device =		vcdrom_add_device,
-	.del_device =		vcdrom_del_device,
-	.dev_attrs =		vcdrom_attrs,
-	.add_device_parameters = NULL,
-#endif
-#if defined(CONFIG_SCST_DEBUG) || defined(CONFIG_SCST_TRACING)
-	.default_trace_flags =	SCST_DEFAULT_DEV_LOG_FLAGS,
-	.trace_flags =		&trace_flag,
-	.trace_tbl =		vdisk_local_trace_tbl,
-#ifndef CONFIG_SCST_PROC
-	.trace_tbl_help =	VDISK_TRACE_TLB_HELP,
-#endif
-#endif
-};
 
 static int __init init_scst_vdisk_driver(void)
 {

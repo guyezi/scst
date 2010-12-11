@@ -450,12 +450,8 @@ const struct seq_operations iscsi_seq_op = {
 
 #else /* CONFIG_SCST_PROC */
 
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
-static ssize_t iscsi_tgt_tid_show(struct class_device *dev, char *buf)
-#else
 static ssize_t iscsi_tgt_tid_show(struct device *dev,
 				  struct device_attribute *attr, char *buf)
-#endif
 {
 	int pos;
 	struct scst_tgt *scst_tgt;
@@ -472,18 +468,10 @@ static ssize_t iscsi_tgt_tid_show(struct device *dev,
 	return pos;
 }
 
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
-static struct class_device_attribute iscsi_tgt_attr_tid =
-#else
 static struct device_attribute iscsi_tgt_attr_tid =
-#endif
 	__ATTR(tid, S_IRUGO, iscsi_tgt_tid_show, NULL);
 
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
-const struct class_device_attribute *iscsi_tgt_attrs[] = {
-#else
 const struct device_attribute *iscsi_tgt_attrs[] = {
-#endif
 	&iscsi_tgt_attr_tid,
 	NULL,
 };

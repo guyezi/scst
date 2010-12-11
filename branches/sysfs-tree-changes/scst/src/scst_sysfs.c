@@ -63,11 +63,7 @@ enum mgmt_path_type {
 	ACG_INITIATOR_GROUPS_PATH,
 };
 
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
-static struct class_device *scst_device;
-#else
 static struct device *scst_device;
-#endif
 
 static const char *scst_dev_handler_types[] = {
 	"Direct-access device (e.g., magnetic disk)",
@@ -163,49 +159,27 @@ static void sysfs_remove_files(struct kobject *kobj,
 #endif
 #endif
 
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
-static int device_create_files(struct class_device *dev,
-			       const struct class_device_attribute **ptr)
-#else
 static int device_create_files(struct device *dev,
 			       const struct device_attribute **ptr)
-#endif
 {
 	int err = 0;
 	int i;
 
 	for (i = 0; ptr[i] && !err; i++)
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
-		err = class_device_create_file(dev, ptr[i]);
-#else
 		err = device_create_file(dev, ptr[i]);
-#endif
 	if (err)
 		while (--i >= 0)
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
-			class_device_remove_file(dev, ptr[i]);
-#else
 			device_remove_file(dev, ptr[i]);
-#endif
 	return err;
 }
 
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
-static void device_remove_files(struct class_device *dev,
-				const struct class_device_attribute **ptr)
-#else
 static void device_remove_files(struct device *dev,
 				const struct device_attribute **ptr)
-#endif
 {
 	int i;
 
 	for (i = 0; ptr[i]; i++)
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
-		class_device_remove_file(dev, ptr[i]);
-#else
 		device_remove_file(dev, ptr[i]);
-#endif
 }
 
 /**
@@ -352,13 +326,8 @@ static struct scst_acg *__scst_lookup_acg(const struct scst_tgt *tgt,
 
 #if defined(CONFIG_SCST_DEBUG) || defined(CONFIG_SCST_TRACING)
 
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
-static ssize_t scst_tgtt_trace_level_show(struct class_device *device,
-					  char *buf)
-#else
 static ssize_t scst_tgtt_trace_level_show(struct device *device,
 	struct device_attribute *attr, char *buf)
-#endif
 {
 	struct scst_tgt_template *tgtt;
 
@@ -369,13 +338,8 @@ static ssize_t scst_tgtt_trace_level_show(struct device *device,
 		tgtt->trace_tbl_help);
 }
 
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
-static ssize_t scst_tgtt_trace_level_store(struct class_device *device,
-					   const char *buf, size_t count)
-#else
 static ssize_t scst_tgtt_trace_level_store(struct device *device,
 	struct device_attribute *attr, const char *buf, size_t count)
-#endif
 {
 	int res;
 	struct scst_tgt_template *tgtt;
@@ -398,23 +362,14 @@ out:
 	return res;
 }
 
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
-static struct class_device_attribute tgtt_trace_attr =
-#else
 static struct device_attribute tgtt_trace_attr =
-#endif
 	__ATTR(trace_level, S_IRUGO | S_IWUSR,
 	       scst_tgtt_trace_level_show, scst_tgtt_trace_level_store);
 
 #endif /* #if defined(CONFIG_SCST_DEBUG) || defined(CONFIG_SCST_TRACING) */
 
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
-static ssize_t scst_tgtt_add_target_parameters_show(struct class_device *device,
-				char *buf)
-#else
 static ssize_t scst_tgtt_add_target_parameters_show(struct device *device,
 				struct device_attribute *attr, char *buf)
-#endif
 {
 	struct scst_tgt_template *tgtt;
 	const char *const *p;
@@ -427,13 +382,8 @@ static ssize_t scst_tgtt_add_target_parameters_show(struct device *device,
 	return res;
 }
 
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
-static ssize_t scst_tgtt_tgtt_attributes_show(struct class_device *device,
-					      char *buf)
-#else
 static ssize_t scst_tgtt_tgtt_attributes_show(struct device *device,
 				struct device_attribute *attr, char *buf)
-#endif
 {
 	struct scst_tgt_template *tgtt;
 	const char *const *p;
@@ -446,13 +396,8 @@ static ssize_t scst_tgtt_tgtt_attributes_show(struct device *device,
 	return res;
 }
 
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
-static ssize_t scst_tgtt_tgt_attributes_show(struct class_device *device,
-					     char *buf)
-#else
 static ssize_t scst_tgtt_tgt_attributes_show(struct device *device,
 				struct device_attribute *attr, char *buf)
-#endif
 {
 	struct scst_tgt_template *tgtt;
 	const char *const *p;
@@ -521,25 +466,13 @@ out_syntax_err:
 	goto out;
 }
 
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
-static struct class_device_attribute scst_tgtt_add_target_parameters_attr =
-#else
 static struct device_attribute scst_tgtt_add_target_parameters_attr =
-#endif
 	__ATTR(add_target_parameters, S_IRUGO,
 	       scst_tgtt_add_target_parameters_show, NULL);
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
-static struct class_device_attribute scst_tgtt_tgtt_attributes_attr =
-#else
 static struct device_attribute scst_tgtt_tgtt_attributes_attr =
-#endif
 	__ATTR(driver_attributes, S_IRUGO,
 	       scst_tgtt_tgtt_attributes_show, NULL);
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
-static struct class_device_attribute scst_tgtt_tgt_attributes_attr =
-#else
 static struct device_attribute scst_tgtt_tgt_attributes_attr =
-#endif
 	__ATTR(target_attributes, S_IRUGO,
 	       scst_tgtt_tgt_attributes_show, NULL);
 
@@ -550,11 +483,7 @@ int scst_tgtt_sysfs_create(struct scst_tgt_template *tgtt)
 	TRACE_ENTRY();
 
 	if (tgtt->add_target) {
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
-		res = class_device_create_file(scst_sysfs_get_tgtt_dev(tgtt),
-#else
 		res = device_create_file(scst_sysfs_get_tgtt_dev(tgtt),
-#endif
 					 &scst_tgtt_add_target_parameters_attr);
 		if (res) {
 			PRINT_ERROR("Can't add attribute %s for target driver"
@@ -566,11 +495,7 @@ int scst_tgtt_sysfs_create(struct scst_tgt_template *tgtt)
 	}
 
 	if (tgtt->tgtt_optional_attributes) {
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
-		res = class_device_create_file(scst_sysfs_get_tgtt_dev(tgtt),
-#else
 		res = device_create_file(scst_sysfs_get_tgtt_dev(tgtt),
-#endif
 					 &scst_tgtt_tgtt_attributes_attr);
 		if (res) {
 			PRINT_ERROR("Can't add attribute %s for target driver"
@@ -582,11 +507,7 @@ int scst_tgtt_sysfs_create(struct scst_tgt_template *tgtt)
 	}
 
 	if (tgtt->tgt_optional_attributes) {
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
-		res = class_device_create_file(scst_sysfs_get_tgtt_dev(tgtt),
-#else
 		res = device_create_file(scst_sysfs_get_tgtt_dev(tgtt),
-#endif
 					 &scst_tgtt_tgt_attributes_attr);
 		if (res) {
 			PRINT_ERROR("Can't add attribute %s for target driver"
@@ -609,11 +530,7 @@ int scst_tgtt_sysfs_create(struct scst_tgt_template *tgtt)
 
 #if defined(CONFIG_SCST_DEBUG) || defined(CONFIG_SCST_TRACING)
 	if (tgtt->trace_flags != NULL) {
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
-		res = class_device_create_file(scst_sysfs_get_tgtt_dev(tgtt),
-#else
 		res = device_create_file(scst_sysfs_get_tgtt_dev(tgtt),
-#endif
 					 &tgtt_trace_attr);
 		if (res != 0) {
 			PRINT_ERROR("Can't add trace_flag for target "
@@ -699,12 +616,8 @@ static ssize_t __scst_acg_addr_method_store(struct scst_acg *acg,
 	return res;
 }
 
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
-static ssize_t scst_tgt_addr_method_show(struct class_device *device, char *buf)
-#else
 static ssize_t scst_tgt_addr_method_show(struct device *device,
 				struct device_attribute *attr, char *buf)
-#endif
 {
 	struct scst_acg *acg;
 	struct scst_tgt *tgt;
@@ -716,13 +629,8 @@ static ssize_t scst_tgt_addr_method_show(struct device *device,
 	return __scst_acg_addr_method_show(acg, buf);
 }
 
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
-static ssize_t scst_tgt_addr_method_store(struct class_device *device,
-					  const char *buf, size_t count)
-#else
 static ssize_t scst_tgt_addr_method_store(struct device *device,
 	struct device_attribute *attr, const char *buf, size_t count)
-#endif
 {
 	int res;
 	struct scst_acg *acg;
@@ -738,11 +646,7 @@ static ssize_t scst_tgt_addr_method_store(struct device *device,
 	return res;
 }
 
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
-static struct class_device_attribute scst_tgt_addr_method =
-#else
 static struct device_attribute scst_tgt_addr_method =
-#endif
 	__ATTR(addr_method, S_IRUGO | S_IWUSR, scst_tgt_addr_method_show,
 	       scst_tgt_addr_method_store);
 
@@ -840,13 +744,8 @@ out:
 	return res;
 }
 
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
-static ssize_t scst_tgt_io_grouping_type_show(struct class_device *device,
-					      char *buf)
-#else
 static ssize_t scst_tgt_io_grouping_type_show(struct device *device,
 	struct device_attribute *attr, char *buf)
-#endif
 {
 	struct scst_acg *acg;
 	struct scst_tgt *tgt;
@@ -858,13 +757,8 @@ static ssize_t scst_tgt_io_grouping_type_show(struct device *device,
 	return __scst_acg_io_grouping_type_show(acg, buf);
 }
 
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
-static ssize_t scst_tgt_io_grouping_type_store(struct class_device *device,
-					       const char *buf, size_t count)
-#else
 static ssize_t scst_tgt_io_grouping_type_store(struct device *device,
 	struct device_attribute *attr, const char *buf, size_t count)
-#endif
 {
 	int res;
 	struct scst_acg *acg;
@@ -885,11 +779,7 @@ out:
 	return res;
 }
 
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
-static struct class_device_attribute scst_tgt_io_grouping_type =
-#else
 static struct device_attribute scst_tgt_io_grouping_type =
-#endif
 	__ATTR(io_grouping_type, S_IRUGO | S_IWUSR,
 	       scst_tgt_io_grouping_type_show,
 	       scst_tgt_io_grouping_type_store);
@@ -979,12 +869,8 @@ static ssize_t __scst_acg_cpu_mask_show(struct scst_acg *acg, char *buf)
 	return res;
 }
 
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
-static ssize_t scst_tgt_cpu_mask_show(struct class_device *device, char *buf)
-#else
 static ssize_t scst_tgt_cpu_mask_show(struct device *device,
 	struct device_attribute *attr, char *buf)
-#endif
 {
 	struct scst_acg *acg;
 	struct scst_tgt *tgt;
@@ -996,19 +882,11 @@ static ssize_t scst_tgt_cpu_mask_show(struct device *device,
 	return __scst_acg_cpu_mask_show(acg, buf);
 }
 
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
-static struct class_device_attribute scst_tgt_cpu_mask =
-#else
 static struct device_attribute scst_tgt_cpu_mask =
-#endif
 	__ATTR(cpu_mask, S_IRUGO, scst_tgt_cpu_mask_show, NULL);
 
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
-static ssize_t scst_rel_tgt_id_show(struct class_device *device, char *buf)
-#else
 static ssize_t scst_rel_tgt_id_show(struct device *device,
 				    struct device_attribute *attr, char *buf)
-#endif
 {
 	struct scst_tgt *tgt;
 	int res;
@@ -1064,13 +942,8 @@ out:
 	return res;
 }
 
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
-static ssize_t scst_rel_tgt_id_store(struct class_device *device,
-				     const char *buf, size_t count)
-#else
 static ssize_t scst_rel_tgt_id_store(struct device *device,
 	struct device_attribute *attr, const char *buf, size_t count)
-#endif
 {
 	int res;
 	struct scst_tgt *tgt;
@@ -1098,19 +971,11 @@ out:
 	return res;
 }
 
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
-static struct class_device_attribute scst_rel_tgt_id =
-#else
 static struct device_attribute scst_rel_tgt_id =
-#endif
 	__ATTR(rel_tgt_id, S_IRUGO | S_IWUSR, scst_rel_tgt_id_show,
 	       scst_rel_tgt_id_store);
 
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
-static const struct class_device_attribute *scst_tgt_attr[] = {
-#else
 static const struct device_attribute *scst_tgt_attr[] = {
-#endif
 	&scst_rel_tgt_id,
 	&scst_tgt_addr_method,
 	&scst_tgt_io_grouping_type,
@@ -1193,12 +1058,8 @@ static ssize_t scst_acg_cpu_mask_show(struct kobject *kobj,
 static struct kobj_attribute scst_acg_cpu_mask =
 	__ATTR(cpu_mask, S_IRUGO, scst_acg_cpu_mask_show, NULL);
 
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
-static ssize_t scst_tgt_enable_show(struct class_device *device, char *buf)
-#else
 static ssize_t scst_tgt_enable_show(struct device *device,
 				    struct device_attribute *attr, char *buf)
-#endif
 {
 	struct scst_tgt *tgt;
 	int res;
@@ -1308,11 +1169,7 @@ out:
 	return res;
 }
 
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
-static struct class_device_attribute tgt_enable_attr =
-#else
 static struct device_attribute tgt_enable_attr =
-#endif
 	__ATTR(enabled, S_IRUGO, scst_tgt_enable_show, NULL);
 
 int scst_tgt_sysfs_create(struct scst_tgt *tgt)
@@ -1322,11 +1179,7 @@ int scst_tgt_sysfs_create(struct scst_tgt *tgt)
 	TRACE_ENTRY();
 
 	if (tgt->tgtt->enable_target && tgt->tgtt->is_target_enabled) {
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
-		res = class_device_create_file(scst_sysfs_get_tgt_dev(tgt),
-#else
 		res = device_create_file(scst_sysfs_get_tgt_dev(tgt),
-#endif
 					 &tgt_enable_attr);
 		if (res != 0) {
 			PRINT_ERROR("Can't add attr %s to sysfs",
@@ -1413,12 +1266,8 @@ void scst_tgt_sysfs_del(struct scst_tgt *tgt)
  ** Devices directory implementation
  **/
 
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
-static ssize_t scst_dev_sysfs_type_show(struct class_device *device, char *buf)
-#else
 static ssize_t scst_dev_sysfs_type_show(struct device *device,
 				struct device_attribute *attr, char *buf)
-#endif
 {
 	int pos;
 	struct scst_device *dev;
@@ -1434,13 +1283,8 @@ static ssize_t scst_dev_sysfs_type_show(struct device *device,
 
 #if defined(CONFIG_SCST_DEBUG) || defined(CONFIG_SCST_TRACING)
 
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
-static ssize_t scst_dev_sysfs_dump_prs(struct class_device *device,
-				       const char *buf, size_t count)
-#else
 static ssize_t scst_dev_sysfs_dump_prs(struct device *device,
 	struct device_attribute *attr, const char *buf, size_t count)
-#endif
 {
 	ssize_t res;
 	struct scst_device *dev;
@@ -1455,11 +1299,7 @@ static ssize_t scst_dev_sysfs_dump_prs(struct device *device,
 	return res;
 }
 
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
-static struct class_device_attribute dev_dump_prs_attr =
-#else
 static struct device_attribute dev_dump_prs_attr =
-#endif
 	__ATTR(dump_prs, S_IWUSR, NULL, scst_dev_sysfs_dump_prs);
 
 #endif /* defined(CONFIG_SCST_DEBUG) || defined(CONFIG_SCST_TRACING) */
@@ -1531,13 +1371,8 @@ out:
 	return res;
 }
 
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
-static ssize_t scst_dev_sysfs_threads_num_show(struct class_device *device,
-					       char *buf)
-#else
 static ssize_t scst_dev_sysfs_threads_num_show(struct device *device,
 					struct device_attribute *attr, char *buf)
-#endif
 {
 	int pos;
 	struct scst_device *dev;
@@ -1573,20 +1408,11 @@ out:
 	return res;
 }
 
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
-static struct class_device_attribute dev_threads_num_attr =
-#else
 static struct device_attribute dev_threads_num_attr =
-#endif
 	__ATTR(threads_num, S_IRUGO, scst_dev_sysfs_threads_num_show, NULL);
 
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
-static ssize_t scst_dev_sysfs_threads_pool_type_show(
-				     struct class_device *device, char *buf)
-#else
 static ssize_t scst_dev_sysfs_threads_pool_type_show(struct device *device,
 	struct device_attribute *attr, char *buf)
-#endif
 {
 	int pos;
 	struct scst_device *dev;
@@ -1643,29 +1469,17 @@ out:
 	return res;
 }
 
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
-static struct class_device_attribute dev_threads_pool_type_attr =
-#else
 static struct device_attribute dev_threads_pool_type_attr =
-#endif
 	__ATTR(threads_pool_type, S_IRUGO,
 	       scst_dev_sysfs_threads_pool_type_show, NULL);
 
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
-static const struct class_device_attribute *dev_thread_attr[] = {
-#else
 static const struct device_attribute *dev_thread_attr[] = {
-#endif
 	&dev_threads_num_attr,
 	&dev_threads_pool_type_attr,
 	NULL
 };
 
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
-struct class_device_attribute scst_dev_attrs[] = {
-#else
 struct device_attribute scst_dev_attrs[] = {
-#endif
 	__ATTR(type, S_IRUGO, scst_dev_sysfs_type_show, NULL),
 	__ATTR_NULL,
 };
@@ -1760,11 +1574,7 @@ int scst_dev_sysfs_create(struct scst_device *dev)
 
 	if (dev->scsi_dev != NULL) {
 		res = sysfs_create_link(scst_sysfs_get_dev_kobj(dev),
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
-					&dev->scsi_dev->sdev_classdev.kobj,
-#else
 					&dev->scsi_dev->sdev_dev.kobj,
-#endif
 					"scsi_device");
 		if (res != 0) {
 			PRINT_ERROR("Can't create scsi_device link for dev %s",
@@ -1953,13 +1763,8 @@ int scst_tgt_dev_sysfs_create(struct scst_tgt_dev *tgt_dev)
 
 	TRACE_ENTRY();
 
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
-	res = kobject_add2(&tgt_dev->tgt_dev_kobj, &tgt_dev->sess->sess_kobj,
-			   "lun%lld", (unsigned long long)tgt_dev->lun);
-#else
 	res = kobject_add(&tgt_dev->tgt_dev_kobj, &tgt_dev->sess->sess_kobj,
 			  "lun%lld", (unsigned long long)tgt_dev->lun);
-#endif
 	if (res != 0) {
 		PRINT_ERROR("Can't add tgt_dev %lld to sysfs",
 			(unsigned long long)tgt_dev->lun);
@@ -2332,11 +2137,7 @@ int scst_sess_sysfs_create(struct scst_session *sess)
 
 	TRACE_DBG("Adding session %s to sysfs", name);
 
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
-	res = kobject_add2(&sess->sess_kobj, sess->tgt->tgt_sess_kobj, name);
-#else
 	res = kobject_add(&sess->sess_kobj, sess->tgt->tgt_sess_kobj, name);
-#endif
 	if (res != 0) {
 		PRINT_ERROR("Can't add session %s to sysfs", name);
 		goto out_free;
@@ -2420,13 +2221,8 @@ int scst_acg_dev_sysfs_create(struct scst_acg_dev *acg_dev,
 
 	BUG_ON(!acg_dev->dev);
 
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
-	res = kobject_add2(&acg_dev->acg_dev_kobj, parent, "%llu",
-			   acg_dev->lun);
-#else
 	res = kobject_add(&acg_dev->acg_dev_kobj, parent, "%llu",
 			  acg_dev->lun);
-#endif
 	if (res != 0) {
 		PRINT_ERROR("Can't add acg_dev %s/%s/%s/%llu to sysfs",
 			    acg_dev->acg->tgt->tgtt->name,
@@ -2735,12 +2531,7 @@ int scst_acg_sysfs_create(struct scst_tgt *tgt, struct scst_acg *acg)
 
 	TRACE_ENTRY();
 
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
-	res = kobject_add2(&acg->acg_kobj, tgt->tgt_ini_grp_kobj,
-			   acg->acg_name);
-#else
 	res = kobject_add(&acg->acg_kobj, tgt->tgt_ini_grp_kobj, acg->acg_name);
-#endif
 	if (res != 0) {
 		PRINT_ERROR("Can't add acg '%s' to sysfs", acg->acg_name);
 		goto out;
@@ -3177,13 +2968,8 @@ out:
 
 #if defined(CONFIG_SCST_DEBUG) || defined(CONFIG_SCST_TRACING)
 
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
-static ssize_t scst_devt_trace_level_show(struct class_device *device,
-					  char *buf)
-#else
 static ssize_t scst_devt_trace_level_show(struct device *device,
 	struct device_attribute *attr, char *buf)
-#endif
 {
 	struct scst_dev_type *devt;
 
@@ -3194,13 +2980,8 @@ static ssize_t scst_devt_trace_level_show(struct device *device,
 		devt->trace_tbl_help);
 }
 
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
-static ssize_t scst_devt_trace_level_store(struct class_device *device,
-					   const char *buf, size_t count)
-#else
 static ssize_t scst_devt_trace_level_store(struct device *device,
 	struct device_attribute *attr, const char *buf, size_t count)
-#endif
 {
 	int res;
 	struct scst_dev_type *devt;
@@ -3223,22 +3004,14 @@ out:
 	return res;
 }
 
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
-static struct class_device_attribute devt_trace_attr =
-#else
 static struct device_attribute devt_trace_attr =
-#endif
 	__ATTR(trace_level, S_IRUGO | S_IWUSR,
 	       scst_devt_trace_level_show, scst_devt_trace_level_store);
 
 #endif /* #if defined(CONFIG_SCST_DEBUG) || defined(CONFIG_SCST_TRACING) */
 
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
-static ssize_t scst_devt_type_show(struct class_device *device, char *buf)
-#else
 static ssize_t scst_devt_type_show(struct device *device,
 	struct device_attribute *attr, char *buf)
-#endif
 {
 	int pos;
 	struct scst_dev_type *devt;
@@ -3252,22 +3025,13 @@ static ssize_t scst_devt_type_show(struct device *device,
 	return pos;
 }
 
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
-struct class_device_attribute scst_devt_default_attrs[] = {
-#else
 struct device_attribute scst_devt_default_attrs[] = {
-#endif
 	__ATTR(type, S_IRUGO, scst_devt_type_show, NULL),
 	__ATTR_NULL
 };
 
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
-static ssize_t scst_devt_add_device_parameters_show(
-				struct class_device *device, char *buf)
-#else
 static ssize_t scst_devt_add_device_parameters_show(struct device *device,
 				struct device_attribute *attr, char *buf)
-#endif
 {
 	struct scst_dev_type *devt;
 	const char *const *p;
@@ -3280,21 +3044,12 @@ static ssize_t scst_devt_add_device_parameters_show(struct device *device,
 	return res;
 }
 
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
-static struct class_device_attribute scst_devt_add_device_parameters_attr =
-#else
 static struct device_attribute scst_devt_add_device_parameters_attr =
-#endif
 	__ATTR(add_device_parameters, S_IRUGO,
 	       scst_devt_add_device_parameters_show, NULL);
 
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
-static ssize_t scst_devt_devt_attributes_show(struct class_device *device,
-					      char *buf)
-#else
 static ssize_t scst_devt_devt_attributes_show(struct device *device,
 				struct device_attribute *attr, char *buf)
-#endif
 {
 	struct scst_dev_type *devt;
 	const char *const *p;
@@ -3307,21 +3062,12 @@ static ssize_t scst_devt_devt_attributes_show(struct device *device,
 	return res;
 }
 
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
-static struct class_device_attribute scst_devt_devt_attributes_attr =
-#else
 static struct device_attribute scst_devt_devt_attributes_attr =
-#endif
 	__ATTR(driver_attributes, S_IRUGO,
 	       scst_devt_devt_attributes_show, NULL);
 
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
-static ssize_t scst_devt_dev_attributes_show(struct class_device *device,
-					     char *buf)
-#else
 static ssize_t scst_devt_dev_attributes_show(struct device *device,
 				struct device_attribute *attr, char *buf)
-#endif
 {
 	struct scst_dev_type *devt;
 	const char *const *p;
@@ -3334,11 +3080,7 @@ static ssize_t scst_devt_dev_attributes_show(struct device *device,
 	return res;
 }
 
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
-static struct class_device_attribute scst_devt_dev_attributes_attr =
-#else
 static struct device_attribute scst_devt_dev_attributes_attr =
-#endif
 	__ATTR(device_attributes, S_IRUGO,
 	       scst_devt_dev_attributes_show, NULL);
 
@@ -3562,11 +3304,7 @@ int scst_devt_sysfs_create(struct scst_dev_type *devt)
 	TRACE_ENTRY();
 
 	if (devt->add_device_parameters) {
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
-		res = class_device_create_file(scst_sysfs_get_devt_dev(devt),
-#else
 		res = device_create_file(scst_sysfs_get_devt_dev(devt),
-#endif
 					 &scst_devt_add_device_parameters_attr);
 		if (res) {
 			PRINT_ERROR("Can't add attribute %s for dev handler %s",
@@ -3577,11 +3315,7 @@ int scst_devt_sysfs_create(struct scst_dev_type *devt)
 	}
 
 	if (devt->devt_optional_attributes) {
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
-		res = class_device_create_file(scst_sysfs_get_devt_dev(devt),
-#else
 		res = device_create_file(scst_sysfs_get_devt_dev(devt),
-#endif
 					 &scst_devt_devt_attributes_attr);
 		if (res) {
 			PRINT_ERROR("Can't add attribute %s for dev handler %s",
@@ -3592,11 +3326,7 @@ int scst_devt_sysfs_create(struct scst_dev_type *devt)
 	}
 
 	if (devt->dev_optional_attributes) {
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
-		res = class_device_create_file(scst_sysfs_get_devt_dev(devt),
-#else
 		res = device_create_file(scst_sysfs_get_devt_dev(devt),
-#endif
 					 &scst_devt_dev_attributes_attr);
 		if (res) {
 			PRINT_ERROR("Can't add attribute %s for dev handler %s",
@@ -3618,11 +3348,7 @@ int scst_devt_sysfs_create(struct scst_dev_type *devt)
 
 #if defined(CONFIG_SCST_DEBUG) || defined(CONFIG_SCST_TRACING)
 	if (devt->trace_flags) {
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
-		res = class_device_create_file(scst_sysfs_get_devt_dev(devt),
-#else
 		res = device_create_file(scst_sysfs_get_devt_dev(devt),
-#endif
 					 &devt_trace_attr);
 		if (res) {
 			PRINT_ERROR("Can't add devt trace_flag for dev "
@@ -3651,12 +3377,8 @@ void scst_devt_sysfs_del(struct scst_dev_type *devt)
  ** SCST sysfs root directory implementation
  **/
 
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
-static ssize_t scst_mgmt_show(struct class_device *device, char *buf)
-#else
 static ssize_t scst_mgmt_show(struct device *device,
 			      struct device_attribute *attr, char *buf)
-#endif
 {
 	ssize_t count;
 	static const char help[] =
@@ -3850,13 +3572,8 @@ err:
 	return res;
 }
 
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
-static ssize_t scst_mgmt_store(struct class_device *device,
-			       const char *buf, size_t count)
-#else
 static ssize_t scst_mgmt_store(struct device *device,
 	struct device_attribute *attr, const char *buf, size_t count)
-#endif
 {
 	ssize_t res;
 	char *buffer, *path, *path_end, *cmd;
@@ -3953,12 +3670,8 @@ out:
 	return res;
 }
 
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
-static ssize_t scst_threads_show(struct class_device *device, char *buf)
-#else
 static ssize_t scst_threads_show(struct device *device,
 				 struct device_attribute *attr, char *buf)
-#endif
 {
 	int count;
 
@@ -4006,13 +3719,8 @@ out:
 	return res;
 }
 
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
-static ssize_t scst_threads_store(struct class_device *device,
-				  const char *buf, size_t count)
-#else
 static ssize_t scst_threads_store(struct device *device,
 	struct device_attribute *attr, const char *buf, size_t count)
-#endif
 {
 	int res;
 	long newtn;
@@ -4038,12 +3746,8 @@ out:
 	return res;
 }
 
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
-static ssize_t scst_setup_id_show(struct class_device *device, char *buf)
-#else
 static ssize_t scst_setup_id_show(struct device *device,
 				  struct device_attribute *attr, char *buf)
-#endif
 {
 	int count;
 
@@ -4056,13 +3760,8 @@ static ssize_t scst_setup_id_show(struct device *device,
 	return count;
 }
 
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
-static ssize_t scst_setup_id_store(struct class_device *device,
-				   const char *buf, size_t count)
-#else
 static ssize_t scst_setup_id_store(struct device *device,
 	struct device_attribute *attr, const char *buf, size_t count)
-#endif
 {
 	int res;
 	unsigned long val;
@@ -4133,13 +3832,8 @@ static ssize_t scst_trace_level_show(const struct scst_trace_log *local_tbl,
 	return pos;
 }
 
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
-static ssize_t scst_main_trace_level_show(struct class_device *device,
-					  char *buf)
-#else
 static ssize_t scst_main_trace_level_show(struct device *device,
 				struct device_attribute *attr, char *buf)
-#endif
 {
 	return scst_trace_level_show(scst_local_trace_tbl, trace_flag,
 			buf, NULL);
@@ -4301,13 +3995,8 @@ out:
 #undef SCST_TRACE_ACTION_VALUE
 }
 
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
-static ssize_t scst_main_trace_level_store(struct class_device *device,
-					   const char *buf, size_t count)
-#else
 static ssize_t scst_main_trace_level_store(struct device *device,
 	struct device_attribute *attr, const char *buf, size_t count)
-#endif
 {
 	int res;
 
@@ -4329,12 +4018,8 @@ out:
 
 #endif /* defined(CONFIG_SCST_DEBUG) || defined(CONFIG_SCST_TRACING) */
 
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
-static ssize_t scst_version_show(struct class_device *device, char *buf)
-#else
 static ssize_t scst_version_show(struct device *device,
 				 struct device_attribute *attr, char *buf)
-#endif
 {
 	TRACE_ENTRY();
 
@@ -4389,51 +4074,27 @@ static ssize_t scst_version_show(struct device *device,
 }
 
 
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
-static struct class_device_attribute scst_mgmt_attr =
-#else
 static struct device_attribute scst_mgmt_attr =
-#endif
 	__ATTR(mgmt, S_IRUGO | S_IWUSR, scst_mgmt_show, scst_mgmt_store);
 
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
-static struct class_device_attribute scst_threads_attr =
-#else
 static struct device_attribute scst_threads_attr =
-#endif
 	__ATTR(threads, S_IRUGO | S_IWUSR, scst_threads_show,
 	       scst_threads_store);
 
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
-static struct class_device_attribute scst_setup_id_attr =
-#else
 static struct device_attribute scst_setup_id_attr =
-#endif
 	__ATTR(setup_id, S_IRUGO | S_IWUSR, scst_setup_id_show,
 	       scst_setup_id_store);
 
 #if defined(CONFIG_SCST_DEBUG) || defined(CONFIG_SCST_TRACING)
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
-static struct class_device_attribute scst_main_trace_level_attr =
-#else
 static struct device_attribute scst_main_trace_level_attr =
-#endif
 	__ATTR(trace_level, S_IRUGO | S_IWUSR, scst_main_trace_level_show,
 	       scst_main_trace_level_store);
 #endif
 
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
-static struct class_device_attribute scst_version_attr =
-#else
 static struct device_attribute scst_version_attr =
-#endif
 	__ATTR(version, S_IRUGO, scst_version_show, NULL);
 
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
-static const struct class_device_attribute *scst_default_attr[] = {
-#else
 static const struct device_attribute *scst_default_attr[] = {
-#endif
 	&scst_mgmt_attr,
 	&scst_threads_attr,
 	&scst_setup_id_attr,
@@ -4444,23 +4105,12 @@ static const struct device_attribute *scst_default_attr[] = {
 	NULL
 };
 
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
-static void scst_release_device(struct class_device *device)
-#else
 static void scst_release_device(struct device *device)
-#endif
 {
 	TRACE_ENTRY();
 	kfree(device);
 	TRACE_EXIT();
 }
-
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
-static struct class scst_class = {
-	.name		= "scst",
-	.release	= scst_release_device,
-};
-#endif
 
 /**
  ** Sysfs user info
@@ -4680,42 +4330,20 @@ int __init scst_sysfs_init(void)
 
 	TRACE_ENTRY();
 
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
-	res = class_register(&scst_class);
-	if (res) {
-		goto out;
-		PRINT_ERROR("Registering class SCST failed (%d)", res);
-	}
-#endif
-
 	res = -ENOMEM;
 	scst_device = kzalloc(sizeof *scst_device, GFP_KERNEL);
 	if (!scst_device) {
 		PRINT_ERROR("%s", "Allocating memory for SCST device failed.");
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
-		goto out_unregister_class;
-#else
 		goto out;
-#endif
 	}
 
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
-	scst_device->class = &scst_class;
-#else
 	scst_device->release = scst_release_device;
-#endif
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
-	snprintf(scst_device->class_id, BUS_ID_SIZE, "%s", "scst");
-#elif LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 30)
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 30)
 	snprintf(scst_device->bus_id, BUS_ID_SIZE, "%s", "scst");
 #else
 	dev_set_name(scst_device, "%s", "scst");
 #endif
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
-	res = class_device_register(scst_device);
-#else
 	res = device_register(scst_device);
-#endif
 	if (res) {
 		PRINT_ERROR("Registration of SCST device failed (%d).", res);
 		goto out_free;
@@ -4737,18 +4365,10 @@ out:
 	TRACE_EXIT_RES(res);
 	return res;
 
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
-out_unregister_class:
-	class_unregister(&scst_class);
-#endif
 out_remove_files:
 	device_remove_files(scst_device, scst_default_attr);
 out_unregister_device:
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
-	class_device_unregister(scst_device);
-#else
 	device_unregister(scst_device);
-#endif
 	scst_device = NULL;
 out_free:
 	kfree(scst_device);
@@ -4761,19 +4381,11 @@ void scst_sysfs_cleanup(void)
 
 	PRINT_INFO("%s", "Exiting SCST sysfs hierarchy...");
 
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
-	class_unregister(&scst_class);
-#endif
-
 	scst_del_put_sgv_kobj();
 
 	device_remove_files(scst_device, scst_default_attr);
 
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
-	class_device_unregister(scst_device);
-#else
 	device_unregister(scst_device);
-#endif
 
 	/*
 	 * Wait until the release method of the sysfs root object has returned.

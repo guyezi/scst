@@ -2727,11 +2727,7 @@ int scst_acg_add_lun(struct scst_acg *acg, struct kobject *parent,
 		goto out;
 	}
 
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
-	kobject_init2(&acg_dev->acg_dev_kobj, &acg_dev_ktype);
-#else
 	kobject_init(&acg_dev->acg_dev_kobj, &acg_dev_ktype);
-#endif
 
 	acg_dev->rd_only = read_only;
 
@@ -2852,11 +2848,7 @@ struct scst_acg *scst_alloc_add_acg(struct scst_tgt *tgt,
 		goto out;
 	}
 
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
-	kobject_init2(&acg->acg_kobj, &scst_acg_ktype);
-#else
 	kobject_init(&acg->acg_kobj, &scst_acg_ktype);
-#endif
 
 	acg->tgt = tgt;
 	INIT_LIST_HEAD(&acg->acg_dev_list);
@@ -3354,11 +3346,7 @@ static int scst_alloc_add_tgt_dev(struct scst_session *sess,
 		goto out;
 	}
 
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
-	kobject_init2(&tgt_dev->tgt_dev_kobj, &scst_tgt_dev_ktype);
-#else
 	kobject_init(&tgt_dev->tgt_dev_kobj, &scst_tgt_dev_ktype);
-#endif
 
 	tgt_dev->dev = dev;
 	tgt_dev->lun = acg_dev->lun;
@@ -4008,11 +3996,7 @@ struct scst_session *scst_alloc_session(struct scst_tgt *tgt, gfp_t gfp_mask,
 		goto out;
 	}
 
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
-	kobject_init2(&sess->sess_kobj, &scst_session_ktype);
-#else
 	kobject_init(&sess->sess_kobj, &scst_session_ktype);
-#endif
 
 	sess->init_phase = SCST_SESS_IPH_INITING;
 	sess->shut_phase = SCST_SESS_SPH_READY;

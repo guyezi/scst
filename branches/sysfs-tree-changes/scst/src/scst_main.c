@@ -189,11 +189,7 @@ struct scst_dev_type scst_null_devtype = {
 
 static void __scst_resume_activity(void);
 
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
-static void scst_release_tgtt(struct class_device *dev)
-#else
 static void scst_release_tgtt(struct device *dev)
-#endif
 {
 	/*
 	 * Since target template objects reside in a data segment, no memory
@@ -203,11 +199,7 @@ static void scst_release_tgtt(struct device *dev)
 
 static struct class scst_tgtt_class = {
 	.name		= "target_driver",
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
-	.release	= scst_release_tgtt,
-#else
 	.dev_release	= scst_release_tgtt,
-#endif
 };
 
 /**
@@ -306,24 +298,13 @@ int __scst_register_target_template(struct scst_tgt_template *vtt,
 	}
 
 	vtt->tgtt_dev.class = &scst_tgtt_class;
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
-	vtt->tgtt_dev.dev = NULL;
-#else
 	vtt->tgtt_dev.parent = NULL;
-#endif
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
-	snprintf(vtt->tgtt_dev.class_id, BUS_ID_SIZE, "%s", vtt->name);
-#elif LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 30)
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 30)
 	snprintf(vtt->tgtt_dev.bus_id, BUS_ID_SIZE, "%s", vtt->name);
 #else
 	dev_set_name(&vtt->tgtt_dev, "%s", vtt->name);
 #endif
-
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
-	res = class_device_register(&vtt->tgtt_dev);
-#else
 	res = device_register(&vtt->tgtt_dev);
-#endif
 	if (res)
 		goto out_unlock;
 
@@ -377,11 +358,7 @@ out_del:
 	mutex_unlock(&scst_mutex2);
 
 out_unregister:
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
-	class_device_unregister(&vtt->tgtt_dev);
-#else
 	device_unregister(&vtt->tgtt_dev);
-#endif
 
 out_unlock:
 	mutex_unlock(&scst_mutex);
@@ -472,11 +449,7 @@ void scst_unregister_target_template(struct scst_tgt_template *vtt)
 		goto out_err_up;
 	}
 
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
-	class_device_unregister(&vtt->tgtt_dev);
-#else
 	device_unregister(&vtt->tgtt_dev);
-#endif
 
 	mutex_lock(&scst_mutex2);
 	list_del(&vtt->scst_template_list_entry);
@@ -512,18 +485,7 @@ out_err_up:
 }
 EXPORT_SYMBOL(scst_unregister_target_template);
 
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
-static void scst_release_target(struct class_device *dev);
-#else
 static void scst_release_target(struct device *dev);
-#endif
-
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
-static struct class scst_tgt_class = {
-	.name		= "target_instance",
-	.release	= scst_release_target,
-};
-#endif
 
 /**
  * scst_register_target() - register target
@@ -582,29 +544,14 @@ struct scst_tgt *scst_register_target(struct scst_tgt_template *vtt,
 		tgt_num++;
 	}
 
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
-	tgt->tgt_dev.class = &scst_tgt_class;
-#else
 	tgt->tgt_dev.release = scst_release_target;
-#endif
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
-	tgt->tgt_dev.dev = tgt->tgtt->tgtt_dev.dev;
-#else
 	tgt->tgt_dev.parent = &tgt->tgtt->tgtt_dev;
-#endif
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
-	snprintf(tgt->tgt_dev.class_id, BUS_ID_SIZE, "%s", tgt->tgt_name);
-#elif LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 30)
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 30)
 	snprintf(tgt->tgt_dev.bus_id, BUS_ID_SIZE, "%s", tgt->tgt_name);
 #else
 	dev_set_name(&tgt->tgt_dev, "%s", tgt->tgt_name);
 #endif
-
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
-	rc = class_device_register(&tgt->tgt_dev);
-#else
 	rc = device_register(&tgt->tgt_dev);
-#endif
 	if (rc) {
 		PRINT_ERROR("Registration of device %s failed (%d)",
 			    tgt->tgt_name, rc);
@@ -654,11 +601,7 @@ out_sysfs_del:
 #endif
 
 out_unregister:
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
-	class_device_unregister(&tgt->tgt_dev);
-#else
 	device_unregister(&tgt->tgt_dev);
-#endif
 	tgt = NULL;
 
 out_unlock:
@@ -746,11 +689,7 @@ again:
 	scst_tgt_sysfs_del(tgt);
 #endif
 
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
-	class_device_unregister(&tgt->tgt_dev);
-#else
 	device_unregister(&tgt->tgt_dev);
-#endif
 
 	mutex_unlock(&scst_mutex);
 	scst_resume_activity();
@@ -762,11 +701,7 @@ again:
 }
 EXPORT_SYMBOL(scst_unregister_target);
 
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
-static void scst_release_target(struct class_device *dev)
-#else
 static void scst_release_target(struct device *dev)
-#endif
 {
 	struct scst_tgt *tgt;
 
@@ -980,11 +915,7 @@ void scst_resume_activity(void)
 }
 EXPORT_SYMBOL_GPL(scst_resume_activity);
 
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
-static void scst_release_dev(struct class_device *device)
-#else
 static void scst_release_dev(struct device *device)
-#endif
 {
 	struct scst_device *dev;
 
@@ -994,17 +925,9 @@ static void scst_release_dev(struct device *device)
 
 static struct class scst_dev_class = {
 	.name			= "target_device",
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
-	.release		= scst_release_dev,
-#else
 	.dev_release		= scst_release_dev,
-#endif
 #ifndef CONFIG_SCST_PROC
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
-	.class_dev_attrs	= scst_dev_attrs,
-#else
 	.dev_attrs		= scst_dev_attrs,
-#endif
 #endif
 };
 
@@ -1051,23 +974,13 @@ static int scst_register_device(struct scsi_device *scsidp)
 	dev->scsi_dev = scsidp;
 
 	dev->dev_dev.class = &scst_dev_class;
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
-	dev->dev_dev.dev = NULL;
-#else
 	dev->dev_dev.parent = NULL;
-#endif
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
-	snprintf(dev->dev_dev.class_id, BUS_ID_SIZE, "%s", dev->virt_name);
-#elif LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 30)
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 30)
 	snprintf(dev->dev_dev.bus_id, BUS_ID_SIZE, "%s", dev->virt_name);
 #else
 	dev_set_name(&dev->dev_dev, "%s", dev->virt_name);
 #endif
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
-	res = class_device_register(&dev->dev_dev);
-#else
 	res = device_register(&dev->dev_dev);
-#endif
 	if (res)
 		goto out_free_dev;
 
@@ -1104,11 +1017,7 @@ out:
 	return res;
 
 out_unregister:
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
-	class_device_unregister(&dev->dev_dev);
-#else
 	device_unregister(&dev->dev_dev);
-#endif
 	dev = NULL;
 out_free_dev:
 	if (dev) {
@@ -1157,11 +1066,7 @@ static void scst_unregister_device(struct scsi_device *scsidp)
 		scst_acg_del_lun(acg_dev->acg, acg_dev->lun, true);
 	}
 
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
-	class_device_unregister(&dev->dev_dev);
-#else
 	device_unregister(&dev->dev_dev);
-#endif
 
 	mutex_unlock(&scst_mutex);
 
@@ -1308,23 +1213,13 @@ int scst_register_virtual_device(struct scst_dev_type *dev_handler,
 	res = dev->virt_id;
 
 	dev->dev_dev.class = &scst_dev_class;
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
-	dev->dev_dev.dev = NULL;
-#else
 	dev->dev_dev.parent = NULL;
-#endif
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
-	snprintf(dev->dev_dev.class_id, BUS_ID_SIZE, "%s", dev->virt_name);
-#elif LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 30)
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 30)
 	snprintf(dev->dev_dev.bus_id, BUS_ID_SIZE, "%s", dev->virt_name);
 #else
 	dev_set_name(&dev->dev_dev, "%s", dev->virt_name);
 #endif
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
-	res = class_device_register(&dev->dev_dev);
-#else
 	res = device_register(&dev->dev_dev);
-#endif
 	if (res)
 		goto out_free_dev;
 
@@ -1366,11 +1261,7 @@ out_sysfs_del:
 out_pr_clear_dev:
 	scst_pr_clear_dev(dev);
 out_unregister:
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
-	class_device_unregister(&dev->dev_dev);
-#else
 	device_unregister(&dev->dev_dev);
-#endif
 	dev = NULL;
 out_free_dev:
 	if (dev) {
@@ -1424,11 +1315,7 @@ void scst_unregister_virtual_device(int id)
 		scst_acg_del_lun(acg_dev->acg, acg_dev->lun, true);
 	}
 
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
-	class_device_unregister(&dev->dev_dev);
-#else
 	device_unregister(&dev->dev_dev);
-#endif
 
 	mutex_unlock(&scst_mutex);
 	scst_resume_activity();
@@ -1447,11 +1334,7 @@ out_unlock:
 }
 EXPORT_SYMBOL_GPL(scst_unregister_virtual_device);
 
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
-static void scst_release_devt(struct class_device *dev)
-#else
 static void scst_release_devt(struct device *dev)
-#endif
 {
 	/*
 	 * Since device type objects reside in a data segment, no memory
@@ -1461,17 +1344,9 @@ static void scst_release_devt(struct device *dev)
 
 static struct class scst_devt_class = {
 	.name			= "device_driver",
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
-	.release		= scst_release_devt,
-#else
 	.dev_release		= scst_release_devt,
-#endif
 #ifndef CONFIG_SCST_PROC
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
-	.class_dev_attrs	= scst_devt_default_attrs,
-#else
 	.dev_attrs		= scst_devt_default_attrs,
-#endif
 #endif
 };
 
@@ -1557,25 +1432,13 @@ int __scst_register_dev_driver(struct scst_dev_type *dev_type,
 		goto out_unlock;
 
 	dev_type->devt_dev.class = &scst_devt_class;
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
-	dev_type->devt_dev.dev = NULL;
-#else
 	dev_type->devt_dev.parent = NULL;
-#endif
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
-	snprintf(dev_type->devt_dev.class_id, BUS_ID_SIZE, "%s",
-		 dev_type->name);
-#elif LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 30)
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 30)
 	snprintf(dev_type->devt_dev.bus_id, BUS_ID_SIZE, "%s", dev_type->name);
 #else
 	dev_set_name(&dev_type->devt_dev, "%s", dev_type->name);
 #endif
-
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
-	res = class_device_register(&dev_type->devt_dev);
-#else
 	res = device_register(&dev_type->devt_dev);
-#endif
 	if (res)
 		goto out_unlock;
 
@@ -1617,11 +1480,7 @@ out:
 	return res;
 
 out_unregister:
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
-	class_device_unregister(&dev_type->devt_dev);
-#else
 	device_unregister(&dev_type->devt_dev);
-#endif
 
 out_unlock:
 	mutex_unlock(&scst_mutex);
@@ -1672,11 +1531,7 @@ void scst_unregister_dev_driver(struct scst_dev_type *dev_type)
 	scst_devt_sysfs_del(dev_type);
 #endif
 
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
-	class_device_unregister(&dev_type->devt_dev);
-#else
 	device_unregister(&dev_type->devt_dev);
-#endif
 
 	mutex_unlock(&scst_mutex);
 	scst_resume_activity();
@@ -1731,27 +1586,14 @@ int __scst_register_virtual_dev_driver(struct scst_dev_type *dev_type,
 	mutex_lock(&scst_mutex);
 
 	dev_type->devt_dev.class = &scst_devt_class;
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
-	dev_type->devt_dev.dev = dev_type->parent
-		? scst_sysfs_get_devt_dev(dev_type->parent)->dev : NULL;
-#else
 	dev_type->devt_dev.parent = dev_type->parent
 		? scst_sysfs_get_devt_dev(dev_type->parent) : NULL;
-#endif
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
-	snprintf(dev_type->devt_dev.class_id, BUS_ID_SIZE, "%s",
-		 dev_type->name);
-#elif LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 30)
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 30)
 	snprintf(dev_type->devt_dev.bus_id, BUS_ID_SIZE, "%s", dev_type->name);
 #else
 	dev_set_name(&dev_type->devt_dev, "%s", dev_type->name);
 #endif
-
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
-	res = class_device_register(&dev_type->devt_dev);
-#else
 	res = device_register(&dev_type->devt_dev);
-#endif
 	if (res)
 		goto out_unlock;
 
@@ -1786,11 +1628,7 @@ out:
 	TRACE_EXIT_RES(res);
 	return res;
 out_unregister:
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
-	class_device_unregister(&dev_type->devt_dev);
-#else
 	device_unregister(&dev_type->devt_dev);
-#endif
 out_unlock:
 	mutex_unlock(&scst_mutex);
 	goto out;
@@ -1806,11 +1644,7 @@ void scst_unregister_virtual_dev_driver(struct scst_dev_type *dev_type)
 
 	mutex_lock(&scst_mutex);
 
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
-	class_device_unregister(&dev_type->devt_dev);
-#else
 	device_unregister(&dev_type->devt_dev);
-#endif
 
 	/* Disable sysfs mgmt calls (e.g. addition of new devices) */
 	list_del(&dev_type->dev_type_list_entry);
@@ -2308,22 +2142,14 @@ unsigned int scst_get_setup_id(void)
 EXPORT_SYMBOL_GPL(scst_get_setup_id);
 #endif
 
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
-static int scst_add(struct class_device *cdev, struct class_interface *intf)
-#else
 static int scst_add(struct device *cdev, struct class_interface *intf)
-#endif
 {
 	struct scsi_device *scsidp;
 	int res = 0;
 
 	TRACE_ENTRY();
 
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
-	scsidp = to_scsi_device(cdev->dev);
-#else
 	scsidp = to_scsi_device(cdev->parent);
-#endif
 
 	if ((scsidp->host->hostt->name == NULL) ||
 	    (strcmp(scsidp->host->hostt->name, SCST_LOCAL_NAME) != 0))
@@ -2333,21 +2159,13 @@ static int scst_add(struct device *cdev, struct class_interface *intf)
 	return res;
 }
 
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
-static void scst_remove(struct class_device *cdev, struct class_interface *intf)
-#else
 static void scst_remove(struct device *cdev, struct class_interface *intf)
-#endif
 {
 	struct scsi_device *scsidp;
 
 	TRACE_ENTRY();
 
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
-	scsidp = to_scsi_device(cdev->dev);
-#else
 	scsidp = to_scsi_device(cdev->parent);
-#endif
 
 	if ((scsidp->host->hostt->name == NULL) ||
 	    (strcmp(scsidp->host->hostt->name, SCST_LOCAL_NAME) != 0))
@@ -2357,17 +2175,10 @@ static void scst_remove(struct device *cdev, struct class_interface *intf)
 	return;
 }
 
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
-static struct class_interface scst_interface = {
-	.add = scst_add,
-	.remove = scst_remove,
-};
-#else
 static struct class_interface scst_interface = {
 	.add_dev = scst_add,
 	.remove_dev = scst_remove,
 };
-#endif
 
 static void __init scst_print_config(void)
 {
@@ -2570,19 +2381,9 @@ static int __init init_scst(void)
 	if (res)
 		goto out_destroy_aen_mempool;
 
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
-	res = class_register(&scst_tgt_class);
-	if (res)
-		goto out_unregister_tgtt_class;
-#endif
-
 	res = class_register(&scst_devt_class);
 	if (res)
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
-		goto out_unregister_tgt_class;
-#else
 		goto out_unregister_tgtt_class;
-#endif
 
 	res = class_register(&scst_dev_class);
 	if (res)
@@ -2690,11 +2491,6 @@ out_unregister_dev_class:
 out_unregister_devt_class:
 	class_unregister(&scst_devt_class);
 
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
-out_unregister_tgt_class:
-	class_unregister(&scst_tgt_class);
-#endif
-
 out_unregister_tgtt_class:
 	class_unregister(&scst_tgtt_class);
 
@@ -2771,9 +2567,6 @@ static void __exit exit_scst(void)
 
 	class_unregister(&scst_dev_class);
 	class_unregister(&scst_devt_class);
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
-	class_unregister(&scst_tgt_class);
-#endif
 	class_unregister(&scst_tgtt_class);
 
 	scst_sysfs_cleanup();

@@ -2801,13 +2801,8 @@ out:
 
 #ifndef CONFIG_SCST_PROC
 
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
-static ssize_t dev_user_sysfs_commands_show(struct class_device *device,
-					    char *buf)
-#else
 static ssize_t dev_user_sysfs_commands_show(struct device *device,
 				struct device_attribute *attr, char *buf)
-#endif
 {
 	int pos = 0, ppos, i;
 	struct scst_device *dev;
@@ -2848,18 +2843,10 @@ static ssize_t dev_user_sysfs_commands_show(struct device *device,
 	return pos;
 }
 
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
-static struct class_device_attribute dev_user_commands_attr =
-#else
 static struct device_attribute dev_user_commands_attr =
-#endif
 	__ATTR(commands, S_IRUGO, dev_user_sysfs_commands_show, NULL);
 
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
-static const struct class_device_attribute *dev_user_dev_attrs[] = {
-#else
 static const struct device_attribute *dev_user_dev_attrs[] = {
-#endif
 	&dev_user_commands_attr,
 	NULL,
 };

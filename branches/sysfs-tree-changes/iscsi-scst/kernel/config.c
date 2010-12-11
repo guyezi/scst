@@ -237,12 +237,8 @@ err:
 /* Protected by target_mgmt_mutex */
 static LIST_HEAD(iscsi_attrs_list);
 
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
-static ssize_t iscsi_version_show(struct class_device *dev, char *buf)
-#else
 static ssize_t iscsi_version_show(struct device *dev,
 	struct device_attribute *attr, char *buf)
-#endif
 {
 	TRACE_ENTRY();
 
@@ -268,19 +264,11 @@ static ssize_t iscsi_version_show(struct device *dev,
 	return strlen(buf);
 }
 
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
-static struct class_device_attribute iscsi_version_attr =
-#else
 static struct device_attribute iscsi_version_attr =
-#endif
 	__ATTR(version, S_IRUGO, iscsi_version_show, NULL);
 
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
-static ssize_t iscsi_open_state_show(struct class_device *dev, char *buf)
-#else
 static ssize_t iscsi_open_state_show(struct device *dev,
 				     struct device_attribute *attr, char *buf)
-#endif
 {
 	switch (ctr_open_state) {
 	case ISCSI_CTR_OPEN_STATE_CLOSED:
@@ -300,18 +288,10 @@ static ssize_t iscsi_open_state_show(struct device *dev,
 	return strlen(buf);
 }
 
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
-static struct class_device_attribute iscsi_open_state_attr =
-#else
 static struct device_attribute iscsi_open_state_attr =
-#endif
 	__ATTR(open_state, S_IRUGO, iscsi_open_state_show, NULL);
 
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
-const struct class_device_attribute *iscsi_attrs[] = {
-#else
 const struct device_attribute *iscsi_attrs[] = {
-#endif
 	&iscsi_version_attr,
 	&iscsi_open_state_attr,
 	NULL,

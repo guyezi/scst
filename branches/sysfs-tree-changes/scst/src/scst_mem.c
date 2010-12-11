@@ -1664,11 +1664,7 @@ struct sgv_pool *sgv_pool_create(const char *name,
 		goto out_unlock;
 	}
 
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
-	kobject_init2(&pool->sgv_kobj, &pool_ktype);
-#else
 	kobject_init(&pool->sgv_kobj, &pool_ktype);
-#endif
 
 	rc = sgv_pool_init(pool, name, clustering_type, single_alloc_pages,
 				purge_interval);
@@ -2075,11 +2071,7 @@ static int scst_sgv_sysfs_create(struct sgv_pool *pool, struct kobject *parent)
 
 	TRACE_ENTRY();
 
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
-	res = kobject_add2(&pool->sgv_kobj, parent, pool->name);
-#else
 	res = kobject_add(&pool->sgv_kobj, parent, pool->name);
-#endif
 	if (res) {
 		PRINT_ERROR("Can't add sgv pool %s to sysfs", pool->name);
 		goto out;
@@ -2133,11 +2125,7 @@ int scst_add_sgv_kobj(struct kobject *parent, const char *name)
 	scst_sgv_kobj = kzalloc(sizeof(*scst_sgv_kobj), GFP_KERNEL);
 	if (!scst_sgv_kobj)
 		goto out;
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 26)
-	res = kobject_init_and_add2(scst_sgv_kobj, &sgv_ktype, parent, name);
-#else
 	res = kobject_init_and_add(scst_sgv_kobj, &sgv_ktype, parent, name);
-#endif
 	if (res)
 		goto out_free;
 out:
