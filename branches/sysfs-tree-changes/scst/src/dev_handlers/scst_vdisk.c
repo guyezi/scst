@@ -365,7 +365,11 @@ static struct device_attribute vdev_usn_attr =
 static struct device_attribute vcdrom_filename_attr =
 	__ATTR(filename, S_IRUGO, vdev_sysfs_filename_show, NULL);
 
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 34)
+static struct device_attribute *vdisk_fileio_attrs[] = {
+#else
 static const struct device_attribute *vdisk_fileio_attrs[] = {
+#endif
 	&vdev_size_attr,
 	&vdisk_blocksize_attr,
 	&vdisk_rd_only_attr,
@@ -381,7 +385,11 @@ static const struct device_attribute *vdisk_fileio_attrs[] = {
 	NULL,
 };
 
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 34)
+static struct device_attribute *vdisk_blockio_attrs[] = {
+#else
 static const struct device_attribute *vdisk_blockio_attrs[] = {
+#endif
 	&vdev_size_attr,
 	&vdisk_blocksize_attr,
 	&vdisk_rd_only_attr,
@@ -395,7 +403,11 @@ static const struct device_attribute *vdisk_blockio_attrs[] = {
 	NULL,
 };
 
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 34)
 static const struct device_attribute *vdisk_nullio_attrs[] = {
+#else
+static const struct device_attribute *vdisk_nullio_attrs[] = {
+#endif
 	&vdev_size_attr,
 	&vdisk_blocksize_attr,
 	&vdisk_rd_only_attr,
@@ -405,7 +417,11 @@ static const struct device_attribute *vdisk_nullio_attrs[] = {
 	NULL,
 };
 
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 34)
+static struct device_attribute *vcdrom_attrs[] = {
+#else
 static const struct device_attribute *vcdrom_attrs[] = {
+#endif
 	&vdev_size_attr,
 	&vcdrom_filename_attr,
 	&vdev_t10_dev_id_attr,

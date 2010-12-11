@@ -3372,7 +3372,11 @@ static ssize_t show_login_info(struct device *dev,
 static struct device_attribute srpt_show_login_info_attr =
 	__ATTR(login_info, S_IRUGO, show_login_info, NULL);
 
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 34)
+static struct device_attribute *srpt_tgt_attrs[] = {
+#else
 static const struct device_attribute *srpt_tgt_attrs[] = {
+#endif
 	&srpt_show_login_info_attr,
 	NULL
 };

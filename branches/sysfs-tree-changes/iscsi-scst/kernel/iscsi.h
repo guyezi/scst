@@ -580,7 +580,11 @@ extern void req_add_to_write_timeout_list(struct iscsi_cmnd *req);
 #ifdef CONFIG_SCST_PROC
 extern const struct seq_operations iscsi_seq_op;
 #else
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 34)
+extern struct device_attribute *iscsi_tgt_attrs[];
+#else
 extern const struct device_attribute *iscsi_tgt_attrs[];
+#endif
 extern int iscsi_enable_target(struct scst_tgt *scst_tgt, bool enable);
 extern bool iscsi_is_target_enabled(struct scst_tgt *scst_tgt);
 extern ssize_t iscsi_sysfs_send_event(uint32_t tid,

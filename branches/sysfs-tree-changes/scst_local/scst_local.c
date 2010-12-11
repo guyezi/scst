@@ -516,7 +516,11 @@ static struct device_attribute scst_local_phys_transport_version_attr =
 		scst_local_phys_transport_version_show,
 		scst_local_phys_transport_version_store);
 
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 34)
+static struct device_attribute *scst_local_tgt_attrs[] = {
+#else
 static const struct device_attribute *scst_local_tgt_attrs[] = {
+#endif
 	&scst_local_scsi_transport_version_attr,
 	&scst_local_phys_transport_version_attr,
 	NULL,

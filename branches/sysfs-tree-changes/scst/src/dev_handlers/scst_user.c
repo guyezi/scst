@@ -2846,7 +2846,11 @@ static ssize_t dev_user_sysfs_commands_show(struct device *device,
 static struct device_attribute dev_user_commands_attr =
 	__ATTR(commands, S_IRUGO, dev_user_sysfs_commands_show, NULL);
 
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 34)
+static struct device_attribute *dev_user_dev_attrs[] = {
+#else
 static const struct device_attribute *dev_user_dev_attrs[] = {
+#endif
 	&dev_user_commands_attr,
 	NULL,
 };

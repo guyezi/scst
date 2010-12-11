@@ -471,7 +471,11 @@ static ssize_t iscsi_tgt_tid_show(struct device *dev,
 static struct device_attribute iscsi_tgt_attr_tid =
 	__ATTR(tid, S_IRUGO, iscsi_tgt_tid_show, NULL);
 
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 34)
+struct device_attribute *iscsi_tgt_attrs[] = {
+#else
 const struct device_attribute *iscsi_tgt_attrs[] = {
+#endif
 	&iscsi_tgt_attr_tid,
 	NULL,
 };

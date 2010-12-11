@@ -161,7 +161,11 @@ static void sysfs_remove_files(struct kobject *kobj,
 #endif
 
 static int device_create_files(struct device *dev,
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 34)
+			       struct device_attribute **ptr)
+#else
 			       const struct device_attribute **ptr)
+#endif
 {
 	int err = 0;
 	int i;
@@ -175,7 +179,11 @@ static int device_create_files(struct device *dev,
 }
 
 static void device_remove_files(struct device *dev,
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 34)
+				struct device_attribute **ptr)
+#else
 				const struct device_attribute **ptr)
+#endif
 {
 	int i;
 
@@ -1006,7 +1014,11 @@ static struct device_attribute scst_rel_tgt_id =
 	__ATTR(rel_tgt_id, S_IRUGO | S_IWUSR, scst_rel_tgt_id_show,
 	       scst_rel_tgt_id_store);
 
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 34)
+static struct device_attribute *scst_tgt_attr[] = {
+#else
 static const struct device_attribute *scst_tgt_attr[] = {
+#endif
 	&scst_rel_tgt_id,
 	&scst_tgt_addr_method,
 	&scst_tgt_io_grouping_type,
@@ -1541,7 +1553,11 @@ static struct device_attribute dev_threads_pool_type_attr =
 	__ATTR(threads_pool_type, S_IRUGO,
 	       scst_dev_sysfs_threads_pool_type_show, NULL);
 
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 34)
+static struct device_attribute *dev_thread_attr[] = {
+#else
 static const struct device_attribute *dev_thread_attr[] = {
+#endif
 	&dev_threads_num_attr,
 	&dev_threads_pool_type_attr,
 	NULL
@@ -4234,7 +4250,11 @@ static struct device_attribute scst_main_trace_level_attr =
 static struct device_attribute scst_version_attr =
 	__ATTR(version, S_IRUGO, scst_version_show, NULL);
 
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 34)
+static struct device_attribute *scst_default_attr[] = {
+#else
 static const struct device_attribute *scst_default_attr[] = {
+#endif
 	&scst_mgmt_attr,
 	&scst_threads_attr,
 	&scst_setup_id_attr,
