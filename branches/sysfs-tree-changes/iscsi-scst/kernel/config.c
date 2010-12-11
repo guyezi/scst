@@ -753,7 +753,7 @@ static driver_show_method get_show_method(const char *name)
 	else if (strcmp(name, "version") == 0)
 		return iscsi_tgtt_version_show;
 	else
-		return (driver_show_method)0;
+		return NULL;
 }
 
 typedef ssize_t (*driver_store_method)(struct device_driver *driver, const char *buf, size_t count);
@@ -770,7 +770,7 @@ static driver_store_method get_store_method(const char *name)
 	else if (strcmp(name, "version") == 0)
 		return iscsi_tgtt_version_store;
 	else
-		return (driver_store_method)0;
+		return NULL;
 }
 
 /*
