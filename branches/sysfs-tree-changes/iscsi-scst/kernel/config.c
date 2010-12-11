@@ -772,7 +772,7 @@ static driver_store_method get_store_method(const char *name)
 	else
 		return (driver_store_method)0;
 }
-		
+
 /*
  * target_mgmt_mutex supposed to be locked.
  */

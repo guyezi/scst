@@ -446,7 +446,7 @@ static struct kmem_cache *vdisk_thr_cachep;
  */
 
 #ifndef CONFIG_SCST_PROC
-static const char* vdisk_fileio_add_device_parameters[] = {
+static const char *vdisk_fileio_add_device_parameters[] = {
 	"filename", "blocksize", "write_through", "nv_cache", "o_direct",
 	"read_only", "removable", "thin_provisioned", NULL
 };
@@ -488,7 +488,7 @@ static struct scst_dev_type vdisk_file_devtype = {
 static struct kmem_cache *blockio_work_cachep;
 
 #ifndef CONFIG_SCST_PROC
-static const char* vdisk_blockio_add_device_parameters[] = {
+static const char *vdisk_blockio_add_device_parameters[] = {
 	"filename", "blocksize", "nv_cache", "read_only", "removable",
 	"thin_provisioned", NULL
 };
@@ -527,7 +527,7 @@ static struct scst_dev_type vdisk_blk_devtype = {
 };
 
 #ifndef CONFIG_SCST_PROC
-static const char* vdisk_nullio_add_device_parameters[] = {
+static const char *vdisk_nullio_add_device_parameters[] = {
 	"blocksize", "read_only", "removable", NULL
 };
 #endif
