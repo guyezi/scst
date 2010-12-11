@@ -289,7 +289,11 @@ static ssize_t iscsi_open_state_show(struct device_driver *drv, char *buf)
 static struct driver_attribute iscsi_open_state_attr =
 	__ATTR(open_state, S_IRUGO, iscsi_open_state_show, NULL);
 
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 34)
+struct driver_attribute *iscsi_attrs[] = {
+#else
 const struct driver_attribute *iscsi_attrs[] = {
+#endif
 	&iscsi_version_attr,
 	&iscsi_open_state_attr,
 	NULL,

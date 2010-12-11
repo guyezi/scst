@@ -376,7 +376,11 @@ static ssize_t scst_local_stats_show(struct device_driver *drv, char *buf)
 static struct driver_attribute scst_local_stats_attr =
 	__ATTR(stats, S_IRUGO, scst_local_stats_show, NULL);
 
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 34)
+static struct driver_attribute *scst_local_tgtt_attrs[] = {
+#else
 static const struct driver_attribute *scst_local_tgtt_attrs[] = {
+#endif
 	&scst_local_version_attr,
 	&scst_local_stats_attr,
 	NULL,

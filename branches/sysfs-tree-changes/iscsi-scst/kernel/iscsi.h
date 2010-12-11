@@ -607,7 +607,11 @@ extern void target_del_all(void);
 extern int iscsi_procfs_init(void);
 extern void iscsi_procfs_exit(void);
 #else
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 34)
+extern struct driver_attribute *iscsi_attrs[];
+#else
 extern const struct driver_attribute *iscsi_attrs[];
+#endif
 extern int iscsi_tgtt_add_attr(const struct iscsi_kern_attr *attr_info);
 extern int iscsi_tgtt_del_attr(const char *name);
 extern int iscsi_tgt_add_attr(struct iscsi_target *target,

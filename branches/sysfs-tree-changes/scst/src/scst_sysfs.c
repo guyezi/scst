@@ -192,7 +192,11 @@ static void device_remove_files(struct device *dev,
 }
 
 static int driver_create_files(struct device_driver *drv,
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 34)
+			       struct driver_attribute **ptr)
+#else
 			       const struct driver_attribute **ptr)
+#endif
 {
 	int err = 0;
 	int i;
