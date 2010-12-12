@@ -3545,7 +3545,7 @@ static ssize_t scst_mgmt_show(struct device *device,
 	ssize_t count;
 	static const char help[] =
 /* devices/<dev>/filename */
-"in target_device/<dev> <dev_cmd>\n"
+"in device/<dev> <dev_cmd>\n"
 /* scst_devt_mgmt or scst_devt_pass_through_mgmt */
 "in device_driver/<devt> <devt_cmd>\n"
 /* scst_tgtt_mgmt */
@@ -3676,7 +3676,7 @@ static enum mgmt_path_type __parse_path(char *path,
 
 	if (!comp[0] || !comp[1])
 		goto err;
-	if (strcmp(comp[0], "target_device") == 0) {
+	if (strcmp(comp[0], "device") == 0) {
 		*dev = __scst_lookup_dev(comp[1]);
 		if (!*dev)
 			goto err;
