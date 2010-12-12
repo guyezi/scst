@@ -1577,9 +1577,9 @@ static struct device_attribute scst_dev_sysfs_type_attr =
 	__ATTR(type, S_IRUGO, scst_dev_sysfs_type_show, NULL);
 
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 34)
-static const struct device_attribute *scst_dev_attrs[] = {
+static const struct device_attribute *scst_devt_dev_attrs[] = {
 #else
-static struct device_attribute *scst_dev_attrs[] = {
+static struct device_attribute *scst_devt_dev_attrs[] = {
 #endif
 	&scst_dev_sysfs_type_attr,
 	NULL
@@ -1634,9 +1634,13 @@ int scst_devt_dev_sysfs_create(struct scst_device *dev)
 	if (res)
 		goto out_err;
 
-	res = device_create_files(scst_sysfs_get_dev_dev(dev), scst_dev_attrs);
-	if (res)
+	res = device_create_files(scst_sysfs_get_dev_dev(dev),
+				  scst_devt_dev_attrs);
+	if (res) {
+		PRINT_ERROR("Registering attributes for dev %s failed",
+			    dev->virt_name);
 		goto out_err;
+	}
 
 	if (dev->handler->threads_num >= 0) {
 		res = device_create_files(scst_sysfs_get_dev_dev(dev),
@@ -1706,7 +1710,7 @@ static ssize_t scst_dev_exported_show(struct device *device,
 	scsidp = dev->scsi_dev;
 	if (!scsidp)
 		goto out;
-	res = scnprintf(buf, PAGE_SIZE, "%d:%d:%d:%d",
+	res = scnprintf(buf, PAGE_SIZE, "%d:%d:%d:%d\n",
 			scsidp->host->host_no, scsidp->channel, scsidp->id,
 			scsidp->lun);
 out:
@@ -1715,6 +1719,15 @@ out:
 
 static struct device_attribute scst_dev_exported_attr =
 	__ATTR(exported, S_IRUGO, scst_dev_exported_show, NULL);
+
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 34)
+static const struct device_attribute *scst_dev_attrs[] = {
+#else
+static struct device_attribute *scst_dev_attrs[] = {
+#endif
+	&scst_dev_exported_attr,
+	NULL
+};
 
 int scst_dev_sysfs_init(struct scst_device *dev)
 {
@@ -1727,10 +1740,12 @@ int scst_dev_sysfs_create(struct scst_device *dev)
 
 	TRACE_ENTRY();
 
-	res = device_create_file(scst_sysfs_get_dev_dev(dev),
-				 &scst_dev_exported_attr);
-	if (res)
+	res = device_create_files(scst_sysfs_get_dev_dev(dev), scst_dev_attrs);
+	if (res) {
+		PRINT_ERROR("Registering attributes for dev %s failed",
+			    dev->virt_name);
 		goto out_del;
+	}
 
 #if defined(CONFIG_SCST_DEBUG) || defined(CONFIG_SCST_TRACING)
 	if (!dev->scsi_dev) {
@@ -1757,6 +1772,10 @@ out_del:
 void scst_dev_sysfs_del(struct scst_device *dev)
 {
 	TRACE_ENTRY();
+#if defined(CONFIG_SCST_DEBUG) || defined(CONFIG_SCST_TRACING)
+	device_remove_file(scst_sysfs_get_dev_dev(dev), &dev_dump_prs_attr);
+#endif
+	device_remove_files(scst_sysfs_get_dev_dev(dev), scst_dev_attrs);
 	TRACE_EXIT();
 }
 
