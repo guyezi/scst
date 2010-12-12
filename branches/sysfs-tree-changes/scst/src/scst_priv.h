@@ -462,8 +462,6 @@ extern const struct sysfs_ops scst_sysfs_ops;
 #else
 extern struct sysfs_ops scst_sysfs_ops;
 #endif
-extern struct device_attribute scst_devt_default_attrs[];
-extern struct device_attribute scst_dev_attrs[];
 extern struct attribute *scst_session_attrs[];
 extern struct attribute *scst_tgt_dev_attrs[];
 extern struct attribute *scst_lun_attrs[];
@@ -485,6 +483,7 @@ void scst_del_put_sgv_kobj(void);
 int scst_devt_sysfs_create(struct scst_dev_type *devt);
 void scst_devt_sysfs_del(struct scst_dev_type *devt);
 void scst_devt_sysfs_put(struct scst_dev_type *devt);
+int scst_devt_dev_sysfs_init(struct scst_device *dev);
 int scst_devt_dev_sysfs_create(struct scst_device *dev);
 void scst_devt_dev_sysfs_del(struct scst_device *dev);
 void scst_devt_dev_sysfs_put(struct scst_device *dev);

@@ -63,8 +63,8 @@ enum mgmt_path_type {
 	ACG_INITIATOR_GROUPS_PATH,
 };
 
-static struct device *scst_device;
 static struct bus_type scst_target_bus;
+static struct bus_type scst_device_bus;
 
 static const char *scst_dev_handler_types[] = {
 	"Direct-access device (e.g., magnetic disk)",
@@ -1241,9 +1241,9 @@ int scst_tgt_sysfs_create(struct scst_tgt *tgt)
 
 	TRACE_ENTRY();
 
+	tgt->tgt_dev.bus     = &scst_target_bus;
 	tgt->tgt_dev.release = scst_release_target;
-	tgt->tgt_dev.bus = &scst_target_bus;
-	tgt->tgt_dev.driver = &tgt->tgtt->tgtt_drv;
+	tgt->tgt_dev.driver  = &tgt->tgtt->tgtt_drv;
 #if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 30)
 	snprintf(tgt->tgt_dev.bus_id, BUS_ID_SIZE, "%s", tgt->tgt_name);
 #else
@@ -1569,9 +1569,20 @@ static const struct device_attribute *dev_thread_attr[] = {
 	NULL
 };
 
-struct device_attribute scst_dev_attrs[] = {
-	__ATTR(type, S_IRUGO, scst_dev_sysfs_type_show, NULL),
-	__ATTR_NULL,
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 34)
+static const struct device_attribute scst_dev_sysfs_type_attr = 
+#else
+static struct device_attribute scst_dev_sysfs_type_attr = 
+#endif
+	__ATTR(type, S_IRUGO, scst_dev_sysfs_type_show, NULL);
+
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 34)
+static const struct device_attribute *scst_dev_attrs[] = {
+#else
+static struct device_attribute *scst_dev_attrs[] = {
+#endif
+	&scst_dev_sysfs_type_attr,
+	NULL
 };
 
 static void scst_release_dev(struct device *device)
@@ -1582,11 +1593,30 @@ static void scst_release_dev(struct device *device)
 	scst_free_device(dev);
 }
 
-static struct class scst_dev_class = {
-	.name			= "target_device",
-	.dev_release		= scst_release_dev,
-	.dev_attrs		= scst_dev_attrs,
-};
+int scst_devt_dev_sysfs_init(struct scst_device *dev)
+{
+	int res;
+
+	TRACE_ENTRY();
+
+	BUG_ON(!dev);
+	BUG_ON(!dev->handler);
+
+	dev->dev_dev.bus     = &scst_device_bus;
+	dev->dev_dev.release = scst_release_dev;
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 30)
+	snprintf(dev->dev_dev.bus_id, BUS_ID_SIZE, "%s", dev->virt_name);
+#else
+	dev_set_name(&dev->dev_dev, "%s", dev->virt_name);
+#endif
+	res = device_register(&dev->dev_dev);
+	if (res)
+		PRINT_ERROR("Registration of device %s failed (%d)",
+			    dev->virt_name, res);
+
+	TRACE_EXIT();
+	return res;
+}
 
 int scst_devt_dev_sysfs_create(struct scst_device *dev)
 {
@@ -1597,22 +1627,16 @@ int scst_devt_dev_sysfs_create(struct scst_device *dev)
 	if (dev->handler == &scst_null_devtype)
 		goto out;
 
-	res = sysfs_create_link(scst_sysfs_get_dev_kobj(dev),
-				scst_sysfs_get_devt_kobj(dev->handler),
-				"handler");
-	if (res) {
-		PRINT_ERROR("Can't create handler link for dev %s",
-			    dev->virt_name);
+	dev->dev_dev.driver = &dev->handler->devt_drv;
+	//device_lock(&dev->dev_dev);
+	res = device_bind_driver(&dev->dev_dev);
+	//device_unlock(&dev->dev_dev);
+	if (res)
 		goto out_err;
-	}
 
-	res = sysfs_create_link(scst_sysfs_get_devt_kobj(dev->handler),
-				scst_sysfs_get_dev_kobj(dev), dev->virt_name);
-	if (res != 0) {
-		PRINT_ERROR("Can't create handler link for dev %s",
-			    dev->virt_name);
+	res = device_create_files(scst_sysfs_get_dev_dev(dev), scst_dev_attrs);
+	if (res)
 		goto out_err;
-	}
 
 	if (dev->handler->threads_num >= 0) {
 		res = device_create_files(scst_sysfs_get_dev_dev(dev),
@@ -1654,9 +1678,10 @@ void scst_devt_dev_sysfs_del(struct scst_device *dev)
 		device_remove_files(scst_sysfs_get_dev_dev(dev),
 				    dev->handler->dev_attrs);
 	device_remove_files(scst_sysfs_get_dev_dev(dev), dev_thread_attr);
-	sysfs_remove_link(scst_sysfs_get_devt_kobj(dev->handler),
-			  dev->virt_name);
-	sysfs_remove_link(scst_sysfs_get_dev_kobj(dev), "handler");
+
+	//device_lock(&dev->dev_dev);
+	device_release_driver(&dev->dev_dev);
+	//device_unlock(&dev->dev_dev);
 
 out:
 	TRACE_EXIT();
@@ -1669,16 +1694,31 @@ void scst_devt_dev_sysfs_put(struct scst_device *dev)
 	TRACE_EXIT();
 }
 
+static ssize_t scst_dev_exported_show(struct device *device,
+				      struct device_attribute *attr, char *buf)
+{
+	struct scst_device *dev;
+	struct scsi_device *scsidp;
+	int res;
+
+	dev = scst_dev_to_dev(device);
+	res = -ENOENT;
+	scsidp = dev->scsi_dev;
+	if (!scsidp)
+		goto out;
+	res = scnprintf(buf, PAGE_SIZE, "%d:%d:%d:%d",
+			scsidp->host->host_no, scsidp->channel, scsidp->id,
+			scsidp->lun);
+out:
+	return res;
+}
+
+static struct device_attribute scst_dev_exported_attr =
+	__ATTR(exported, S_IRUGO, scst_dev_exported_show, NULL);
+
 int scst_dev_sysfs_init(struct scst_device *dev)
 {
-	dev->dev_dev.class = &scst_dev_class;
-	dev->dev_dev.parent = NULL;
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 30)
-	snprintf(dev->dev_dev.bus_id, BUS_ID_SIZE, "%s", dev->virt_name);
-#else
-	dev_set_name(&dev->dev_dev, "%s", dev->virt_name);
-#endif
-	return device_register(&dev->dev_dev);
+	return scst_devt_dev_sysfs_init(dev);
 }
 
 int scst_dev_sysfs_create(struct scst_device *dev)
@@ -1687,33 +1727,19 @@ int scst_dev_sysfs_create(struct scst_device *dev)
 
 	TRACE_ENTRY();
 
-	dev->dev_exp_kobj = kobject_create_and_add("exported",
-						scst_sysfs_get_dev_kobj(dev));
-	if (dev->dev_exp_kobj == NULL) {
-		PRINT_ERROR("Can't create exported link for device %s",
-			dev->virt_name);
-		res = -ENOMEM;
+	res = device_create_file(scst_sysfs_get_dev_dev(dev),
+				 &scst_dev_exported_attr);
+	if (res)
 		goto out_del;
-	}
-
-	if (dev->scsi_dev != NULL) {
-		res = sysfs_create_link(scst_sysfs_get_dev_kobj(dev),
-					&dev->scsi_dev->sdev_dev.kobj,
-					"scsi_device");
-		if (res != 0) {
-			PRINT_ERROR("Can't create scsi_device link for dev %s",
-				dev->virt_name);
-			goto out_del;
-		}
-	}
 
 #if defined(CONFIG_SCST_DEBUG) || defined(CONFIG_SCST_TRACING)
-	if (dev->scsi_dev == NULL) {
-		res = sysfs_create_file(scst_sysfs_get_dev_kobj(dev),
-				&dev_dump_prs_attr.attr);
-		if (res != 0) {
+	if (!dev->scsi_dev) {
+		res = device_create_file(scst_sysfs_get_dev_dev(dev),
+					 &dev_dump_prs_attr);
+		if (res) {
 			PRINT_ERROR("Can't create attr %s for dev %s",
-				dev_dump_prs_attr.attr.name, dev->virt_name);
+				    dev_dump_prs_attr.attr.name,
+				    dev->virt_name);
 			goto out_del;
 		}
 	}
@@ -1731,7 +1757,6 @@ out_del:
 void scst_dev_sysfs_del(struct scst_device *dev)
 {
 	TRACE_ENTRY();
-	kobject_del(dev->dev_exp_kobj);
 	TRACE_EXIT();
 }
 
@@ -2333,9 +2358,11 @@ void scst_acg_dev_sysfs_del(struct scst_acg_dev *acg_dev)
 
 	BUG_ON(!acg_dev->dev);
 
+#if 0
 	sysfs_remove_link(acg_dev->dev->dev_exp_kobj,
 			  acg_dev->acg_dev_link_name);
 	kobject_put(scst_sysfs_get_dev_kobj(acg_dev->dev));
+#endif
 
 	kobject_del(&acg_dev->acg_dev_kobj);
 
@@ -2361,6 +2388,7 @@ int scst_acg_dev_sysfs_create(struct scst_acg_dev *acg_dev,
 		goto out;
 	}
 
+#if 0
 	kobject_get(scst_sysfs_get_dev_kobj(acg_dev->dev));
 
 	snprintf(acg_dev->acg_dev_link_name, sizeof(acg_dev->acg_dev_link_name),
@@ -2373,6 +2401,7 @@ int scst_acg_dev_sysfs_create(struct scst_acg_dev *acg_dev,
 			acg_dev->acg->acg_name);
 		goto out_del;
 	}
+#endif
 
 	res = sysfs_create_link(&acg_dev->acg_dev_kobj,
 			scst_sysfs_get_dev_kobj(acg_dev->dev), "device");
@@ -3098,27 +3127,26 @@ out:
 
 #if defined(CONFIG_SCST_DEBUG) || defined(CONFIG_SCST_TRACING)
 
-static ssize_t scst_devt_trace_level_show(struct device *device,
-	struct device_attribute *attr, char *buf)
+static ssize_t scst_devt_trace_level_show(struct device_driver *drv, char *buf)
 {
 	struct scst_dev_type *devt;
 
-	devt = scst_dev_to_devt(device);
+	devt = scst_drv_to_devt(drv);
 
 	return scst_trace_level_show(devt->trace_tbl,
 		devt->trace_flags ? *devt->trace_flags : 0, buf,
 		devt->trace_tbl_help);
 }
 
-static ssize_t scst_devt_trace_level_store(struct device *device,
-	struct device_attribute *attr, const char *buf, size_t count)
+static ssize_t scst_devt_trace_level_store(struct device_driver *drv,
+					   const char *buf, size_t count)
 {
 	int res;
 	struct scst_dev_type *devt;
 
 	TRACE_ENTRY();
 
-	devt = scst_dev_to_devt(device);
+	devt = scst_drv_to_devt(drv);
 
 	res = mutex_lock_interruptible(&scst_log_mutex);
 	if (res)
@@ -3134,19 +3162,18 @@ out:
 	return res;
 }
 
-static struct device_attribute devt_trace_attr =
+static struct driver_attribute devt_trace_attr =
 	__ATTR(trace_level, S_IRUGO | S_IWUSR,
 	       scst_devt_trace_level_show, scst_devt_trace_level_store);
 
 #endif /* #if defined(CONFIG_SCST_DEBUG) || defined(CONFIG_SCST_TRACING) */
 
-static ssize_t scst_devt_type_show(struct device *device,
-	struct device_attribute *attr, char *buf)
+static ssize_t scst_devt_type_show(struct device_driver *drv, char *buf)
 {
 	int pos;
 	struct scst_dev_type *devt;
 
-	devt = scst_dev_to_devt(device);
+	devt = scst_drv_to_devt(drv);
 
 	pos = sprintf(buf, "%d - %s\n", devt->type,
 		(unsigned)devt->type > ARRAY_SIZE(scst_dev_handler_types) ?
@@ -3155,64 +3182,75 @@ static ssize_t scst_devt_type_show(struct device *device,
 	return pos;
 }
 
-struct device_attribute scst_devt_default_attrs[] = {
-	__ATTR(type, S_IRUGO, scst_devt_type_show, NULL),
-	__ATTR_NULL
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 34)
+static const struct driver_attribute scst_devt_type_show_attr =
+#else
+static struct driver_attribute scst_devt_type_show_attr =
+#endif
+	__ATTR(type, S_IRUGO, scst_devt_type_show, NULL);
+
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 34)
+static const struct driver_attribute *scst_devt_default_attrs[] = {
+#else
+static struct driver_attribute *scst_devt_default_attrs[] = {
+#endif
+	&scst_devt_type_show_attr,
+	NULL
 };
 
-static ssize_t scst_devt_add_device_parameters_show(struct device *device,
-				struct device_attribute *attr, char *buf)
+static ssize_t scst_devt_add_device_parameters_show(struct device_driver *drv,
+						    char *buf)
 {
 	struct scst_dev_type *devt;
 	const char *const *p;
 	ssize_t res;
 
-	devt = scst_dev_to_devt(device);
+	devt = scst_drv_to_devt(drv);
 	res = 0;
 	for (p = devt->add_device_parameters; p && *p; p++)
 		res += scnprintf(buf + res, PAGE_SIZE - res, "%s\n", *p);
 	return res;
 }
 
-static struct device_attribute scst_devt_add_device_parameters_attr =
+static struct driver_attribute scst_devt_add_device_parameters_attr =
 	__ATTR(add_device_parameters, S_IRUGO,
 	       scst_devt_add_device_parameters_show, NULL);
 
-static ssize_t scst_devt_devt_attributes_show(struct device *device,
-				struct device_attribute *attr, char *buf)
+static ssize_t scst_devt_devt_attributes_show(struct device_driver *drv,
+					      char *buf)
 {
 	struct scst_dev_type *devt;
 	const char *const *p;
 	ssize_t res;
 
-	devt = scst_dev_to_devt(device);
+	devt = scst_drv_to_devt(drv);
 	res = 0;
 	for (p = devt->devt_optional_attributes; p && *p; p++)
 		res += scnprintf(buf + res, PAGE_SIZE - res, "%s\n", *p);
 	return res;
 }
 
-static struct device_attribute scst_devt_devt_attributes_attr =
+static struct driver_attribute scst_devt_devt_attributes_attr =
 	__ATTR(driver_attributes, S_IRUGO,
 	       scst_devt_devt_attributes_show, NULL);
 
-static ssize_t scst_devt_dev_attributes_show(struct device *device,
-				struct device_attribute *attr, char *buf)
+static ssize_t scst_devt_drv_attributes_show(struct device_driver *drv,
+					     char *buf)
 {
 	struct scst_dev_type *devt;
 	const char *const *p;
 	ssize_t res;
 
-	devt = scst_dev_to_devt(device);
+	devt = scst_drv_to_devt(drv);
 	res = 0;
 	for (p = devt->dev_optional_attributes; p && *p; p++)
 		res += scnprintf(buf + res, PAGE_SIZE - res, "%s\n", *p);
 	return res;
 }
 
-static struct device_attribute scst_devt_dev_attributes_attr =
+static struct driver_attribute scst_devt_drv_attributes_attr =
 	__ATTR(device_attributes, S_IRUGO,
-	       scst_devt_dev_attributes_show, NULL);
+	       scst_devt_drv_attributes_show, NULL);
 
 static int scst_process_dev_mgmt_store(char *cmd, struct scst_device *dev)
 {
@@ -3427,18 +3465,31 @@ out_syntax_err:
 	goto out;
 }
 
-static void scst_release_devt(struct device *dev)
+static int scst_device_bus_match(struct device *d, struct device_driver *drv)
 {
-	/*
-	 * Since device type objects reside in a data segment, no memory
-	 * has to be deallocated here.
-	 */
+	struct scst_device *dev = scst_dev_to_dev(d);
+	struct scst_dev_type *devt = scst_drv_to_devt(drv);
+	int res;
+
+	TRACE_ENTRY();
+
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 29)
+	lockdep_assert_held(&scst_mutex);
+#endif
+
+	res = __scst_lookup_devt(drv->name) == devt
+		&& __scst_lookup_dev(dev_name(d)) == dev
+		&& dev->handler == devt;
+
+	TRACE_DBG("%s(%s, %s): %d", __func__, drv->name, dev_name(d), res);
+
+	TRACE_EXIT_RES(res);
+	return res;
 }
 
-static struct class scst_devt_class = {
-	.name			= "device_driver",
-	.dev_release		= scst_release_devt,
-	.dev_attrs		= scst_devt_default_attrs,
+static struct bus_type scst_device_bus = {
+	.name = "scsi_tgt_dev",
+	.match = scst_device_bus_match,
 };
 
 int scst_devt_sysfs_create(struct scst_dev_type *devt)
@@ -3447,19 +3498,25 @@ int scst_devt_sysfs_create(struct scst_dev_type *devt)
 
 	TRACE_ENTRY();
 
-	devt->devt_dev.class = &scst_devt_class;
-	devt->devt_dev.parent = NULL;
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 30)
-	snprintf(devt->devt_dev.bus_id, BUS_ID_SIZE, "%s", devt->name);
-#else
-	dev_set_name(&devt->devt_dev, "%s", devt->name);
+	WARN_ON(!devt->module);
+
+	devt->devt_drv.bus  = &scst_device_bus;
+	devt->devt_drv.name = devt->name;
+	devt->devt_drv.owner = devt->module;
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 32)
+	devt->devt_drv.suppress_bind_attrs = true;
 #endif
-	res = device_register(&devt->devt_dev);
+	res = driver_register(&devt->devt_drv);
+	if (res)
+		goto out_err;
+
+	res = driver_create_files(scst_sysfs_get_devt_drv(devt),
+				  scst_devt_default_attrs);
 	if (res)
 		goto out_err;
 
 	if (devt->add_device_parameters) {
-		res = device_create_file(scst_sysfs_get_devt_dev(devt),
+		res = driver_create_file(scst_sysfs_get_devt_drv(devt),
 					 &scst_devt_add_device_parameters_attr);
 		if (res) {
 			PRINT_ERROR("Can't add attribute %s for dev handler %s",
@@ -3470,7 +3527,7 @@ int scst_devt_sysfs_create(struct scst_dev_type *devt)
 	}
 
 	if (devt->devt_optional_attributes) {
-		res = device_create_file(scst_sysfs_get_devt_dev(devt),
+		res = driver_create_file(scst_sysfs_get_devt_drv(devt),
 					 &scst_devt_devt_attributes_attr);
 		if (res) {
 			PRINT_ERROR("Can't add attribute %s for dev handler %s",
@@ -3481,18 +3538,18 @@ int scst_devt_sysfs_create(struct scst_dev_type *devt)
 	}
 
 	if (devt->dev_optional_attributes) {
-		res = device_create_file(scst_sysfs_get_devt_dev(devt),
-					 &scst_devt_dev_attributes_attr);
+		res = driver_create_file(scst_sysfs_get_devt_drv(devt),
+					 &scst_devt_drv_attributes_attr);
 		if (res) {
 			PRINT_ERROR("Can't add attribute %s for dev handler %s",
-				scst_devt_dev_attributes_attr.attr.name,
+				scst_devt_drv_attributes_attr.attr.name,
 				devt->name);
 			goto out_err;
 		}
 	}
 
 	if (devt->devt_attrs) {
-		res = device_create_files(scst_sysfs_get_devt_dev(devt),
+		res = driver_create_files(scst_sysfs_get_devt_drv(devt),
 					  devt->devt_attrs);
 		if (res) {
 			PRINT_ERROR("Can't add attributes for dev handler %s",
@@ -3503,7 +3560,7 @@ int scst_devt_sysfs_create(struct scst_dev_type *devt)
 
 #if defined(CONFIG_SCST_DEBUG) || defined(CONFIG_SCST_TRACING)
 	if (devt->trace_flags) {
-		res = device_create_file(scst_sysfs_get_devt_dev(devt),
+		res = driver_create_file(scst_sysfs_get_devt_drv(devt),
 					 &devt_trace_attr);
 		if (res) {
 			PRINT_ERROR("Can't add devt trace_flag for dev "
@@ -3531,7 +3588,7 @@ void scst_devt_sysfs_del(struct scst_dev_type *devt)
 void scst_devt_sysfs_put(struct scst_dev_type *devt)
 {
 	TRACE_ENTRY();
-	device_unregister(&devt->devt_dev);
+	driver_unregister(&devt->devt_drv);
 	TRACE_EXIT();
 }
 
@@ -4490,7 +4547,7 @@ out:
 }
 EXPORT_SYMBOL_GPL(scst_wait_info_completion);
 
-static int scst_bus_match(struct device *dev, struct device_driver *drv)
+static int scst_target_bus_match(struct device *dev, struct device_driver *drv)
 {
 	struct scst_tgt *tgt = scst_dev_to_tgt(dev);
 	struct scst_tgt_template *tgtt = scst_drv_to_tgtt(drv);
@@ -4510,9 +4567,11 @@ static int scst_bus_match(struct device *dev, struct device_driver *drv)
 }
 
 static struct bus_type scst_target_bus = {
-	.name = "target",
-	.match = scst_bus_match,
+	.name = "scsi_tgt_port",
+	.match = scst_target_bus_match,
 };
+
+static struct device *scst_device;
 
 int __init scst_sysfs_init(void)
 {
@@ -4524,19 +4583,15 @@ int __init scst_sysfs_init(void)
 	if (res)
 		goto out;
 
-	res = class_register(&scst_devt_class);
+	res = bus_register(&scst_device_bus);
 	if (res)
-		goto out_unregister_tgtt_class;
-
-	res = class_register(&scst_dev_class);
-	if (res)
-		goto out_unregister_devt_class;
+		goto out_unregister_target_bus;
 
 	res = -ENOMEM;
 	scst_device = kzalloc(sizeof *scst_device, GFP_KERNEL);
 	if (!scst_device) {
 		PRINT_ERROR("%s", "Allocating memory for SCST device failed.");
-		goto out_unregister_dev_class;
+		goto out_unregister_device_bus;
 	}
 
 	scst_device->release = scst_release_device;
@@ -4574,11 +4629,9 @@ out_unregister_device:
 	scst_device = NULL;
 out_free:
 	kfree(scst_device);
-out_unregister_dev_class:
-	class_unregister(&scst_dev_class);
-out_unregister_devt_class:
-	class_unregister(&scst_devt_class);
-out_unregister_tgtt_class:
+out_unregister_device_bus:
+	bus_unregister(&scst_device_bus);
+out_unregister_target_bus:
 	bus_unregister(&scst_target_bus);
 	goto out;
 }
@@ -4595,9 +4648,7 @@ void scst_sysfs_cleanup(void)
 
 	device_unregister(scst_device);
 
-	class_unregister(&scst_dev_class);
-
-	class_unregister(&scst_devt_class);
+	bus_unregister(&scst_device_bus);
 
 	bus_unregister(&scst_target_bus);
 

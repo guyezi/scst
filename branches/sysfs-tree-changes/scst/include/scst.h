@@ -1413,9 +1413,9 @@ struct scst_dev_type {
 
 	/* sysfs attributes, if any */
 #if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 34)
-	struct device_attribute **devt_attrs;
+	struct driver_attribute **devt_attrs;
 #else
-	const struct device_attribute **devt_attrs;
+	const struct driver_attribute **devt_attrs;
 #endif
 
 	/* sysfs device attributes, if any */
@@ -1443,7 +1443,7 @@ struct scst_dev_type {
 	/* The pointer to the /proc directory entry */
 	struct proc_dir_entry *proc_dev_type_root;
 #else
-	struct device devt_dev;
+	struct device_driver devt_drv;
 #endif
 };
 
@@ -2290,8 +2290,6 @@ struct scst_device {
 
 #ifndef CONFIG_SCST_PROC
 	struct device dev_dev;
-
-	struct kobject *dev_exp_kobj; /* exported groups */
 
 	/* Export number in the dev's sysfs list. Protected by scst_mutex */
 	int dev_exported_lun_num;
@@ -3803,25 +3801,15 @@ static inline struct scst_tgt *scst_dev_to_tgt(struct device *dev)
 	return container_of(dev, struct scst_tgt, tgt_dev);
 }
 
-static inline struct device *scst_sysfs_get_devt_dev(struct scst_dev_type *devt)
+static inline struct device_driver *scst_sysfs_get_devt_drv(
+						struct scst_dev_type *devt)
 {
-	return &devt->devt_dev;
+	return &devt->devt_drv;
 }
 
-static inline struct kobject *scst_sysfs_get_devt_kobj(
-	struct scst_dev_type *devt)
+static inline struct scst_dev_type *scst_drv_to_devt(struct device_driver *drv)
 {
-	return &devt->devt_dev.kobj;
-}
-
-static inline struct scst_dev_type *scst_dev_to_devt(struct device *dev)
-{
-	return container_of(dev, struct scst_dev_type, devt_dev);
-}
-
-static inline struct scst_dev_type *scst_kobj_to_devt(struct kobject *kobj)
-{
-	return scst_dev_to_devt(container_of(kobj, struct device, kobj));
+	return container_of(drv, struct scst_dev_type, devt_drv);
 }
 
 static inline struct device *scst_sysfs_get_dev_dev(struct scst_device *dev)

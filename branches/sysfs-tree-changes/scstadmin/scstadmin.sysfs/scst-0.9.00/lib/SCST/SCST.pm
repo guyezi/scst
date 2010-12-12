@@ -22,11 +22,11 @@ FALSE            => 0,
 SCST_ROOT        => '/sys/devices/scst',
 
 # Root-level
-SCST_HANDLERS    => '/sys/class/device_driver',
+SCST_HANDLERS    => '/sys/bus/scsi_tgt_dev/drivers',
 IN_SCST_HANDLERS => 'device_driver',
-SCST_DEVICES     => '/sys/class/target_device',
+SCST_DEVICES     => '/sys/bus/scsi_tgt_dev/devices',
 IN_SCST_DEVICES  => 'device',
-SCST_TARGETS     => '/sys/bus/target/drivers',
+SCST_TARGETS     => '/sys/bus/scsi_tgt_port/drivers',
 IN_SCST_TARGETS  => 'target_driver',
 SCST_ADD_TGT_PARAMS => 'add_target_parameters',
 SCST_TGTT_ATTR   => 'driver_attributes',
@@ -1678,7 +1678,7 @@ sub devices {
 	foreach my $device (readdir($dHandle)) {
 		next if ($device eq '.' || $device eq '..');
 
-                if (-d mkpath(SCST_DEVICES, $device, 'handler')) {
+                if (-d mkpath(SCST_DEVICES, $device, 'driver')) {
 			push @devices, $device;
 		}							
 	}
@@ -1983,7 +1983,8 @@ sub targetAttributes {
 	}
 
 	foreach my $attribute (readdir($pHandle)) {
-		next if ($attribute eq '.' || $attribute eq '..');
+		next if ($attribute eq '.' || $attribute eq '..'
+		    || $attribute eq 'module');
 		my $pPath = mkpath(SCST_TARGETS, $driver, $target, $attribute);
 		my $mode = (stat($pPath))[2];
 
@@ -2668,7 +2669,8 @@ sub handlerAttributes {
 
 	foreach my $attribute (readdir($hHandle)) {
 		next if ($attribute eq '.' || $attribute eq '..'
-			 || $attribute eq 'power' || $attribute eq 'subsystem');
+			 || $attribute eq 'power' || $attribute eq 'subsystem'
+			 || $attribute eq 'module');
 		my $pPath = mkpath(SCST_HANDLERS, $handler, $attribute);
 		my $mode = (stat($pPath))[2];
 
@@ -2689,9 +2691,7 @@ sub handlerAttributes {
 		my $io = new IO::File $path, O_RDONLY;
 
 		if (!$io) {
-			$self->{'err_string'} = "handlerAttributes(): Unable to read handler attribute ".
-			  "'$attribute': $!";
-			return undef;
+			next;
 		}
 
 		my $value = <$io>;
