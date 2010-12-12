@@ -1593,6 +1593,9 @@ static void scst_release_dev(struct device *device)
 	scst_free_device(dev);
 }
 
+/**
+ * scst_devt_dev_sysfs_init() - Initialize a virtual device for sysfs.
+ */
 int scst_devt_dev_sysfs_init(struct scst_device *dev)
 {
 	int res;
@@ -1618,6 +1621,9 @@ int scst_devt_dev_sysfs_init(struct scst_device *dev)
 	return res;
 }
 
+/**
+ * scst_devt_dev_sysfs_create() - Create a virtual device's sysfs attributes.
+ */
 int scst_devt_dev_sysfs_create(struct scst_device *dev)
 {
 	int res = 0;
@@ -1671,6 +1677,9 @@ out_err:
 	goto out;
 }
 
+/**
+ * scst_devt_dev_sysfs_del() - Delete a virtual device's sysfs attributes.
+ */
 void scst_devt_dev_sysfs_del(struct scst_device *dev)
 {
 	TRACE_ENTRY();
@@ -1691,6 +1700,9 @@ out:
 	TRACE_EXIT();
 }
 
+/**
+ * scst_devt_dev_sysfs_put() - Dereference a virtual device.
+ */
 void scst_devt_dev_sysfs_put(struct scst_device *dev)
 {
 	TRACE_ENTRY();
@@ -1729,11 +1741,17 @@ static struct device_attribute *scst_dev_attrs[] = {
 	NULL
 };
 
+/**
+ * scst_dev_sysfs_init() - Initialize a pass-through device for sysfs.
+ */
 int scst_dev_sysfs_init(struct scst_device *dev)
 {
 	return scst_devt_dev_sysfs_init(dev);
 }
 
+/**
+ * scst_dev_sysfs_create() - Create pass-through device sysfs attributes.
+ */
 int scst_dev_sysfs_create(struct scst_device *dev)
 {
 	int res;
@@ -1769,6 +1787,9 @@ out_del:
 	goto out;
 }
 
+/**
+ * scst_dev_sysfs_del() - Delete pass-through device sysfs attributes.
+ */
 void scst_dev_sysfs_del(struct scst_device *dev)
 {
 	TRACE_ENTRY();
@@ -1779,6 +1800,9 @@ void scst_dev_sysfs_del(struct scst_device *dev)
 	TRACE_EXIT();
 }
 
+/**
+ * scst_dev_sysfs_del() - Dereference a pass-through device.
+ */
 void scst_dev_sysfs_put(struct scst_device *dev)
 {
 	TRACE_ENTRY();
