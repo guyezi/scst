@@ -219,6 +219,7 @@ static const struct file_operations dev_user_fops = {
 };
 
 static struct scst_dev_type dev_user_devtype = {
+	.module =	THIS_MODULE,
 	.name =		DEV_USER_NAME,
 	.type =		-1,
 	.parse =	dev_usr_parse,
@@ -3735,8 +3736,6 @@ static int __init init_scst_user(void)
 		res = -ENOMEM;
 		goto out_cache;
 	}
-
-	dev_user_devtype.module = THIS_MODULE;
 
 	res = scst_register_virtual_dev_driver(&dev_user_devtype);
 	if (res < 0)

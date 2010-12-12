@@ -56,6 +56,7 @@ static int tape_done(struct scst_cmd *);
 static int tape_perf_exec(struct scst_cmd *);
 
 static struct scst_dev_type tape_devtype = {
+	.module = 		THIS_MODULE,
 	.name =			TAPE_NAME,
 	.type =			TYPE_TAPE,
 	.threads_num =		1,
@@ -72,6 +73,7 @@ static struct scst_dev_type tape_devtype = {
 };
 
 static struct scst_dev_type tape_devtype_perf = {
+	.module = 		THIS_MODULE,
 	.name =			TAPE_PERF_NAME,
 	.type =			TYPE_TAPE,
 	.parse_atomic =		1,
@@ -93,13 +95,9 @@ static int __init init_scst_tape_driver(void)
 
 	TRACE_ENTRY();
 
-	tape_devtype.module = THIS_MODULE;
-
 	res = scst_register_dev_driver(&tape_devtype);
 	if (res < 0)
 		goto out;
-
-	tape_devtype_perf.module = THIS_MODULE;
 
 	res = scst_register_dev_driver(&tape_devtype_perf);
 	if (res < 0)

@@ -40,6 +40,7 @@ static int changer_parse(struct scst_cmd *);
 /* static int changer_done(struct scst_cmd *); */
 
 static struct scst_dev_type changer_devtype = {
+	.module = THIS_MODULE,
 	.name =	CHANGER_NAME,
 	.type =	TYPE_MEDIUM_CHANGER,
 	.threads_num =	1,
@@ -161,8 +162,6 @@ static int __init changer_init(void)
 	int res = 0;
 
 	TRACE_ENTRY();
-
-	changer_devtype.module = THIS_MODULE;
 
 	res = scst_register_dev_driver(&changer_devtype);
 	if (res < 0)

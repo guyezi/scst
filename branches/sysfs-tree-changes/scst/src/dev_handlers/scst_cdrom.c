@@ -45,6 +45,7 @@ static int cdrom_parse(struct scst_cmd *);
 static int cdrom_done(struct scst_cmd *);
 
 static struct scst_dev_type cdrom_devtype = {
+	.module = 		THIS_MODULE,
 	.name =			CDROM_NAME,
 	.type =			TYPE_ROM,
 	.threads_num =		1,
@@ -237,8 +238,6 @@ static int __init cdrom_init(void)
 	int res = 0;
 
 	TRACE_ENTRY();
-
-	cdrom_devtype.module = THIS_MODULE;
 
 	res = scst_register_dev_driver(&cdrom_devtype);
 	if (res < 0)

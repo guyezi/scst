@@ -40,6 +40,7 @@ static int processor_parse(struct scst_cmd *);
 /*static int processor_done(struct scst_cmd *);*/
 
 static struct scst_dev_type processor_devtype = {
+	.module = 		THIS_MODULE,
 	.name =			PROCESSOR_NAME,
 	.type =			TYPE_PROCESSOR,
 	.threads_num =		1,
@@ -161,8 +162,6 @@ static int __init processor_init(void)
 	int res = 0;
 
 	TRACE_ENTRY();
-
-	processor_devtype.module = THIS_MODULE;
 
 	res = scst_register_dev_driver(&processor_devtype);
 	if (res < 0)
