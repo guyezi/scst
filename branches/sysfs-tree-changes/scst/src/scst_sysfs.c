@@ -1710,7 +1710,7 @@ void scst_devt_dev_sysfs_put(struct scst_device *dev)
 	TRACE_EXIT();
 }
 
-static ssize_t scst_dev_exported_show(struct device *device,
+static ssize_t scst_dev_scsi_device_show(struct device *device,
 				      struct device_attribute *attr, char *buf)
 {
 	struct scst_device *dev;
@@ -1729,15 +1729,49 @@ out:
 	return res;
 }
 
-static struct device_attribute scst_dev_exported_attr =
-	__ATTR(exported, S_IRUGO, scst_dev_exported_show, NULL);
+static struct device_attribute scst_dev_scsi_device_attr =
+	__ATTR(scsi_device, S_IRUGO, scst_dev_scsi_device_show, NULL);
+
+static ssize_t scst_dev_exported_lun_show(struct device *device,
+				      struct device_attribute *attr, char *buf)
+{
+	struct scst_device *dev;
+	struct scst_acg_dev *acg_dev;
+	struct scst_acg *acg;
+	struct scst_tgt *tgt;
+	struct scst_tgt_template *tgtt;
+	int res;
+
+	dev = scst_dev_to_dev(device);
+	res = 0;
+	list_for_each_entry(acg_dev, &dev->dev_acg_dev_list,
+			    dev_acg_dev_list_entry) {
+		acg = acg_dev->acg;
+		tgt = acg->tgt;
+		tgtt = tgt->tgtt;
+		if (acg == tgt->default_acg)
+			res += scnprintf(buf + res, PAGE_SIZE - res,
+					 "%s/%s %lld\n", tgtt->name,
+					 tgt->tgt_name, acg_dev->lun);
+		else
+			res += scnprintf(buf + res, PAGE_SIZE - res,
+					 "%s/%s/%s %lld\n", tgtt->name,
+					 tgt->tgt_name, acg->acg_name,
+					 acg_dev->lun);
+	}
+	return res;
+}
+
+static struct device_attribute scst_dev_exported_lun_attr =
+	__ATTR(exported_lun, S_IRUGO, scst_dev_exported_lun_show, NULL);
 
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 34)
 static const struct device_attribute *scst_dev_attrs[] = {
 #else
 static struct device_attribute *scst_dev_attrs[] = {
 #endif
-	&scst_dev_exported_attr,
+	&scst_dev_scsi_device_attr,
+	&scst_dev_exported_lun_attr,
 	NULL
 };
 
@@ -2398,17 +2432,7 @@ struct attribute *scst_lun_attrs[] = {
 void scst_acg_dev_sysfs_del(struct scst_acg_dev *acg_dev)
 {
 	TRACE_ENTRY();
-
-	BUG_ON(!acg_dev->dev);
-
-#if 0
-	sysfs_remove_link(acg_dev->dev->dev_exp_kobj,
-			  acg_dev->acg_dev_link_name);
-	kobject_put(scst_sysfs_get_dev_kobj(acg_dev->dev));
-#endif
-
 	kobject_del(&acg_dev->acg_dev_kobj);
-
 	TRACE_EXIT();
 }
 
@@ -2430,21 +2454,6 @@ int scst_acg_dev_sysfs_create(struct scst_acg_dev *acg_dev,
 			    acg_dev->acg->acg_name, acg_dev->lun);
 		goto out;
 	}
-
-#if 0
-	kobject_get(scst_sysfs_get_dev_kobj(acg_dev->dev));
-
-	snprintf(acg_dev->acg_dev_link_name, sizeof(acg_dev->acg_dev_link_name),
-		"export%u", acg_dev->dev->dev_exported_lun_num++);
-
-	res = sysfs_create_link(acg_dev->dev->dev_exp_kobj,
-			   &acg_dev->acg_dev_kobj, acg_dev->acg_dev_link_name);
-	if (res != 0) {
-		PRINT_ERROR("Can't create acg %s LUN link",
-			acg_dev->acg->acg_name);
-		goto out_del;
-	}
-#endif
 
 	res = sysfs_create_link(&acg_dev->acg_dev_kobj,
 			scst_sysfs_get_dev_kobj(acg_dev->dev), "device");

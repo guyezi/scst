@@ -2290,9 +2290,6 @@ struct scst_device {
 
 #ifndef CONFIG_SCST_PROC
 	struct device dev_dev;
-
-	/* Export number in the dev's sysfs list. Protected by scst_mutex */
-	int dev_exported_lun_num;
 #endif
 };
 
@@ -2455,11 +2452,6 @@ struct scst_acg_dev {
 
 	/* kobject for this structure */
 	struct kobject acg_dev_kobj;
-
-#ifndef CONFIG_SCST_PROC
-	/* Name of the link to the corresponding LUN */
-	char acg_dev_link_name[20];
-#endif
 };
 
 /*
