@@ -1587,6 +1587,11 @@ static ssize_t scst_dev_exported_lun_show(struct device *device,
 	int res;
 
 	dev = scst_dev_to_dev(device);
+
+	res = mutex_lock_interruptible(&scst_mutex);
+	if (res)
+		goto out;
+
 	res = 0;
 	list_for_each_entry(acg_dev, &dev->dev_acg_dev_list,
 			    dev_acg_dev_list_entry) {
@@ -1603,6 +1608,11 @@ static ssize_t scst_dev_exported_lun_show(struct device *device,
 					 tgt->tgt_name, acg->acg_name,
 					 acg_dev->lun);
 	}
+
+	mutex_unlock(&scst_mutex);
+
+out:
+	TRACE_EXIT_RES(res);
 	return res;
 }
 
@@ -1808,16 +1818,18 @@ void scst_dev_sysfs_del(struct scst_device *dev)
 
 	BUG_ON(!dev->handler);
 
+	/* Pass-through device attributes. */
+#if defined(CONFIG_SCST_DEBUG) || defined(CONFIG_SCST_TRACING)
+	device_remove_file(scst_sysfs_get_dev_dev(dev), &dev_dump_prs_attr);
+#endif
+	device_remove_files(scst_sysfs_get_dev_dev(dev), scst_dev_attrs);
+
+	/* Virtual device attributes. */
 	if (dev->handler->dev_attrs)
 		device_remove_files(scst_sysfs_get_dev_dev(dev),
 				    dev->handler->dev_attrs);
 	device_remove_files(scst_sysfs_get_dev_dev(dev), dev_thread_attr);
 	device_remove_files(scst_sysfs_get_dev_dev(dev), scst_devt_dev_attrs);
-
-#if defined(CONFIG_SCST_DEBUG) || defined(CONFIG_SCST_TRACING)
-	device_remove_file(scst_sysfs_get_dev_dev(dev), &dev_dump_prs_attr);
-#endif
-	device_remove_files(scst_sysfs_get_dev_dev(dev), scst_dev_attrs);
 
 	//device_lock(&dev->dev_dev);
 	device_release_driver(&dev->dev_dev);
