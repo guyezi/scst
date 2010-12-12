@@ -1167,7 +1167,7 @@ out:
 
 #ifndef CONFIG_SCST_PROC
 out_sysfs_del:
-	scst_devt_dev_sysfs_del(dev);
+	scst_dev_sysfs_del(dev);
 #endif
 out_pr_clear_dev:
 	scst_pr_clear_dev(dev);
@@ -1794,7 +1794,7 @@ int scst_assign_dev_handler(struct scst_device *dev,
 	 * detach() to avoid calls from sysfs for not yet ready or already dead
 	 * objects.
 	 */
-	scst_devt_dev_sysfs_del(dev);
+	scst_dev_sysfs_del(dev);
 #endif
 
 	if (dev->handler->detach) {
@@ -1869,7 +1869,7 @@ out_err_detach_tgt:
 
 out_err_remove_sysfs:
 #ifndef CONFIG_SCST_PROC
-	scst_devt_dev_sysfs_del(dev);
+	scst_dev_sysfs_del(dev);
 #endif
 out_detach:
 	if (handler && handler->detach) {

@@ -1576,12 +1576,46 @@ static struct device_attribute scst_dev_sysfs_type_attr =
 #endif
 	__ATTR(type, S_IRUGO, scst_dev_sysfs_type_show, NULL);
 
+static ssize_t scst_dev_exported_lun_show(struct device *device,
+				      struct device_attribute *attr, char *buf)
+{
+	struct scst_device *dev;
+	struct scst_acg_dev *acg_dev;
+	struct scst_acg *acg;
+	struct scst_tgt *tgt;
+	struct scst_tgt_template *tgtt;
+	int res;
+
+	dev = scst_dev_to_dev(device);
+	res = 0;
+	list_for_each_entry(acg_dev, &dev->dev_acg_dev_list,
+			    dev_acg_dev_list_entry) {
+		acg = acg_dev->acg;
+		tgt = acg->tgt;
+		tgtt = tgt->tgtt;
+		if (acg == tgt->default_acg)
+			res += scnprintf(buf + res, PAGE_SIZE - res,
+					 "%s/%s %lld\n", tgtt->name,
+					 tgt->tgt_name, acg_dev->lun);
+		else
+			res += scnprintf(buf + res, PAGE_SIZE - res,
+					 "%s/%s/%s %lld\n", tgtt->name,
+					 tgt->tgt_name, acg->acg_name,
+					 acg_dev->lun);
+	}
+	return res;
+}
+
+static struct device_attribute scst_dev_exported_lun_attr =
+	__ATTR(exported_lun, S_IRUGO, scst_dev_exported_lun_show, NULL);
+
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 34)
 static const struct device_attribute *scst_devt_dev_attrs[] = {
 #else
 static struct device_attribute *scst_devt_dev_attrs[] = {
 #endif
 	&scst_dev_sysfs_type_attr,
+	&scst_dev_exported_lun_attr,
 	NULL
 };
 
@@ -1673,31 +1707,8 @@ out:
 	return res;
 
 out_err:
-	scst_devt_dev_sysfs_del(dev);
+	scst_dev_sysfs_del(dev);
 	goto out;
-}
-
-/**
- * scst_devt_dev_sysfs_del() - Delete a virtual device's sysfs attributes.
- */
-void scst_devt_dev_sysfs_del(struct scst_device *dev)
-{
-	TRACE_ENTRY();
-
-	if (dev->handler == &scst_null_devtype)
-		goto out;
-
-	if (dev->handler->dev_attrs)
-		device_remove_files(scst_sysfs_get_dev_dev(dev),
-				    dev->handler->dev_attrs);
-	device_remove_files(scst_sysfs_get_dev_dev(dev), dev_thread_attr);
-
-	//device_lock(&dev->dev_dev);
-	device_release_driver(&dev->dev_dev);
-	//device_unlock(&dev->dev_dev);
-
-out:
-	TRACE_EXIT();
 }
 
 /**
@@ -1731,39 +1742,6 @@ out:
 
 static struct device_attribute scst_dev_scsi_device_attr =
 	__ATTR(scsi_device, S_IRUGO, scst_dev_scsi_device_show, NULL);
-
-static ssize_t scst_dev_exported_lun_show(struct device *device,
-				      struct device_attribute *attr, char *buf)
-{
-	struct scst_device *dev;
-	struct scst_acg_dev *acg_dev;
-	struct scst_acg *acg;
-	struct scst_tgt *tgt;
-	struct scst_tgt_template *tgtt;
-	int res;
-
-	dev = scst_dev_to_dev(device);
-	res = 0;
-	list_for_each_entry(acg_dev, &dev->dev_acg_dev_list,
-			    dev_acg_dev_list_entry) {
-		acg = acg_dev->acg;
-		tgt = acg->tgt;
-		tgtt = tgt->tgtt;
-		if (acg == tgt->default_acg)
-			res += scnprintf(buf + res, PAGE_SIZE - res,
-					 "%s/%s %lld\n", tgtt->name,
-					 tgt->tgt_name, acg_dev->lun);
-		else
-			res += scnprintf(buf + res, PAGE_SIZE - res,
-					 "%s/%s/%s %lld\n", tgtt->name,
-					 tgt->tgt_name, acg->acg_name,
-					 acg_dev->lun);
-	}
-	return res;
-}
-
-static struct device_attribute scst_dev_exported_lun_attr =
-	__ATTR(exported_lun, S_IRUGO, scst_dev_exported_lun_show, NULL);
 
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 34)
 static const struct device_attribute *scst_dev_attrs[] = {
@@ -1822,15 +1800,29 @@ out_del:
 }
 
 /**
- * scst_dev_sysfs_del() - Delete pass-through device sysfs attributes.
+ * scst_dev_sysfs_del() - Delete virtual/passthrough device sysfs attributes.
  */
 void scst_dev_sysfs_del(struct scst_device *dev)
 {
 	TRACE_ENTRY();
+
+	BUG_ON(!dev->handler);
+
+	if (dev->handler->dev_attrs)
+		device_remove_files(scst_sysfs_get_dev_dev(dev),
+				    dev->handler->dev_attrs);
+	device_remove_files(scst_sysfs_get_dev_dev(dev), dev_thread_attr);
+	device_remove_files(scst_sysfs_get_dev_dev(dev), scst_devt_dev_attrs);
+
 #if defined(CONFIG_SCST_DEBUG) || defined(CONFIG_SCST_TRACING)
 	device_remove_file(scst_sysfs_get_dev_dev(dev), &dev_dump_prs_attr);
 #endif
 	device_remove_files(scst_sysfs_get_dev_dev(dev), scst_dev_attrs);
+
+	//device_lock(&dev->dev_dev);
+	device_release_driver(&dev->dev_dev);
+	//device_unlock(&dev->dev_dev);
+
 	TRACE_EXIT();
 }
 
