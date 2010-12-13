@@ -408,8 +408,8 @@ static ssize_t scst_show(struct kobject *kobj, struct attribute *attr,
 			 char *buf)
 {
 	struct kobj_attribute *kobj_attr;
-	kobj_attr = container_of(attr, struct kobj_attribute, attr);
 
+	kobj_attr = container_of(attr, struct kobj_attribute, attr);
 	return kobj_attr->show(kobj, kobj_attr, buf);
 }
 
@@ -417,8 +417,8 @@ static ssize_t scst_store(struct kobject *kobj, struct attribute *attr,
 			  const char *buf, size_t count)
 {
 	struct kobj_attribute *kobj_attr;
-	kobj_attr = container_of(attr, struct kobj_attribute, attr);
 
+	kobj_attr = container_of(attr, struct kobj_attribute, attr);
 	if (kobj_attr->store)
 		return kobj_attr->store(kobj, kobj_attr, buf, count);
 	else
