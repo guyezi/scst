@@ -1136,7 +1136,7 @@ int scst_register_virtual_device(struct scst_dev_type *dev_handler,
 		goto out_free_dev;
 
 #ifndef CONFIG_SCST_PROC
-	res = scst_devt_dev_sysfs_init(dev);
+	res = scst_dev_sysfs_init(dev);
 	if (res)
 		goto out_pr_clear_dev;
 	res = scst_devt_dev_sysfs_create(dev);

@@ -1638,9 +1638,9 @@ static void scst_release_dev(struct device *device)
 }
 
 /**
- * scst_devt_dev_sysfs_init() - Initialize a virtual device for sysfs.
+ * scst_dev_sysfs_init() - Initialize a device for sysfs.
  */
-int scst_devt_dev_sysfs_init(struct scst_device *dev)
+int scst_dev_sysfs_init(struct scst_device *dev)
 {
 	int res;
 
@@ -1721,16 +1721,6 @@ out_err:
 	goto out;
 }
 
-/**
- * scst_devt_dev_sysfs_put() - Dereference a virtual device.
- */
-void scst_devt_dev_sysfs_put(struct scst_device *dev)
-{
-	TRACE_ENTRY();
-	device_unregister(&dev->dev_dev);
-	TRACE_EXIT();
-}
-
 static ssize_t scst_dev_scsi_device_show(struct device *device,
 				      struct device_attribute *attr, char *buf)
 {
@@ -1762,14 +1752,6 @@ static struct device_attribute *scst_dev_attrs[] = {
 	&scst_dev_exported_lun_attr,
 	NULL
 };
-
-/**
- * scst_dev_sysfs_init() - Initialize a pass-through device for sysfs.
- */
-int scst_dev_sysfs_init(struct scst_device *dev)
-{
-	return scst_devt_dev_sysfs_init(dev);
-}
 
 /**
  * scst_dev_sysfs_create() - Create pass-through device sysfs attributes.
@@ -1839,7 +1821,7 @@ void scst_dev_sysfs_del(struct scst_device *dev)
 }
 
 /**
- * scst_dev_sysfs_del() - Dereference a pass-through device.
+ * scst_dev_sysfs_del() - Dereference a virtual or pass-through device.
  */
 void scst_dev_sysfs_put(struct scst_device *dev)
 {
@@ -3657,7 +3639,7 @@ static ssize_t scst_mgmt_show(struct device *device,
 {
 	ssize_t count;
 	static const char help[] =
-/* devices/<dev>/filename */
+/* device/<dev>/filename */
 "in device/<dev> <dev_cmd>\n"
 /* scst_devt_mgmt or scst_devt_pass_through_mgmt */
 "in device_driver/<devt> <devt_cmd>\n"
