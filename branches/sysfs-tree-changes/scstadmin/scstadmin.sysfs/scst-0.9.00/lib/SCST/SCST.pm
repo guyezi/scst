@@ -28,6 +28,7 @@ SCST_DEVICES     => '/sys/bus/scsi_tgt_dev/devices',
 IN_SCST_DEVICES  => 'device',
 SCST_TARGETS     => '/sys/bus/scsi_tgt_port/drivers',
 IN_SCST_TARGETS  => 'target_driver',
+SCST_ADD_TGT     => 'add_target',
 SCST_ADD_TGT_PARAMS => 'add_target_parameters',
 SCST_TGTT_ATTR   => 'driver_attributes',
 SCST_TGT_ATTR    => 'target_attributes',
@@ -752,12 +753,15 @@ sub driverIsVirtualCapable {
 	return SCST_C_DRV_NO_DRIVER if (!$rc);
 	return $rc if ($rc > 1);
 
-	my $path = mkpath(SCST_TARGETS, $driver, SCST_ADD_TGT_PARAMS);
+	my $path = mkpath(SCST_TARGETS, $driver, SCST_ADD_TGT);
 
 	my $io = new IO::File $path, O_RDONLY;
-
-	return FALSE if (!defined($io));
-	return TRUE;
+	if ($io) {
+		my $line = <$io>;
+		chomp($line);
+		return $line eq '1';
+	}
+	return FALSE;
 }
 
 sub targetType {
@@ -3033,12 +3037,8 @@ sub targetCreateAttributes {
 		return undef;
 	}
 
-	my $io = new IO::File mkpath(SCST_TARGETS, $driver, SCST_ADD_TGT_PARAMS), O_RDONLY;
-
-	if (!$io) {
-		$self->{'err_string'} = "targetCreateAttributes(): Unable to open " . SCST_ADD_TGT_PARAMS . " for driver '$driver': $!";
-		return undef;
-	}
+	my $io = new IO::File mkpath(SCST_TARGETS, $driver,
+				     SCST_ADD_TGT_PARAMS), O_RDONLY;
 
 	while (my $attribute = <$io>) {
 		chomp($attribute);

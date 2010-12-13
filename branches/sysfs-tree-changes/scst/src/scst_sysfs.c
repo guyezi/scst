@@ -394,6 +394,21 @@ static struct driver_attribute tgtt_trace_attr =
 
 #endif /* #if defined(CONFIG_SCST_DEBUG) || defined(CONFIG_SCST_TRACING) */
 
+/**
+ * scst_tgtt_add_target_show() - Whether the add_target method is supported.
+ */
+static ssize_t scst_tgtt_add_target_show(struct device_driver *drv, char *buf)
+{
+	struct scst_tgt_template *tgtt;
+
+	tgtt = scst_drv_to_tgtt(drv);
+	return scnprintf(buf, PAGE_SIZE, "%d\n", tgtt->add_target ? 1 : 0);
+}
+
+static struct driver_attribute scst_tgtt_add_target_attr =
+	__ATTR(add_target, S_IRUGO,
+	       scst_tgtt_add_target_show, NULL);
+
 static ssize_t scst_tgtt_add_target_parameters_show(struct device_driver *drv,
 						    char *buf)
 {
@@ -407,6 +422,10 @@ static ssize_t scst_tgtt_add_target_parameters_show(struct device_driver *drv,
 		res += scnprintf(buf + res, PAGE_SIZE - res, "%s\n", *p);
 	return res;
 }
+
+static struct driver_attribute scst_tgtt_add_target_parameters_attr =
+	__ATTR(add_target_parameters, S_IRUGO,
+	       scst_tgtt_add_target_parameters_show, NULL);
 
 static ssize_t scst_tgtt_tgtt_attributes_show(struct device_driver *drv,
 					      char *buf)
@@ -422,6 +441,10 @@ static ssize_t scst_tgtt_tgtt_attributes_show(struct device_driver *drv,
 	return res;
 }
 
+static struct driver_attribute scst_tgtt_tgtt_attributes_attr =
+	__ATTR(driver_attributes, S_IRUGO,
+	       scst_tgtt_tgtt_attributes_show, NULL);
+
 static ssize_t scst_tgtt_tgt_attributes_show(struct device_driver *drv,
 					     char *buf)
 {
@@ -435,6 +458,10 @@ static ssize_t scst_tgtt_tgt_attributes_show(struct device_driver *drv,
 		res += scnprintf(buf + res, PAGE_SIZE - res, "%s\n", *p);
 	return res;
 }
+
+static struct driver_attribute scst_tgtt_tgt_attributes_attr =
+	__ATTR(target_attributes, S_IRUGO,
+	       scst_tgtt_tgt_attributes_show, NULL);
 
 static int scst_process_tgtt_mgmt_store(char *buffer,
 					struct scst_tgt_template *tgtt)
@@ -492,16 +519,6 @@ out_syntax_err:
 	goto out;
 }
 
-static struct driver_attribute scst_tgtt_add_target_parameters_attr =
-	__ATTR(add_target_parameters, S_IRUGO,
-	       scst_tgtt_add_target_parameters_show, NULL);
-static struct driver_attribute scst_tgtt_tgtt_attributes_attr =
-	__ATTR(driver_attributes, S_IRUGO,
-	       scst_tgtt_tgtt_attributes_show, NULL);
-static struct driver_attribute scst_tgtt_tgt_attributes_attr =
-	__ATTR(target_attributes, S_IRUGO,
-	       scst_tgtt_tgt_attributes_show, NULL);
-
 int scst_tgtt_sysfs_create(struct scst_tgt_template *tgtt)
 {
 	int res;
@@ -520,7 +537,16 @@ int scst_tgtt_sysfs_create(struct scst_tgt_template *tgtt)
 	if (res)
 		goto out_del;
 
-	if (tgtt->add_target) {
+	res = driver_create_file(scst_sysfs_get_tgtt_drv(tgtt),
+				 &scst_tgtt_add_target_attr);
+	if (res) {
+		PRINT_ERROR("Can't add attribute %s for target driver %s",
+			    scst_tgtt_add_target_attr.attr.name,
+			    tgtt->name);
+		goto out_del;
+	}
+
+	if (tgtt->add_target_parameters) {
 		res = driver_create_file(scst_sysfs_get_tgtt_drv(tgtt),
 					 &scst_tgtt_add_target_parameters_attr);
 		if (res) {
