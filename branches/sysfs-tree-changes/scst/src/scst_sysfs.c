@@ -2472,10 +2472,12 @@ static int __scst_process_luns_mgmt_store(char *buffer,
 	struct scst_acg_dev *acg_dev = NULL, *acg_dev_tmp;
 	struct scst_device *dev = NULL;
 
-#define SCST_LUN_ACTION_ADD	1
-#define SCST_LUN_ACTION_DEL	2
-#define SCST_LUN_ACTION_REPLACE	3
-#define SCST_LUN_ACTION_CLEAR	4
+	enum {
+		SCST_LUN_ACTION_ADD	= 1,
+		SCST_LUN_ACTION_DEL	= 2,
+		SCST_LUN_ACTION_REPLACE	= 3,
+		SCST_LUN_ACTION_CLEAR	= 4,
+	};
 
 	TRACE_ENTRY();
 
@@ -2681,11 +2683,6 @@ out_unlock:
 out:
 	TRACE_EXIT_RES(res);
 	return res;
-
-#undef SCST_LUN_ACTION_ADD
-#undef SCST_LUN_ACTION_DEL
-#undef SCST_LUN_ACTION_REPLACE
-#undef SCST_LUN_ACTION_CLEAR
 }
 
 void scst_acg_sysfs_del(struct scst_acg *acg)
@@ -2775,8 +2772,10 @@ static int scst_process_ini_group_mgmt_store(char *buffer,
 	char *p, *e = NULL;
 	struct scst_acg *a, *acg = NULL;
 
-#define SCST_INI_GROUP_ACTION_CREATE	1
-#define SCST_INI_GROUP_ACTION_DEL	2
+	enum {
+		SCST_INI_GROUP_ACTION_CREATE = 1,
+		SCST_INI_GROUP_ACTION_DEL    = 2,
+	};
 
 	TRACE_ENTRY();
 
@@ -2863,9 +2862,6 @@ out_unlock:
 out:
 	TRACE_EXIT_RES(res);
 	return res;
-
-#undef SCST_LUN_ACTION_CREATE
-#undef SCST_LUN_ACTION_DEL
 }
 
 static ssize_t scst_acn_file_show(struct kobject *kobj,
@@ -2964,10 +2960,12 @@ static int scst_process_acg_ini_mgmt_store(char *buffer,
 	struct scst_acg *acg_dest = NULL;
 	struct scst_acn *acn = NULL, *acn_tmp;
 
-#define SCST_ACG_ACTION_INI_ADD		1
-#define SCST_ACG_ACTION_INI_DEL		2
-#define SCST_ACG_ACTION_INI_CLEAR	3
-#define SCST_ACG_ACTION_INI_MOVE	4
+	enum {
+		SCST_ACG_ACTION_INI_ADD	  = 1,
+		SCST_ACG_ACTION_INI_DEL	  = 2,
+		SCST_ACG_ACTION_INI_CLEAR = 3,
+		SCST_ACG_ACTION_INI_MOVE  = 4,
+	};
 
 	TRACE_ENTRY();
 
@@ -3131,11 +3129,6 @@ out_unlock:
 out:
 	TRACE_EXIT_RES(res);
 	return res;
-
-#undef SCST_ACG_ACTION_INI_ADD
-#undef SCST_ACG_ACTION_INI_DEL
-#undef SCST_ACG_ACTION_INI_CLEAR
-#undef SCST_ACG_ACTION_INI_MOVE
 }
 
 
@@ -4086,12 +4079,14 @@ static int scst_write_trace(const char *buf, size_t length,
 	char *buffer, *p, *e;
 	const struct scst_trace_log *t;
 
-#define SCST_TRACE_ACTION_ALL		1
-#define SCST_TRACE_ACTION_NONE		2
-#define SCST_TRACE_ACTION_DEFAULT	3
-#define SCST_TRACE_ACTION_ADD		4
-#define SCST_TRACE_ACTION_DEL		5
-#define SCST_TRACE_ACTION_VALUE		6
+	enum {
+		SCST_TRACE_ACTION_ALL	  = 1,
+		SCST_TRACE_ACTION_NONE	  = 2,
+		SCST_TRACE_ACTION_DEFAULT = 3,
+		SCST_TRACE_ACTION_ADD	  = 4,
+		SCST_TRACE_ACTION_DEL	  = 5,
+		SCST_TRACE_ACTION_VALUE	  = 6,
+	};
 
 	TRACE_ENTRY();
 
@@ -4223,13 +4218,6 @@ out_free:
 out:
 	TRACE_EXIT_RES(res);
 	return res;
-
-#undef SCST_TRACE_ACTION_ALL
-#undef SCST_TRACE_ACTION_NONE
-#undef SCST_TRACE_ACTION_DEFAULT
-#undef SCST_TRACE_ACTION_ADD
-#undef SCST_TRACE_ACTION_DEL
-#undef SCST_TRACE_ACTION_VALUE
 }
 
 static ssize_t scst_main_trace_level_store(struct device *device,
