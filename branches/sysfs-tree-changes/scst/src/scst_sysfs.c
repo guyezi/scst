@@ -1602,56 +1602,12 @@ static struct device_attribute scst_dev_sysfs_type_attr =
 #endif
 	__ATTR(type, S_IRUGO, scst_dev_sysfs_type_show, NULL);
 
-static ssize_t scst_dev_exported_lun_show(struct device *device,
-				      struct device_attribute *attr, char *buf)
-{
-	struct scst_device *dev;
-	struct scst_acg_dev *acg_dev;
-	struct scst_acg *acg;
-	struct scst_tgt *tgt;
-	struct scst_tgt_template *tgtt;
-	int res;
-
-	dev = scst_dev_to_dev(device);
-
-	res = mutex_lock_interruptible(&scst_mutex);
-	if (res)
-		goto out;
-
-	res = 0;
-	list_for_each_entry(acg_dev, &dev->dev_acg_dev_list,
-			    dev_acg_dev_list_entry) {
-		acg = acg_dev->acg;
-		tgt = acg->tgt;
-		tgtt = tgt->tgtt;
-		if (acg == tgt->default_acg)
-			res += scnprintf(buf + res, PAGE_SIZE - res,
-					 "%s/%s %lld\n", tgtt->name,
-					 tgt->tgt_name, acg_dev->lun);
-		else
-			res += scnprintf(buf + res, PAGE_SIZE - res,
-					 "%s/%s/%s %lld\n", tgtt->name,
-					 tgt->tgt_name, acg->acg_name,
-					 acg_dev->lun);
-	}
-
-	mutex_unlock(&scst_mutex);
-
-out:
-	TRACE_EXIT_RES(res);
-	return res;
-}
-
-static struct device_attribute scst_dev_exported_lun_attr =
-	__ATTR(exported_lun, S_IRUGO, scst_dev_exported_lun_show, NULL);
-
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 34)
 static const struct device_attribute *scst_devt_dev_attrs[] = {
 #else
 static struct device_attribute *scst_devt_dev_attrs[] = {
 #endif
 	&scst_dev_sysfs_type_attr,
-	&scst_dev_exported_lun_attr,
 	NULL
 };
 
@@ -1775,7 +1731,6 @@ static const struct device_attribute *scst_dev_attrs[] = {
 static struct device_attribute *scst_dev_attrs[] = {
 #endif
 	&scst_dev_scsi_device_attr,
-	&scst_dev_exported_lun_attr,
 	NULL
 };
 
@@ -2449,7 +2404,7 @@ void scst_acg_dev_sysfs_del(struct scst_acg_dev *acg_dev)
 }
 
 int scst_acg_dev_sysfs_create(struct scst_acg_dev *acg_dev,
-	struct kobject *parent)
+			      struct kobject *parent)
 {
 	int res;
 
@@ -2457,9 +2412,8 @@ int scst_acg_dev_sysfs_create(struct scst_acg_dev *acg_dev,
 
 	BUG_ON(!acg_dev->dev);
 
-	res = kobject_add(&acg_dev->acg_dev_kobj, parent, "%llu",
-			  acg_dev->lun);
-	if (res != 0) {
+	res = kobject_add(&acg_dev->acg_dev_kobj, parent, "%llu", acg_dev->lun);
+	if (res) {
 		PRINT_ERROR("Can't add acg_dev %s/%s/%s/%llu to sysfs",
 			    acg_dev->acg->tgt->tgtt->name,
 			    acg_dev->acg->tgt->tgt_name,
@@ -2469,9 +2423,9 @@ int scst_acg_dev_sysfs_create(struct scst_acg_dev *acg_dev,
 
 	res = sysfs_create_link(&acg_dev->acg_dev_kobj,
 			scst_sysfs_get_dev_kobj(acg_dev->dev), "device");
-	if (res != 0) {
+	if (res) {
 		PRINT_ERROR("Can't create acg %s device link",
-			acg_dev->acg->acg_name);
+			    acg_dev->acg->acg_name);
 		goto out_del;
 	}
 
