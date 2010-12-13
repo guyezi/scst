@@ -177,7 +177,6 @@ static int scst_write_trace(const char *buf, size_t length,
 	unsigned long level = 0, oldlevel;
 	char *buffer, *p, *e;
 	const struct scst_trace_log *t;
-
 	enum {
 		SCST_TRACE_ACTION_ALL	  = 1,
 		SCST_TRACE_ACTION_NONE	  = 2,
@@ -188,6 +187,10 @@ static int scst_write_trace(const char *buf, size_t length,
 	};
 
 	TRACE_ENTRY();
+
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 29)
+	lockdep_assert_held(&scst_log_mutex);
+#endif
 
 	if ((buf == NULL) || (length == 0)) {
 		res = -EINVAL;
@@ -472,6 +475,10 @@ static struct scst_dev_type *__scst_lookup_devt(const char *name)
 static struct scst_device *__scst_lookup_dev(const char *name)
 {
 	struct scst_device *d;
+
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 29)
+	lockdep_assert_held(&scst_mutex);
+#endif
 
 	list_for_each_entry(d, &scst_dev_list, dev_list_entry)
 		if (strcmp(d->virt_name, name) == 0)
