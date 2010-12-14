@@ -328,7 +328,9 @@ out_del:
 #ifndef CONFIG_SCST_PROC
 	scst_tgtt_sysfs_del(vtt);
 #else
+	mutex_lock(&scst_mutex);
 	scst_cleanup_proc_target_dir_entries(vtt);
+	mutex_lock(&scst_mutex);
 #endif
 #ifndef CONFIG_SCST_PROC
 out_put:
