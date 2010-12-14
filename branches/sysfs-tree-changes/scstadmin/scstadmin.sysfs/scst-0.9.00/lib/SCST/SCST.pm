@@ -1987,8 +1987,7 @@ sub targetAttributes {
 	}
 
 	foreach my $attribute (readdir($pHandle)) {
-		next if ($attribute eq '.' || $attribute eq '..'
-		    || $attribute eq 'module');
+		next if ($attribute eq '.' || $attribute eq '..');
 		my $pPath = mkpath(SCST_TARGETS, $driver, $target, $attribute);
 		my $mode = (stat($pPath))[2];
 
@@ -1999,8 +1998,8 @@ sub targetAttributes {
 
 			$attributes{$attribute}->{'static'} = TRUE;
 			$attributes{$attribute}->{'value'} = $linked;
-		} elsif (-d $pPath) {
-			# Skip directories
+		} elsif (-d $pPath || -l $pPath) {
+			# Skip directories and soft links
 		} else {
 			if (!(($mode & S_IRUSR) >> 6)) {
 				$attributes{$attribute}->{'static'} = FALSE;
