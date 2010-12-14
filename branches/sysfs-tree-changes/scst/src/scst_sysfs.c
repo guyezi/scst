@@ -1865,6 +1865,15 @@ int scst_devt_dev_sysfs_create(struct scst_device *dev)
 	if (res)
 		goto out_err;
 
+	res = -ENOMEM;
+	dev->dev_exp_kobj = kobject_create_and_add("exported",
+						scst_sysfs_get_dev_kobj(dev));
+	if (!dev->dev_exp_kobj) {
+		PRINT_ERROR("Can't create exported link for device %s",
+			    dev->virt_name);
+		goto out_err;
+	}
+
 	res = device_create_files(scst_sysfs_get_dev_dev(dev),
 				  scst_devt_dev_attrs);
 	if (res) {
@@ -1992,6 +2001,9 @@ void scst_dev_sysfs_del(struct scst_device *dev)
 				    dev->handler->dev_attrs);
 	device_remove_files(scst_sysfs_get_dev_dev(dev), dev_thread_attr);
 	device_remove_files(scst_sysfs_get_dev_dev(dev), scst_devt_dev_attrs);
+
+	kobject_del(dev->dev_exp_kobj);
+	kobject_put(dev->dev_exp_kobj);
 
 	//device_lock(&dev->dev_dev);
 	device_release_driver(&dev->dev_dev);
@@ -2598,6 +2610,10 @@ struct attribute *scst_lun_attrs[] = {
 void scst_acg_dev_sysfs_del(struct scst_acg_dev *acg_dev)
 {
 	TRACE_ENTRY();
+	BUG_ON(!acg_dev->dev);
+	sysfs_remove_link(acg_dev->dev->dev_exp_kobj,
+			  acg_dev->acg_dev_link_name);
+	kobject_put(scst_sysfs_get_dev_kobj(acg_dev->dev));
 	kobject_del(&acg_dev->acg_dev_kobj);
 	TRACE_EXIT();
 }
@@ -2618,6 +2634,19 @@ int scst_acg_dev_sysfs_create(struct scst_acg_dev *acg_dev,
 			    acg_dev->acg->tgt->tgt_name,
 			    acg_dev->acg->acg_name, acg_dev->lun);
 		goto out;
+	}
+
+	kobject_get(scst_sysfs_get_dev_kobj(acg_dev->dev));
+
+	snprintf(acg_dev->acg_dev_link_name, sizeof(acg_dev->acg_dev_link_name),
+		 "export%u", acg_dev->dev->dev_exported_lun_num++);
+
+	res = sysfs_create_link(acg_dev->dev->dev_exp_kobj,
+			&acg_dev->acg_dev_kobj, acg_dev->acg_dev_link_name);
+	if (res) {
+		PRINT_ERROR("Can't create acg %s LUN link",
+			    acg_dev->acg->acg_name);
+		goto out_del;
 	}
 
 	res = sysfs_create_link(&acg_dev->acg_dev_kobj,
