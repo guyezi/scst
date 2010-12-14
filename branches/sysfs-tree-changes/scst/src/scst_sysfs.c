@@ -1859,9 +1859,9 @@ int scst_devt_dev_sysfs_create(struct scst_device *dev)
 		goto out;
 
 	dev->dev_dev.driver = &dev->handler->devt_drv;
-	//device_lock(&dev->dev_dev);
+	device_lock(&dev->dev_dev);
 	res = device_bind_driver(&dev->dev_dev);
-	//device_unlock(&dev->dev_dev);
+	device_unlock(&dev->dev_dev);
 	if (res)
 		goto out_err;
 
@@ -2005,9 +2005,7 @@ void scst_dev_sysfs_del(struct scst_device *dev)
 	kobject_del(dev->dev_exp_kobj);
 	kobject_put(dev->dev_exp_kobj);
 
-	//device_lock(&dev->dev_dev);
 	device_release_driver(&dev->dev_dev);
-	//device_unlock(&dev->dev_dev);
 
 	TRACE_EXIT();
 }
