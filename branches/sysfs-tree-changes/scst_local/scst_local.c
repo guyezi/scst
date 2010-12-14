@@ -1645,8 +1645,7 @@ static int __scst_local_add_adapter(struct scst_local_tgt *tgt,
 
 #ifndef CONFIG_SCST_PROC
 	res = sysfs_create_link(scst_sysfs_get_sess_kobj(sess->scst_sess),
-				&sess->shost->shost_dev.kobj,
-				"host");
+				&sess->shost->shost_dev.kobj, "host");
 	if (res != 0) {
 		PRINT_ERROR("Unable to create \"host\" link for target "
 			"%s", scst_get_tgt_name(tgt->scst_tgt));
