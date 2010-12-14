@@ -901,7 +901,7 @@ static int scst_register_device(struct scsi_device *scsidp)
 	list_for_each_entry(dt, &scst_dev_type_list, dev_type_list_entry) {
 		if (dt->type == scsidp->type) {
 			res = scst_assign_dev_handler(dev, dt);
-			if (res != 0)
+			if (res)
 				goto out_free_dev;
 			break;
 		}
@@ -912,7 +912,7 @@ static int scst_register_device(struct scsi_device *scsidp)
 		goto out_free_dev;
 	res = scst_dev_sysfs_create(dev);
 	if (res)
-		goto out_free_dev;
+		goto out_put;
 #endif
 
 	list_add_tail(&dev->dev_list_entry, &scst_dev_list);
@@ -928,12 +928,14 @@ out:
 	TRACE_EXIT_RES(res);
 	return res;
 
-out_free_dev:
-#ifdef CONFIG_SCST_PROC
-	scst_free_device(dev);
-#else
+#ifndef CONFIG_SCST_PROC
+out_put:
 	scst_dev_sysfs_put(dev);
+	dev = 0;
 #endif
+out_free_dev:
+	if (dev)
+		scst_free_device(dev);
 out_unlock:
 	mutex_unlock(&scst_mutex);
 out_resume:
