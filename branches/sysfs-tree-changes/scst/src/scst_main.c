@@ -285,6 +285,9 @@ int __scst_register_target_template(struct scst_tgt_template *vtt,
 	}
 
 #ifndef CONFIG_SCST_PROC
+	res = scst_tgtt_sysfs_init(vtt);
+	if (res)
+		goto out_unlock;
 	res = scst_tgtt_sysfs_create(vtt);
 	if (res)
 		goto out_put;
@@ -522,6 +525,9 @@ struct scst_tgt *scst_register_target(struct scst_tgt_template *vtt,
 	if (rc < 0)
 		goto out_unlock;
 #else
+	rc = scst_tgt_sysfs_init(tgt);
+	if (rc)
+		goto out_unlock;
 	rc = scst_tgt_sysfs_create(tgt);
 	if (rc) {
 		PRINT_ERROR("Adding target %s to sysfs failed (%d)",
@@ -931,7 +937,7 @@ out:
 #ifndef CONFIG_SCST_PROC
 out_put:
 	scst_dev_sysfs_put(dev);
-	dev = 0;
+	dev = NULL;
 #endif
 out_free_dev:
 	if (dev)
@@ -1061,7 +1067,7 @@ static int scst_check_device_name(const char *dev_name)
  * success, or negative value otherwise
  */
 int scst_register_virtual_device(struct scst_dev_type *dev_handler,
-	const char *dev_name)
+				 const char *dev_name)
 {
 	int res;
 	struct scst_device *dev, *d;
@@ -1266,10 +1272,10 @@ int __scst_register_dev_driver(struct scst_dev_type *dev_type,
 
 	TRACE_ENTRY();
 
+	res = -EINVAL;
 	if (strcmp(version, SCST_INTERFACE_VERSION) != 0) {
 		PRINT_ERROR("Incorrect version of dev handler %s",
-			dev_type->name);
-		res = -EINVAL;
+			    dev_type->name);
 		goto out;
 	}
 
@@ -1316,7 +1322,7 @@ int __scst_register_dev_driver(struct scst_dev_type *dev_type,
 	list_for_each_entry(dt, &scst_dev_type_list, dev_type_list_entry) {
 		if (strcmp(dt->name, dev_type->name) == 0) {
 			PRINT_ERROR("Device type handler \"%s\" already "
-				"exist", dt->name);
+				    "exists", dt->name);
 			exist = 1;
 			break;
 		}
@@ -1324,13 +1330,11 @@ int __scst_register_dev_driver(struct scst_dev_type *dev_type,
 	if (exist)
 		goto out_unlock;
 
-	list_add_tail(&dev_type->dev_type_list_entry, &scst_dev_type_list);
-
 #ifdef CONFIG_SCST_PROC
 	if (!dev_type->no_proc) {
 		res = scst_build_proc_dev_handler_dir_entries(dev_type);
-		if (res < 0)
-			goto out_del;
+		if (res)
+			goto out_unlock;
 	}
 
 	/*
@@ -1343,15 +1347,20 @@ int __scst_register_dev_driver(struct scst_dev_type *dev_type,
 		if (dev->scsi_dev->type == dev_type->type)
 			scst_assign_dev_handler(dev, dev_type);
 	}
-
-	mutex_unlock(&scst_mutex);
-	scst_resume_activity();
 #else
+	res = scst_devt_sysfs_init(dev_type);
+	if (res)
+		goto out_unlock;
 	res = scst_devt_sysfs_create(dev_type);
 	if (res)
 		goto out_put;
+#endif
+
+	list_add_tail(&dev_type->dev_type_list_entry, &scst_dev_type_list);
 
 	mutex_unlock(&scst_mutex);
+#ifdef CONFIG_SCST_PROC
+	scst_resume_activity();
 #endif
 
 	PRINT_INFO("Device handler \"%s\" for type %d registered "
@@ -1364,10 +1373,7 @@ out:
 #ifndef CONFIG_SCST_PROC
 out_put:
 	scst_devt_sysfs_put(dev_type);
-#else
-out_del:
 #endif
-	list_del(&dev_type->dev_type_list_entry);
 out_unlock:
 	mutex_unlock(&scst_mutex);
 #ifdef CONFIG_SCST_PROC
@@ -1486,8 +1492,11 @@ int __scst_register_virtual_dev_driver(struct scst_dev_type *dev_type,
 	if (res < 0)
 		goto out_del;
 #else
+	res = scst_devt_sysfs_init(dev_type);
+	if (res)
+		goto out;
 	res = scst_devt_sysfs_create(dev_type);
-	if (res < 0)
+	if (res)
 		goto out_put;
 #endif
 
@@ -1759,7 +1768,7 @@ out_err:
 
 /* The activity supposed to be suspended and scst_mutex held */
 int scst_assign_dev_handler(struct scst_device *dev,
-	struct scst_dev_type *handler)
+			    struct scst_dev_type *handler)
 {
 	int res = 0;
 	struct scst_tgt_dev *tgt_dev;
