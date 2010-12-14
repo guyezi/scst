@@ -3656,7 +3656,6 @@ int scst_acg_add_acn(struct scst_acg *acg, const char *name)
 		res = -ENOMEM;
 		goto out_free;
 	}
-
 	acn->name = nm;
 
 	res = scst_acn_sysfs_create(acn);
