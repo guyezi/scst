@@ -108,7 +108,7 @@ static struct scst_trace_log scst_trace_tbl[] = {
 	{ TRACE_MGMT_DEBUG,	"mgmt_dbg"	},
 	{ TRACE_FLOW_CONTROL,	"flow_control"	},
 	{ TRACE_PRES,		"pr"		},
-	{ 0,			NULL 		}
+	{ 0,			NULL		}
 };
 
 static struct scst_trace_log scst_local_trace_tbl[] = {
