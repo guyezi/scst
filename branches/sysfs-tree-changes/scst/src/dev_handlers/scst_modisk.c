@@ -51,7 +51,6 @@ static int modisk_done(struct scst_cmd *);
 static int modisk_perf_exec(struct scst_cmd *);
 
 static struct scst_dev_type modisk_devtype = {
-	.module = 		THIS_MODULE,
 	.name =			MODISK_NAME,
 	.type =			TYPE_MOD,
 	.threads_num =		1,
@@ -68,7 +67,6 @@ static struct scst_dev_type modisk_devtype = {
 };
 
 static struct scst_dev_type modisk_devtype_perf = {
-	.module = 		THIS_MODULE,
 	.name =			MODISK_PERF_NAME,
 	.type =			TYPE_MOD,
 	.parse_atomic =		1,
@@ -90,9 +88,13 @@ static int __init init_scst_modisk_driver(void)
 
 	TRACE_ENTRY();
 
+	modisk_devtype.module = THIS_MODULE;
+
 	res = scst_register_dev_driver(&modisk_devtype);
 	if (res < 0)
 		goto out;
+
+	modisk_devtype_perf.module = THIS_MODULE;
 
 	res = scst_register_dev_driver(&modisk_devtype_perf);
 	if (res < 0)

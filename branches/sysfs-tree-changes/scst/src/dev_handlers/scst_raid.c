@@ -40,7 +40,6 @@ static int raid_parse(struct scst_cmd *);
 /* static int raid_done(struct scst_cmd *); */
 
 static struct scst_dev_type raid_devtype = {
-	.module = 		THIS_MODULE,
 	.name =			RAID_NAME,
 	.type =			TYPE_RAID,
 	.threads_num =		1,
@@ -162,6 +161,8 @@ static int __init raid_init(void)
 	int res = 0;
 
 	TRACE_ENTRY();
+
+	raid_devtype.module = THIS_MODULE;
 
 	res = scst_register_dev_driver(&raid_devtype);
 	if (res < 0)

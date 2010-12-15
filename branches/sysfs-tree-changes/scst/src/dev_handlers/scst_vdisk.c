@@ -453,7 +453,6 @@ static const char *vdisk_fileio_add_device_parameters[] = {
 #endif
 
 static struct scst_dev_type vdisk_file_devtype = {
-	.module = 		THIS_MODULE,
 	.name =			"vdisk_fileio",
 	.type =			TYPE_DISK,
 	.exec_sync =		1,
@@ -496,7 +495,6 @@ static const char *vdisk_blockio_add_device_parameters[] = {
 #endif
 
 static struct scst_dev_type vdisk_blk_devtype = {
-	.module = 		THIS_MODULE,
 	.name =			"vdisk_blockio",
 	.type =			TYPE_DISK,
 	.threads_num =		1,
@@ -535,7 +533,6 @@ static const char *vdisk_nullio_add_device_parameters[] = {
 #endif
 
 static struct scst_dev_type vdisk_null_devtype = {
-	.module = 		THIS_MODULE,
 	.name =			"vdisk_nullio",
 	.type =			TYPE_DISK,
 	.threads_num =		0,
@@ -568,7 +565,6 @@ static struct scst_dev_type vdisk_null_devtype = {
 };
 
 static struct scst_dev_type vcdrom_devtype = {
-	.module = 		THIS_MODULE,
 	.name =			"vcdrom",
 	.type =			TYPE_ROM,
 	.exec_sync =		1,
@@ -5105,6 +5101,8 @@ static int __init init_scst_vdisk(struct scst_dev_type *devtype)
 	int res = 0;
 
 	TRACE_ENTRY();
+
+	devtype->module = THIS_MODULE;
 
 	res = scst_register_virtual_dev_driver(devtype);
 	if (res < 0)

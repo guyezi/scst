@@ -57,7 +57,6 @@ static bool disk_on_sg_tablesize_low(struct scst_cmd *cmd);
 #endif
 
 static struct scst_dev_type disk_devtype = {
-	.module = 		THIS_MODULE,
 	.name =			DISK_NAME,
 	.type =			TYPE_DISK,
 	.threads_num =		1,
@@ -78,7 +77,6 @@ static struct scst_dev_type disk_devtype = {
 };
 
 static struct scst_dev_type disk_devtype_perf = {
-	.module = 		THIS_MODULE,
 	.name =			DISK_PERF_NAME,
 	.type =			TYPE_DISK,
 	.parse_atomic =		1,
@@ -103,9 +101,13 @@ static int __init init_scst_disk_driver(void)
 
 	TRACE_ENTRY();
 
+	disk_devtype.module = THIS_MODULE;
+
 	res = scst_register_dev_driver(&disk_devtype);
 	if (res < 0)
 		goto out;
+
+	disk_devtype_perf.module = THIS_MODULE;
 
 	res = scst_register_dev_driver(&disk_devtype_perf);
 	if (res < 0)
