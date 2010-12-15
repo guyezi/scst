@@ -1062,6 +1062,23 @@ static struct device_attribute scst_tgt_io_grouping_type =
 	       scst_tgt_io_grouping_type_show,
 	       scst_tgt_io_grouping_type_store);
 
+static ssize_t __scst_acg_cpu_mask_show(struct scst_acg *acg, char *buf)
+{
+	int res;
+
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 28)
+	res = cpumask_scnprintf(buf, PAGE_SIZE, acg->acg_cpu_mask);
+#else
+	res = cpumask_scnprintf(buf, PAGE_SIZE, &acg->acg_cpu_mask);
+#endif
+	res += scnprintf(buf + res, PAGE_SIZE - res, "\n");
+	if (!cpus_equal(acg->acg_cpu_mask, default_cpu_mask))
+		res += scnprintf(buf + res, PAGE_SIZE - res, "%s",
+				 SCST_SYSFS_KEY_MARK "\n");
+
+	return res;
+}
+
 static int __scst_acg_process_cpu_mask_store(struct scst_tgt *tgt,
 	struct scst_acg *acg, cpumask_t *cpu_mask)
 {
@@ -1127,23 +1144,6 @@ static int __scst_acg_process_cpu_mask_store(struct scst_tgt *tgt,
 	mutex_unlock(&scst_mutex);
 
 out:
-	return res;
-}
-
-static ssize_t __scst_acg_cpu_mask_show(struct scst_acg *acg, char *buf)
-{
-	int res;
-
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 28)
-	res = cpumask_scnprintf(buf, PAGE_SIZE, &acg->acg_cpu_mask);
-#else
-	res = cpumask_scnprintf(buf, PAGE_SIZE, acg->acg_cpu_mask);
-#endif
-	res += scnprintf(buf + res, PAGE_SIZE - res, "\n");
-	if (cpus_equal(acg->acg_cpu_mask, default_cpu_mask) == 0)
-		res += scnprintf(buf + res, PAGE_SIZE - res, "%s",
-				 SCST_SYSFS_KEY_MARK "\n");
-
 	return res;
 }
 
@@ -1325,10 +1325,10 @@ static int scst_alloc_and_parse_cpumask(cpumask_t **cpumask, const char *buf,
 	int res;
 
 	res = -ENOMEM;
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 28)
-	*cpumask = kmalloc(cpumask_size(), GFP_KERNEL);
-#else
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 28)
 	*cpumask = kmalloc(sizeof(**cpumask), GFP_KERNEL);
+#else
+	*cpumask = kmalloc(cpumask_size(), GFP_KERNEL);
 #endif
 	if (!*cpumask)
 		goto out;
