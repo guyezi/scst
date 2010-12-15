@@ -4254,9 +4254,9 @@ static ssize_t vdisk_sysfs_removable_show(struct device *device,
 static ssize_t vdev_sysfs_filename_show(struct device *device,
 				struct device_attribute *attr, char *buf)
 {
+	int res;
 	struct scst_device *dev;
 	struct scst_vdisk_dev *virt_dev;
-	int res;
 
 	TRACE_ENTRY();
 
