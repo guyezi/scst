@@ -1217,6 +1217,9 @@ out:
 	return res;
 }
 
+static struct device_attribute tgt_enable_attr =
+	__ATTR(enabled, S_IRUGO, scst_tgt_enable_show, NULL);
+
 static ssize_t scst_rel_tgt_id_show(struct device *device,
 				    struct device_attribute *attr, char *buf)
 {
@@ -1375,9 +1378,6 @@ out:
 	TRACE_EXIT_RES(res);
 	return res;
 }
-
-static struct device_attribute tgt_enable_attr =
-	__ATTR(enabled, S_IRUGO, scst_tgt_enable_show, NULL);
 
 static void scst_release_target(struct device *dev)
 {
