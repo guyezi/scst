@@ -4068,11 +4068,6 @@ void scst_free_session(struct scst_session *sess)
 	scst_sess_sysfs_del(sess);
 #endif
 
-	/*
-	 * The lists delete must be after sysfs del. Otherwise it would break
-	 * logic in scst_sess_sysfs_create() to avoid duplicate sysfs names.
-	 */
-
 	TRACE_DBG("Removing sess %p from the list", sess);
 	list_del(&sess->sess_list_entry);
 	TRACE_DBG("Removing session %p from acg %s", sess, sess->acg->acg_name);
@@ -4081,16 +4076,11 @@ void scst_free_session(struct scst_session *sess)
 	/* Called under lock to protect from too early tgt release */
 	wake_up_all(&sess->tgt->unreg_waitQ);
 
-	/*
-	 * NOTE: do not dereference the sess->tgt pointer after scst_mutex
-	 * has been unlocked, because it can be already dead!!
-	 */
 	mutex_unlock(&scst_mutex);
 
 	kobject_put(&sess->sess_kobj);
 
 	TRACE_EXIT();
-	return;
 }
 
 void scst_free_session_callback(struct scst_session *sess)
