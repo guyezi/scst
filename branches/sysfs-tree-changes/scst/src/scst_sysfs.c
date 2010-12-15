@@ -1265,81 +1265,6 @@ static const struct device_attribute *scst_tgt_attr[] = {
 	NULL
 };
 
-static ssize_t scst_acg_addr_method_show(struct kobject *kobj,
-	struct kobj_attribute *attr, char *buf)
-{
-	struct scst_acg *acg;
-
-	acg = scst_kobj_to_acg(kobj);
-
-	return __scst_acg_addr_method_show(acg, buf);
-}
-
-static ssize_t scst_acg_addr_method_store(struct kobject *kobj,
-	struct kobj_attribute *attr, const char *buf, size_t count)
-{
-	int res;
-	struct scst_acg *acg;
-
-	acg = scst_kobj_to_acg(kobj);
-
-	res = __scst_acg_addr_method_store(acg, buf, count);
-
-	TRACE_EXIT_RES(res);
-	return res;
-}
-
-static struct kobj_attribute scst_acg_addr_method =
-	__ATTR(addr_method, S_IRUGO | S_IWUSR, scst_acg_addr_method_show,
-		scst_acg_addr_method_store);
-
-static ssize_t scst_acg_io_grouping_type_show(struct kobject *kobj,
-	struct kobj_attribute *attr, char *buf)
-{
-	struct scst_acg *acg;
-
-	acg = scst_kobj_to_acg(kobj);
-
-	return __scst_acg_io_grouping_type_show(acg, buf);
-}
-
-static ssize_t scst_acg_io_grouping_type_store(struct kobject *kobj,
-	struct kobj_attribute *attr, const char *buf, size_t count)
-{
-	int res;
-	struct scst_acg *acg;
-
-	acg = scst_kobj_to_acg(kobj);
-
-	res = __scst_acg_io_grouping_type_store(acg, buf, count);
-	if (res)
-		goto out;
-
-	res = count;
-
-out:
-	TRACE_EXIT_RES(res);
-	return res;
-}
-
-static struct kobj_attribute scst_acg_io_grouping_type =
-	__ATTR(io_grouping_type, S_IRUGO | S_IWUSR,
-	       scst_acg_io_grouping_type_show,
-	       scst_acg_io_grouping_type_store);
-
-static ssize_t scst_acg_cpu_mask_show(struct kobject *kobj,
-	struct kobj_attribute *attr, char *buf)
-{
-	struct scst_acg *acg;
-
-	acg = scst_kobj_to_acg(kobj);
-
-	return __scst_acg_cpu_mask_show(acg, buf);
-}
-
-static struct kobj_attribute scst_acg_cpu_mask =
-	__ATTR(cpu_mask, S_IRUGO, scst_acg_cpu_mask_show, NULL);
-
 static ssize_t scst_tgt_enable_show(struct device *device,
 				    struct device_attribute *attr, char *buf)
 {
@@ -2922,6 +2847,81 @@ out:
 	TRACE_EXIT_RES(res);
 	return res;
 }
+
+static ssize_t scst_acg_addr_method_show(struct kobject *kobj,
+	struct kobj_attribute *attr, char *buf)
+{
+	struct scst_acg *acg;
+
+	acg = scst_kobj_to_acg(kobj);
+
+	return __scst_acg_addr_method_show(acg, buf);
+}
+
+static ssize_t scst_acg_addr_method_store(struct kobject *kobj,
+	struct kobj_attribute *attr, const char *buf, size_t count)
+{
+	int res;
+	struct scst_acg *acg;
+
+	acg = scst_kobj_to_acg(kobj);
+
+	res = __scst_acg_addr_method_store(acg, buf, count);
+
+	TRACE_EXIT_RES(res);
+	return res;
+}
+
+static struct kobj_attribute scst_acg_addr_method =
+	__ATTR(addr_method, S_IRUGO | S_IWUSR, scst_acg_addr_method_show,
+		scst_acg_addr_method_store);
+
+static ssize_t scst_acg_io_grouping_type_show(struct kobject *kobj,
+	struct kobj_attribute *attr, char *buf)
+{
+	struct scst_acg *acg;
+
+	acg = scst_kobj_to_acg(kobj);
+
+	return __scst_acg_io_grouping_type_show(acg, buf);
+}
+
+static ssize_t scst_acg_io_grouping_type_store(struct kobject *kobj,
+	struct kobj_attribute *attr, const char *buf, size_t count)
+{
+	int res;
+	struct scst_acg *acg;
+
+	acg = scst_kobj_to_acg(kobj);
+
+	res = __scst_acg_io_grouping_type_store(acg, buf, count);
+	if (res)
+		goto out;
+
+	res = count;
+
+out:
+	TRACE_EXIT_RES(res);
+	return res;
+}
+
+static struct kobj_attribute scst_acg_io_grouping_type =
+	__ATTR(io_grouping_type, S_IRUGO | S_IWUSR,
+	       scst_acg_io_grouping_type_show,
+	       scst_acg_io_grouping_type_store);
+
+static ssize_t scst_acg_cpu_mask_show(struct kobject *kobj,
+	struct kobj_attribute *attr, char *buf)
+{
+	struct scst_acg *acg;
+
+	acg = scst_kobj_to_acg(kobj);
+
+	return __scst_acg_cpu_mask_show(acg, buf);
+}
+
+static struct kobj_attribute scst_acg_cpu_mask =
+	__ATTR(cpu_mask, S_IRUGO, scst_acg_cpu_mask_show, NULL);
 
 void scst_acg_sysfs_del(struct scst_acg *acg)
 {
