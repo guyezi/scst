@@ -1876,8 +1876,8 @@ out_err_detach_tgt:
 out_err_remove_sysfs:
 #ifndef CONFIG_SCST_PROC
 	scst_dev_sysfs_del(dev);
-#endif
 out_detach:
+#endif
 	if (handler && handler->detach) {
 		TRACE_DBG("%s", "Calling handler's detach()");
 		handler->detach(dev);
