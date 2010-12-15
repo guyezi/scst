@@ -462,7 +462,7 @@ extern struct sysfs_ops scst_sysfs_ops;
 #endif
 extern struct attribute *scst_session_attrs[];
 extern struct attribute *scst_tgt_dev_attrs[];
-extern struct attribute *scst_lun_attrs[];
+extern struct attribute *lun_attrs[];
 
 int scst_sysfs_init(void);
 void scst_sysfs_cleanup(void);

@@ -2701,7 +2701,7 @@ static struct kobj_type acg_dev_ktype = {
 	.release = scst_release_acg_dev,
 #ifndef CONFIG_SCST_PROC
 	.sysfs_ops = &scst_sysfs_ops,
-	.default_attrs = scst_lun_attrs,
+	.default_attrs = lun_attrs,
 #endif
 };
 

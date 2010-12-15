@@ -2578,7 +2578,7 @@ static ssize_t scst_lun_rd_only_show(struct kobject *kobj,
 static struct kobj_attribute lun_options_attr =
 	__ATTR(read_only, S_IRUGO, scst_lun_rd_only_show, NULL);
 
-struct attribute *scst_lun_attrs[] = {
+struct attribute *lun_attrs[] = {
 	&lun_options_attr.attr,
 	NULL,
 };
@@ -3477,9 +3477,9 @@ static ssize_t scst_devt_type_show(struct device_driver *drv, char *buf)
 }
 
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 34)
-static const struct driver_attribute scst_devt_type_show_attr =
+static const struct driver_attribute scst_devt_type_attr =
 #else
-static struct driver_attribute scst_devt_type_show_attr =
+static struct driver_attribute scst_devt_type_attr =
 #endif
 	__ATTR(type, S_IRUGO, scst_devt_type_show, NULL);
 
@@ -3488,7 +3488,7 @@ static const struct driver_attribute *scst_devt_default_attrs[] = {
 #else
 static struct driver_attribute *scst_devt_default_attrs[] = {
 #endif
-	&scst_devt_type_show_attr,
+	&scst_devt_type_attr,
 	NULL
 };
 
@@ -4373,9 +4373,9 @@ static struct device_attribute scst_version_attr =
 	__ATTR(version, S_IRUGO, scst_version_show, NULL);
 
 #if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 34)
-static struct device_attribute *scst_default_attr[] = {
+static struct device_attribute *scst_root_default_attrs[] = {
 #else
-static const struct device_attribute *scst_default_attr[] = {
+static const struct device_attribute *scst_root_default_attrs[] = {
 #endif
 	&scst_mgmt_attr,
 	&scst_threads_attr,
@@ -4665,7 +4665,7 @@ int __init scst_sysfs_init(void)
 		goto out_free;
 	}
 
-	res = device_create_files(scst_device, scst_default_attr);
+	res = device_create_files(scst_device, scst_root_default_attrs);
 	if (res) {
 		PRINT_ERROR("%s", "Creating SCST device attributes failed.");
 		goto out_unregister_device;
@@ -4682,7 +4682,7 @@ out:
 	return res;
 
 out_remove_files:
-	device_remove_files(scst_device, scst_default_attr);
+	device_remove_files(scst_device, scst_root_default_attrs);
 out_unregister_device:
 	device_unregister(scst_device);
 	scst_device = NULL;
@@ -4703,7 +4703,7 @@ void scst_sysfs_cleanup(void)
 
 	scst_del_put_sgv_kobj();
 
-	device_remove_files(scst_device, scst_default_attr);
+	device_remove_files(scst_device, scst_root_default_attrs);
 
 	device_unregister(scst_device);
 
