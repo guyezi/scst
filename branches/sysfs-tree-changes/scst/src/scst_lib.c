@@ -4065,9 +4065,7 @@ void scst_free_session(struct scst_session *sess)
 	scst_sess_free_tgt_devs(sess);
 
 #ifndef CONFIG_SCST_PROC
-	mutex_unlock(&scst_mutex);
 	scst_sess_sysfs_del(sess);
-	mutex_lock(&scst_mutex);
 #endif
 
 	/*
