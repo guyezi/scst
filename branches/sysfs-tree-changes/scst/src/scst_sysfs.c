@@ -290,7 +290,7 @@ static int scst_write_trace(const char *buf, size_t length,
 		while (isspace(*p) && *p != '\0')
 			p++;
 		res = strict_strtoul(p, 0, &level);
-		if (res) {
+		if (res != 0) {
 			PRINT_ERROR("Invalid trace value \"%s\"", p);
 			res = -EINVAL;
 			goto out_free;
@@ -1746,6 +1746,47 @@ static struct device_attribute *scst_devt_dev_attrs[] = {
 	&scst_dev_sysfs_type_attr,
 	NULL
 };
+
+static int scst_process_dev_mgmt_store(char *cmd, struct scst_device *dev)
+{
+	int res;
+
+	TRACE_ENTRY();
+
+	res = -EINVAL;
+	if (strncmp(cmd, "set_filename ", 13) == 0) {
+		res = -EPERM;
+		if (!dev->handler->set_filename)
+			goto out;
+		res = dev->handler->set_filename(dev, cmd + 13);
+	} else if (strncmp(cmd, "set_threads_num ", 16) == 0) {
+		long num_threads;
+
+		res = strict_strtol(cmd + 16, 0, &num_threads);
+		if (res) {
+			PRINT_ERROR("Bad thread count %s", cmd + 16);
+			goto out;
+		}
+		if (num_threads < 0) {
+			PRINT_ERROR("Invalid thread count %ld", num_threads);
+			goto out;
+		}
+		res = scst_dev_set_threads_num(dev, num_threads);
+	} else if (strncmp(cmd, "set_thread_pool_type ", 21) == 0) {
+		enum scst_dev_type_threads_pool_type newtpt;
+
+		newtpt = scst_parse_threads_pool_type(cmd + 21,
+						      strlen(cmd + 21));
+		if (newtpt == SCST_THREADS_POOL_TYPE_INVALID) {
+			PRINT_ERROR("Invalid thread pool type %s", cmd + 21);
+			goto out;
+		}
+		res = scst_dev_set_thread_pool_type(dev, newtpt);
+	}
+out:
+	TRACE_EXIT_RES(res);
+	return res;
+}
 
 static void scst_release_dev(struct device *device)
 {
@@ -3504,47 +3545,6 @@ static ssize_t scst_devt_drv_attributes_show(struct device_driver *drv,
 static struct driver_attribute scst_devt_drv_attributes_attr =
 	__ATTR(device_attributes, S_IRUGO,
 	       scst_devt_drv_attributes_show, NULL);
-
-static int scst_process_dev_mgmt_store(char *cmd, struct scst_device *dev)
-{
-	int res;
-
-	TRACE_ENTRY();
-
-	res = -EINVAL;
-	if (strncmp(cmd, "set_filename ", 13) == 0) {
-		res = -EPERM;
-		if (!dev->handler->set_filename)
-			goto out;
-		res = dev->handler->set_filename(dev, cmd + 13);
-	} else if (strncmp(cmd, "set_threads_num ", 16) == 0) {
-		long num_threads;
-
-		res = strict_strtol(cmd + 16, 0, &num_threads);
-		if (res) {
-			PRINT_ERROR("Bad thread count %s", cmd + 16);
-			goto out;
-		}
-		if (num_threads < 0) {
-			PRINT_ERROR("Invalid thread count %ld", num_threads);
-			goto out;
-		}
-		res = scst_dev_set_threads_num(dev, num_threads);
-	} else if (strncmp(cmd, "set_thread_pool_type ", 21) == 0) {
-		enum scst_dev_type_threads_pool_type newtpt;
-
-		newtpt = scst_parse_threads_pool_type(cmd + 21,
-						      strlen(cmd + 21));
-		if (newtpt == SCST_THREADS_POOL_TYPE_INVALID) {
-			PRINT_ERROR("Invalid thread pool type %s", cmd + 21);
-			goto out;
-		}
-		res = scst_dev_set_thread_pool_type(dev, newtpt);
-	}
-out:
-	TRACE_EXIT_RES(res);
-	return res;
-}
 
 static int scst_process_devt_mgmt_store(char *buffer,
 					struct scst_dev_type *devt)
