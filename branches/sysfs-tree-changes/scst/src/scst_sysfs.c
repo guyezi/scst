@@ -3102,6 +3102,10 @@ out:
 	return res;
 }
 
+/**
+ ** acn
+ **/
+
 static ssize_t scst_acn_file_show(struct kobject *kobj,
 	struct kobj_attribute *attr, char *buf)
 {
