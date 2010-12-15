@@ -3428,7 +3428,7 @@ static int dev_user_exit_dev(struct scst_user_dev *dev)
 
 static int __dev_user_release(void *arg)
 {
-	struct scst_user_dev *dev = (struct scst_user_dev *)arg;
+	struct scst_user_dev *dev = arg;
 	dev_user_exit_dev(dev);
 	kfree(dev);
 	return 0;
