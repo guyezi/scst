@@ -198,6 +198,23 @@ static int dev_user_exit_dev(struct scst_user_dev *dev);
 static int dev_user_read_proc(struct seq_file *seq,
 	struct scst_dev_type *dev_type);
 
+#else /* CONFIG_SCST_PROC */
+
+static ssize_t dev_user_sysfs_commands_show(struct device *device,
+				    struct device_attribute *attr, char *buf);
+
+static struct device_attribute dev_user_commands_attr =
+	__ATTR(commands, S_IRUGO, dev_user_sysfs_commands_show, NULL);
+
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 34)
+static struct device_attribute *dev_user_dev_attrs[] = {
+#else
+static const struct device_attribute *dev_user_dev_attrs[] = {
+#endif
+	&dev_user_commands_attr,
+	NULL,
+};
+
 #endif /* CONFIG_SCST_PROC */
 
 static int dev_usr_parse(struct scst_cmd *cmd);
@@ -2799,103 +2816,6 @@ out:
 	return res;
 }
 
-#ifndef CONFIG_SCST_PROC
-
-static ssize_t dev_user_sysfs_commands_show(struct device *device,
-				struct device_attribute *attr, char *buf)
-{
-	int pos = 0, ppos, i;
-	struct scst_device *dev;
-	struct scst_user_dev *udev;
-	unsigned long flags;
-
-	TRACE_ENTRY();
-
-	dev = scst_dev_to_dev(device);
-	udev = dev->dh_priv;
-
-	spin_lock_irqsave(&udev->udev_cmd_threads.cmd_list_lock, flags);
-	for (i = 0; i < (int)ARRAY_SIZE(udev->ucmd_hash); i++) {
-		struct list_head *head = &udev->ucmd_hash[i];
-		struct scst_user_cmd *ucmd;
-		list_for_each_entry(ucmd, head, hash_list_entry) {
-			ppos = pos;
-			pos += scnprintf(&buf[pos],
-				SCST_SYSFS_BLOCK_SIZE - pos,
-				"ucmd %p (state %x, ref %d), "
-				"sent_to_user %d, seen_by_user %d, "
-				"aborted %d, jammed %d, scst_cmd %p\n",
-				ucmd, ucmd->state,
-				atomic_read(&ucmd->ucmd_ref),
-				ucmd->sent_to_user, ucmd->seen_by_user,
-				ucmd->aborted, ucmd->jammed, ucmd->cmd);
-			if (pos >= SCST_SYSFS_BLOCK_SIZE-1) {
-				ppos += scnprintf(&buf[ppos],
-					SCST_SYSFS_BLOCK_SIZE - ppos, "...\n");
-				pos = ppos;
-				break;
-			}
-		}
-	}
-	spin_unlock_irqrestore(&udev->udev_cmd_threads.cmd_list_lock, flags);
-
-	TRACE_EXIT_RES(pos);
-	return pos;
-}
-
-static struct device_attribute dev_user_commands_attr =
-	__ATTR(commands, S_IRUGO, dev_user_sysfs_commands_show, NULL);
-
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 34)
-static struct device_attribute *dev_user_dev_attrs[] = {
-#else
-static const struct device_attribute *dev_user_dev_attrs[] = {
-#endif
-	&dev_user_commands_attr,
-	NULL,
-};
-
-#else /* CONFIG_SCST_PROC */
-
-/*
- * Called when a file in the /proc/scsi_tgt/scst_user is read
- */
-static int dev_user_read_proc(struct seq_file *seq, struct scst_dev_type *dev_type)
-{
-	int res = 0;
-	struct scst_user_dev *dev;
-	unsigned long flags;
-
-	TRACE_ENTRY();
-
-	spin_lock(&dev_list_lock);
-
-	list_for_each_entry(dev, &dev_list, dev_list_entry) {
-		int i;
-		seq_printf(seq, "Device %s commands:\n", dev->name);
-		spin_lock_irqsave(&dev->udev_cmd_threads.cmd_list_lock, flags);
-		for (i = 0; i < (int)ARRAY_SIZE(dev->ucmd_hash); i++) {
-			struct list_head *head = &dev->ucmd_hash[i];
-			struct scst_user_cmd *ucmd;
-			list_for_each_entry(ucmd, head, hash_list_entry) {
-				seq_printf(seq, "ucmd %p (state %x, ref %d), "
-					"sent_to_user %d, seen_by_user %d, "
-					"aborted %d, jammed %d, scst_cmd %p\n",
-					ucmd, ucmd->state,
-					atomic_read(&ucmd->ucmd_ref),
-					ucmd->sent_to_user, ucmd->seen_by_user,
-					ucmd->aborted, ucmd->jammed, ucmd->cmd);
-			}
-		}
-		spin_unlock_irqrestore(&dev->udev_cmd_threads.cmd_list_lock, flags);
-	}
-	spin_unlock(&dev_list_lock);
-
-	TRACE_EXIT_RES(res);
-	return res;
-}
-#endif /* CONFIG_SCST_PROC */
-
 static int dev_user_register_dev(struct file *file,
 	const struct scst_user_dev_desc *dev_desc)
 {
@@ -3607,6 +3527,91 @@ out:
 	TRACE_EXIT_RES(res);
 	return res;
 }
+
+#ifndef CONFIG_SCST_PROC
+
+static ssize_t dev_user_sysfs_commands_show(struct device *device,
+				struct device_attribute *attr, char *buf)
+{
+	int pos = 0, ppos, i;
+	struct scst_device *dev;
+	struct scst_user_dev *udev;
+	unsigned long flags;
+
+	TRACE_ENTRY();
+
+	dev = scst_dev_to_dev(device);
+	udev = dev->dh_priv;
+
+	spin_lock_irqsave(&udev->udev_cmd_threads.cmd_list_lock, flags);
+	for (i = 0; i < (int)ARRAY_SIZE(udev->ucmd_hash); i++) {
+		struct list_head *head = &udev->ucmd_hash[i];
+		struct scst_user_cmd *ucmd;
+		list_for_each_entry(ucmd, head, hash_list_entry) {
+			ppos = pos;
+			pos += scnprintf(&buf[pos],
+				SCST_SYSFS_BLOCK_SIZE - pos,
+				"ucmd %p (state %x, ref %d), "
+				"sent_to_user %d, seen_by_user %d, "
+				"aborted %d, jammed %d, scst_cmd %p\n",
+				ucmd, ucmd->state,
+				atomic_read(&ucmd->ucmd_ref),
+				ucmd->sent_to_user, ucmd->seen_by_user,
+				ucmd->aborted, ucmd->jammed, ucmd->cmd);
+			if (pos >= SCST_SYSFS_BLOCK_SIZE-1) {
+				ppos += scnprintf(&buf[ppos],
+					SCST_SYSFS_BLOCK_SIZE - ppos, "...\n");
+				pos = ppos;
+				break;
+			}
+		}
+	}
+	spin_unlock_irqrestore(&udev->udev_cmd_threads.cmd_list_lock, flags);
+
+	TRACE_EXIT_RES(pos);
+	return pos;
+}
+
+#else /* CONFIG_SCST_PROC */
+
+/*
+ * Called when a file in the /proc/scsi_tgt/scst_user is read
+ */
+static int dev_user_read_proc(struct seq_file *seq, struct scst_dev_type *dev_type)
+{
+	int res = 0;
+	struct scst_user_dev *dev;
+	unsigned long flags;
+
+	TRACE_ENTRY();
+
+	spin_lock(&dev_list_lock);
+
+	list_for_each_entry(dev, &dev_list, dev_list_entry) {
+		int i;
+		seq_printf(seq, "Device %s commands:\n", dev->name);
+		spin_lock_irqsave(&dev->udev_cmd_threads.cmd_list_lock, flags);
+		for (i = 0; i < (int)ARRAY_SIZE(dev->ucmd_hash); i++) {
+			struct list_head *head = &dev->ucmd_hash[i];
+			struct scst_user_cmd *ucmd;
+			list_for_each_entry(ucmd, head, hash_list_entry) {
+				seq_printf(seq, "ucmd %p (state %x, ref %d), "
+					"sent_to_user %d, seen_by_user %d, "
+					"aborted %d, jammed %d, scst_cmd %p\n",
+					ucmd, ucmd->state,
+					atomic_read(&ucmd->ucmd_ref),
+					ucmd->sent_to_user, ucmd->seen_by_user,
+					ucmd->aborted, ucmd->jammed, ucmd->cmd);
+			}
+		}
+		spin_unlock_irqrestore(&dev->udev_cmd_threads.cmd_list_lock, flags);
+	}
+	spin_unlock(&dev_list_lock);
+
+	TRACE_EXIT_RES(res);
+	return res;
+}
+#endif /* CONFIG_SCST_PROC */
 
 static inline int test_cleanup_list(void)
 {
