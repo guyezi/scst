@@ -4626,7 +4626,7 @@ static int scst_target_bus_match(struct device *dev, struct device_driver *drv)
 }
 
 static struct bus_type scst_target_bus = {
-	.name = "scsi_tgt_port",
+	.name = "scsi_target",
 	.match = scst_target_bus_match,
 };
 
