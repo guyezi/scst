@@ -398,7 +398,7 @@ static void dev_user_free_ucmd(struct scst_user_cmd *ucmd)
 static struct page *dev_user_alloc_pages(struct scatterlist *sg,
 	gfp_t gfp_mask, void *priv)
 {
-	struct scst_user_cmd *ucmd = (struct scst_user_cmd *)priv;
+	struct scst_user_cmd *ucmd = priv;
 	int offset = 0;
 
 	TRACE_ENTRY();
@@ -501,7 +501,7 @@ static void __dev_user_free_sg_entries(struct scst_user_cmd *ucmd)
 static void dev_user_free_sg_entries(struct scatterlist *sg, int sg_count,
 	void *priv)
 {
-	struct scst_user_cmd *ucmd = (struct scst_user_cmd *)priv;
+	struct scst_user_cmd *ucmd = priv;
 
 	TRACE_MEM("Freeing data pages (sg=%p, sg_count=%d, priv %p)", sg,
 		sg_count, ucmd);
@@ -554,7 +554,7 @@ static int dev_user_alloc_sg(struct scst_user_cmd *ucmd, int cached_buff)
 
 	if (cmd->data_direction != SCST_DATA_BIDI) {
 		orig_bufflen = cmd->bufflen;
-		pool = (struct sgv_pool *)cmd->tgt_dev->dh_priv;
+		pool = cmd->tgt_dev->dh_priv;
 	} else {
 		/* Make out_sg->offset 0 */
 		int len = cmd->bufflen + ucmd->first_page_offset;
@@ -590,8 +590,7 @@ static int dev_user_alloc_sg(struct scst_user_cmd *ucmd, int cached_buff)
 	cmd->sg = sgv_pool_alloc(pool, bufflen, gfp_mask, flags, &cmd->sg_cnt,
 			&ucmd->sgv, &dev->udev_mem_lim, ucmd);
 	if (cmd->sg != NULL) {
-		struct scst_user_cmd *buf_ucmd =
-			(struct scst_user_cmd *)sgv_get_priv(ucmd->sgv);
+		struct scst_user_cmd *buf_ucmd = sgv_get_priv(ucmd->sgv);
 
 		TRACE_MEM("Buf ucmd %p (cmd->sg_cnt %d, last seg len %d, "
 			"last_len %d, bufflen %d)", buf_ucmd, cmd->sg_cnt,
@@ -738,7 +737,7 @@ out:
 
 static int dev_user_get_block(struct scst_cmd *cmd)
 {
-	struct scst_user_dev *dev = (struct scst_user_dev *)cmd->dev->dh_priv;
+	struct scst_user_dev *dev = cmd->dev->dh_priv;
 	/*
 	 * No need for locks here, since *_detach() can not be
 	 * called, when there are existing commands.
@@ -752,7 +751,7 @@ static int dev_user_parse(struct scst_cmd *cmd)
 	int rc, res = SCST_CMD_STATE_DEFAULT;
 	struct scst_user_cmd *ucmd;
 	int atomic = scst_cmd_atomic(cmd);
-	struct scst_user_dev *dev = (struct scst_user_dev *)cmd->dev->dh_priv;
+	struct scst_user_dev *dev = cmd->dev->dh_priv;
 	gfp_t gfp_mask = atomic ? GFP_ATOMIC : GFP_KERNEL;
 
 	TRACE_ENTRY();
@@ -771,7 +770,7 @@ static int dev_user_parse(struct scst_cmd *cmd)
 		ucmd->cmd = cmd;
 		cmd->dh_priv = ucmd;
 	} else {
-		ucmd = (struct scst_user_cmd *)cmd->dh_priv;
+		ucmd = cmd->dh_priv;
 		TRACE_DBG("Used ucmd %p, state %x", ucmd, ucmd->state);
 	}
 
@@ -867,7 +866,7 @@ out_error:
 static int dev_user_alloc_data_buf(struct scst_cmd *cmd)
 {
 	int res = SCST_CMD_STATE_DEFAULT;
-	struct scst_user_cmd *ucmd = (struct scst_user_cmd *)cmd->dh_priv;
+	struct scst_user_cmd *ucmd = cmd->dh_priv;
 
 	TRACE_ENTRY();
 
@@ -922,7 +921,7 @@ out:
 
 static int dev_user_exec(struct scst_cmd *cmd)
 {
-	struct scst_user_cmd *ucmd = (struct scst_user_cmd *)cmd->dh_priv;
+	struct scst_user_cmd *ucmd = cmd->dh_priv;
 	int res = SCST_EXEC_COMPLETED;
 
 	TRACE_ENTRY();
@@ -982,7 +981,7 @@ static void dev_user_free_sgv(struct scst_user_cmd *ucmd)
 
 static void dev_user_on_free_cmd(struct scst_cmd *cmd)
 {
-	struct scst_user_cmd *ucmd = (struct scst_user_cmd *)cmd->dh_priv;
+	struct scst_user_cmd *ucmd = cmd->dh_priv;
 
 	TRACE_ENTRY();
 
@@ -1034,7 +1033,7 @@ out_reply:
 
 static void dev_user_set_block(struct scst_cmd *cmd, int block)
 {
-	struct scst_user_dev *dev = (struct scst_user_dev *)cmd->dev->dh_priv;
+	struct scst_user_dev *dev = cmd->dev->dh_priv;
 	/*
 	 * No need for locks here, since *_detach() can not be
 	 * called, when there are existing commands.
@@ -1635,7 +1634,7 @@ static int dev_user_reply_cmd(struct file *file, void __user *arg)
 	TRACE_ENTRY();
 
 	mutex_lock(&dev_priv_mutex);
-	dev = (struct scst_user_dev *)file->private_data;
+	dev = file->private_data;
 	res = dev_user_check_reg(dev);
 	if (unlikely(res != 0)) {
 		mutex_unlock(&dev_priv_mutex);
@@ -1678,7 +1677,7 @@ static int dev_user_get_ext_cdb(struct file *file, void __user *arg)
 	TRACE_ENTRY();
 
 	mutex_lock(&dev_priv_mutex);
-	dev = (struct scst_user_dev *)file->private_data;
+	dev = file->private_data;
 	res = dev_user_check_reg(dev);
 	if (unlikely(res != 0)) {
 		mutex_unlock(&dev_priv_mutex);
@@ -1923,7 +1922,7 @@ static int dev_user_reply_get_cmd(struct file *file, void __user *arg)
 	TRACE_ENTRY();
 
 	mutex_lock(&dev_priv_mutex);
-	dev = (struct scst_user_dev *)file->private_data;
+	dev = file->private_data;
 	res = dev_user_check_reg(dev);
 	if (unlikely(res != 0)) {
 		mutex_unlock(&dev_priv_mutex);
@@ -2131,7 +2130,7 @@ static unsigned int dev_user_poll(struct file *file, poll_table *wait)
 	TRACE_ENTRY();
 
 	mutex_lock(&dev_priv_mutex);
-	dev = (struct scst_user_dev *)file->private_data;
+	dev = file->private_data;
 	res = dev_user_check_reg(dev);
 	if (unlikely(res != 0)) {
 		mutex_unlock(&dev_priv_mutex);
@@ -2414,8 +2413,7 @@ static int dev_user_task_mgmt_fn(struct scst_mgmt_cmd *mcmd,
 	struct scst_tgt_dev *tgt_dev)
 {
 	struct scst_user_cmd *ucmd;
-	struct scst_user_dev *dev =
-		(struct scst_user_dev *)tgt_dev->dev->dh_priv;
+	struct scst_user_dev *dev = tgt_dev->dev->dh_priv;
 	struct scst_user_cmd *ucmd_to_abort = NULL;
 
 	TRACE_ENTRY();
@@ -2474,8 +2472,7 @@ static int dev_user_task_mgmt_fn(struct scst_mgmt_cmd *mcmd,
 	ucmd->user_cmd.tm_cmd.cmd_sn_set = mcmd->cmd_sn_set;
 
 	if (mcmd->cmd_to_abort != NULL) {
-		ucmd_to_abort =
-			(struct scst_user_cmd *)mcmd->cmd_to_abort->dh_priv;
+		ucmd_to_abort = mcmd->cmd_to_abort->dh_priv;
 		if (ucmd_to_abort != NULL)
 			ucmd->user_cmd.tm_cmd.cmd_h_to_abort = ucmd_to_abort->h;
 	}
@@ -2537,7 +2534,7 @@ out:
 
 static void dev_user_detach(struct scst_device *sdev)
 {
-	struct scst_user_dev *dev = (struct scst_user_dev *)sdev->dh_priv;
+	struct scst_user_dev *dev = sdev->dh_priv;
 
 	TRACE_ENTRY();
 
@@ -2586,8 +2583,7 @@ static int dev_user_process_reply_sess(struct scst_user_cmd *ucmd, int status)
 
 static int dev_user_attach_tgt(struct scst_tgt_dev *tgt_dev)
 {
-	struct scst_user_dev *dev =
-		(struct scst_user_dev *)tgt_dev->dev->dh_priv;
+	struct scst_user_dev *dev = tgt_dev->dev->dh_priv;
 	int res = 0, rc;
 	struct scst_user_cmd *ucmd;
 	DECLARE_COMPLETION_ONSTACK(cmpl);
@@ -2675,8 +2671,7 @@ out_nomem:
 
 static void dev_user_detach_tgt(struct scst_tgt_dev *tgt_dev)
 {
-	struct scst_user_dev *dev =
-		(struct scst_user_dev *)tgt_dev->dev->dh_priv;
+	struct scst_user_dev *dev = tgt_dev->dev->dh_priv;
 	struct scst_user_cmd *ucmd;
 
 	TRACE_ENTRY();
@@ -3020,7 +3015,7 @@ static int dev_user_unregister_dev(struct file *file)
 	TRACE_ENTRY();
 
 	mutex_lock(&dev_priv_mutex);
-	dev = (struct scst_user_dev *)file->private_data;
+	dev = file->private_data;
 	res = dev_user_check_reg(dev);
 	if (res != 0) {
 		mutex_unlock(&dev_priv_mutex);
@@ -3036,7 +3031,7 @@ static int dev_user_unregister_dev(struct file *file)
 	up_read(&dev->dev_rwsem);
 
 	mutex_lock(&dev_priv_mutex);
-	dev = (struct scst_user_dev *)file->private_data;
+	dev = file->private_data;
 	if (dev == NULL) {
 		mutex_unlock(&dev_priv_mutex);
 		goto out_resume;
@@ -3075,7 +3070,7 @@ static int dev_user_flush_cache(struct file *file)
 	TRACE_ENTRY();
 
 	mutex_lock(&dev_priv_mutex);
-	dev = (struct scst_user_dev *)file->private_data;
+	dev = file->private_data;
 	res = dev_user_check_reg(dev);
 	if (res != 0) {
 		mutex_unlock(&dev_priv_mutex);
@@ -3109,7 +3104,7 @@ static int dev_user_capacity_changed(struct file *file)
 	TRACE_ENTRY();
 
 	mutex_lock(&dev_priv_mutex);
-	dev = (struct scst_user_dev *)file->private_data;
+	dev = file->private_data;
 	res = dev_user_check_reg(dev);
 	if (res != 0) {
 		mutex_unlock(&dev_priv_mutex);
@@ -3142,7 +3137,7 @@ static int dev_user_prealloc_buffer(struct file *file, void __user *arg)
 	TRACE_ENTRY();
 
 	mutex_lock(&dev_priv_mutex);
-	dev = (struct scst_user_dev *)file->private_data;
+	dev = file->private_data;
 	res = dev_user_check_reg(dev);
 	if (unlikely(res != 0)) {
 		mutex_unlock(&dev_priv_mutex);
@@ -3194,8 +3189,7 @@ static int dev_user_prealloc_buffer(struct file *file, void __user *arg)
 	sg = sgv_pool_alloc(pool, bufflen, GFP_KERNEL, SGV_POOL_ALLOC_GET_NEW,
 			 &sg_cnt, &ucmd->sgv, &dev->udev_mem_lim, ucmd);
 	if (sg != NULL) {
-		struct scst_user_cmd *buf_ucmd =
-			(struct scst_user_cmd *)sgv_get_priv(ucmd->sgv);
+		struct scst_user_cmd *buf_ucmd = sgv_get_priv(ucmd->sgv);
 
 		TRACE_MEM("Buf ucmd %p (sg_cnt %d, last seg len %d, "
 			"bufflen %d)", buf_ucmd, sg_cnt,
@@ -3303,7 +3297,7 @@ static int dev_user_set_opt(struct file *file, const struct scst_user_opt *opt)
 	TRACE_ENTRY();
 
 	mutex_lock(&dev_priv_mutex);
-	dev = (struct scst_user_dev *)file->private_data;
+	dev = file->private_data;
 	res = dev_user_check_reg(dev);
 	if (res != 0) {
 		mutex_unlock(&dev_priv_mutex);
@@ -3337,7 +3331,7 @@ static int dev_user_get_opt(struct file *file, void __user *arg)
 	TRACE_ENTRY();
 
 	mutex_lock(&dev_priv_mutex);
-	dev = (struct scst_user_dev *)file->private_data;
+	dev = file->private_data;
 	res = dev_user_check_reg(dev);
 	if (res != 0) {
 		mutex_unlock(&dev_priv_mutex);
@@ -3447,7 +3441,7 @@ static int dev_user_release(struct inode *inode, struct file *file)
 
 	TRACE_ENTRY();
 
-	dev = (struct scst_user_dev *)file->private_data;
+	dev = file->private_data;
 	if (dev == NULL)
 		goto out;
 	file->private_data = NULL;
