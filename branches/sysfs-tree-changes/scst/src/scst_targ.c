@@ -6207,6 +6207,7 @@ static int scst_init_session(struct scst_session *sess)
 	res = scst_sess_sysfs_create(sess);
 	if (res != 0)
 		goto failed;
+#endif
 
 	/*
 	 * scst_sess_alloc_tgt_devs() must be called after session added in the
@@ -6214,7 +6215,6 @@ static int scst_init_session(struct scst_session *sess)
 	 */
 	res = scst_sess_alloc_tgt_devs(sess);
 
-#endif
 failed:
 	mutex_unlock(&scst_mutex);
 
