@@ -1732,9 +1732,9 @@ static const struct device_attribute *dev_thread_attr[] = {
 };
 
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 34)
-static const struct device_attribute scst_dev_sysfs_type_attr = 
+static const struct device_attribute scst_dev_sysfs_type_attr =
 #else
-static struct device_attribute scst_dev_sysfs_type_attr = 
+static struct device_attribute scst_dev_sysfs_type_attr =
 #endif
 	__ATTR(type, S_IRUGO, scst_dev_sysfs_type_show, NULL);
 
