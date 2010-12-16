@@ -353,6 +353,17 @@ static void sysfs_remove_files(struct kobject *kobj,
 		sysfs_remove_file(kobj, ptr[i]);
 }
 #endif
+
+/* Backported from linux/device.h. */
+static inline void device_lock(struct device *dev)
+{
+	down(&dev->sem);
+}
+
+static inline void device_unlock(struct device *dev)
+{
+	up(&dev->sem);
+}
 #endif
 
 static int device_create_files(struct device *dev,
