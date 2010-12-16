@@ -1360,9 +1360,11 @@ static uint16_t scst_local_get_phys_transport_version(struct scst_tgt *scst_tgt)
 	return tgt->phys_transport_version;
 }
 
+#ifndef CONFIG_SCST_PROC
 static const char *add_target_parameters[] = {
 	"session_name", NULL
 };
+#endif
 
 static struct scst_tgt_template scst_local_targ_tmpl = {
 	.name			= "scst_local",
