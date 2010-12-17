@@ -274,7 +274,7 @@ int __scst_register_target_template(struct scst_tgt_template *vtt,
 		vtt->rdy_to_xfer_atomic = 1;
 
 	res = mutex_lock_interruptible(&scst_mutex);
-	if (res)
+	if (res != 0)
 		goto out;
 	list_for_each_entry(t, &scst_template_list, scst_template_list_entry) {
 		if (strcmp(t->name, vtt->name) == 0) {
@@ -289,7 +289,7 @@ int __scst_register_target_template(struct scst_tgt_template *vtt,
 	if (res)
 		goto out_unlock;
 	res = scst_tgtt_sysfs_create(vtt);
-	if (res)
+	if (res != 0)
 		goto out_put;
 #else
 	mutex_unlock(&scst_mutex);
@@ -691,12 +691,17 @@ static int scst_susp_wait(bool interruptible)
 }
 
 /**
- * scst_suspend_activity() - Globally suspend SCSI command processing.
+ * scst_suspend_activity() - globally suspend any activity
  *
- * Wait until any ongoing SCSI commands have finished and suspend processing
- * of new SCSI commands. If the argument "interruptible" is set to true,
- * returns after either SCST_SUSPENDING_TIMEOUT elapsed or if interrupted by a
- * signal. Returns zero upon success or a negative error code upon failure.
+ * Description:
+ *    Globally suspends any activity and doesn't return, until there are any
+ *    active commands (state after SCST_CMD_STATE_INIT). If "interruptible"
+ *    is true, it returns after SCST_SUSPENDING_TIMEOUT or if it was interrupted
+ *    by a signal with the corresponding error status < 0. If "interruptible"
+ *    is false, it will wait virtually forever. On success returns 0.
+ *
+ *    New arriving commands stay in the suspended state until
+ *    scst_resume_activity() is called.
  */
 int scst_suspend_activity(bool interruptible)
 {
@@ -838,7 +843,9 @@ out:
 }
 
 /**
- * scst_resume_activity() - Globally resume SCSI command processing.
+ * scst_resume_activity() - globally resume all activities
+ *
+ * Resumes suspended by scst_suspend_activity() activities.
  */
 void scst_resume_activity(void)
 {
@@ -872,7 +879,7 @@ static int scst_register_device(struct scsi_device *scsidp)
 		goto out;
 
 	res = mutex_lock_interruptible(&scst_mutex);
-	if (res)
+	if (res != 0)
 		goto out_resume;
 
 	res = scst_alloc_device(GFP_KERNEL, &dev);
@@ -1100,7 +1107,7 @@ int scst_register_virtual_device(struct scst_dev_type *dev_handler,
 		goto out;
 
 	res = mutex_lock_interruptible(&scst_mutex);
-	if (res)
+	if (res != 0)
 		goto out_resume;
 
 	list_for_each_entry(d, &scst_dev_list, dev_list_entry) {
@@ -1135,7 +1142,7 @@ int scst_register_virtual_device(struct scst_dev_type *dev_handler,
 	res = dev->virt_id;
 
 	res = scst_pr_init_dev(dev);
-	if (res)
+	if (res != 0)
 		goto out_free_dev;
 
 #ifndef CONFIG_SCST_PROC
@@ -1275,7 +1282,7 @@ int __scst_register_dev_driver(struct scst_dev_type *dev_type,
 	res = -EINVAL;
 	if (strcmp(version, SCST_INTERFACE_VERSION) != 0) {
 		PRINT_ERROR("Incorrect version of dev handler %s",
-			    dev_type->name);
+			dev_type->name);
 		goto out;
 	}
 
@@ -1311,7 +1318,7 @@ int __scst_register_dev_driver(struct scst_dev_type *dev_type,
 #endif
 
 	res = mutex_lock_interruptible(&scst_mutex);
-	if (res)
+	if (res != 0)
 #ifdef CONFIG_SCST_PROC
 		goto out_resume;
 #else
@@ -1478,7 +1485,7 @@ int __scst_register_virtual_dev_driver(struct scst_dev_type *dev_type,
 		goto out;
 
 	res = mutex_lock_interruptible(&scst_mutex);
-	if (res)
+	if (res != 0)
 		goto out;
 
 	list_add_tail(&dev_type->dev_type_list_entry, &scst_virtual_dev_type_list);

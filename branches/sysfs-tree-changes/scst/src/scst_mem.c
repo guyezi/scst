@@ -2077,7 +2077,7 @@ static int scst_sgv_sysfs_create(struct sgv_pool *pool, struct kobject *parent)
 	TRACE_ENTRY();
 
 	res = kobject_add(&pool->sgv_kobj, parent, pool->name);
-	if (res) {
+	if (res != 0) {
 		PRINT_ERROR("Can't add sgv pool %s to sysfs", pool->name);
 		goto out;
 	}
@@ -2131,7 +2131,7 @@ int scst_add_sgv_kobj(struct kobject *parent, const char *name)
 	if (!scst_sgv_kobj)
 		goto out;
 	res = kobject_init_and_add(scst_sgv_kobj, &sgv_ktype, parent, name);
-	if (res)
+	if (res != 0)
 		goto out_free;
 out:
 	return res;
