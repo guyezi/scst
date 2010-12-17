@@ -108,60 +108,59 @@ static uint16_t q2t_get_phys_transport_version(struct scst_tgt *scst_tgt);
 
 /** SYSFS **/
 
-static ssize_t q2t_version_show(struct kobject *kobj,
-	struct kobj_attribute *attr, char *buf);
+static ssize_t q2t_version_show(struct device_driver *drv, char *buf);
 
-struct kobj_attribute q2t_version_attr =
+struct driver_attribute q2t_version_attr =
 	__ATTR(version, S_IRUGO, q2t_version_show, NULL);
 
-static const struct attribute *q2t_attrs[] = {
-	&q2t_version_attr.attr,
+static const struct driver_attribute *q2t_attrs[] = {
+	&q2t_version_attr,
 	NULL,
 };
 
-static ssize_t q2t_show_expl_conf_enabled(struct kobject *kobj,
-	struct kobj_attribute *attr, char *buffer);
-static ssize_t q2t_store_expl_conf_enabled(struct kobject *kobj,
-	struct kobj_attribute *attr, const char *buffer, size_t size);
+static ssize_t q2t_show_expl_conf_enabled(struct device *dev,
+	struct device_attribute *attr, char *buffer);
+static ssize_t q2t_store_expl_conf_enabled(struct device *dev,
+	struct device_attribute *attr, const char *buffer, size_t size);
 
-struct kobj_attribute q2t_expl_conf_attr =
+struct device_attribute q2t_expl_conf_attr =
 	__ATTR(explicit_confirmation, S_IRUGO|S_IWUSR,
 	       q2t_show_expl_conf_enabled, q2t_store_expl_conf_enabled);
 
-static ssize_t q2t_abort_isp_store(struct kobject *kobj,
-	struct kobj_attribute *attr, const char *buffer, size_t size);
+static ssize_t q2t_abort_isp_store(struct device *dev,
+	struct device_attribute *attr, const char *buffer, size_t size);
 
-struct kobj_attribute q2t_abort_isp_attr =
+struct device_attribute q2t_abort_isp_attr =
 	__ATTR(abort_isp, S_IWUSR, NULL, q2t_abort_isp_store);
 
-static ssize_t q2t_hw_target_show(struct kobject *kobj,
-	struct kobj_attribute *attr, char *buf);
+static ssize_t q2t_hw_target_show(struct device *dev,
+	struct device_attribute *attr, char *buf);
 
-static struct kobj_attribute q2t_hw_target_attr =
+static struct device_attribute q2t_hw_target_attr =
 	__ATTR(hw_target, S_IRUGO, q2t_hw_target_show, NULL);
 
-static ssize_t q2t_node_name_show(struct kobject *kobj,
-	struct kobj_attribute *attr, char *buf);
+static ssize_t q2t_node_name_show(struct device *dev,
+	struct device_attribute *attr, char *buf);
 
-static struct kobj_attribute q2t_vp_node_name_attr =
+static struct device_attribute q2t_vp_node_name_attr =
 	__ATTR(node_name, S_IRUGO, q2t_node_name_show, NULL);
 
-static ssize_t q2t_node_name_store(struct kobject *kobj,
-	struct kobj_attribute *attr, const char *buffer, size_t size);
+static ssize_t q2t_node_name_store(struct device *dev,
+	struct device_attribute *attr, const char *buffer, size_t size);
 
-static struct kobj_attribute q2t_hw_node_name_attr =
+static struct device_attribute q2t_hw_node_name_attr =
 	__ATTR(node_name, S_IRUGO|S_IWUSR, q2t_node_name_show,
 		q2t_node_name_store);
 
-static ssize_t q2t_vp_parent_host_show(struct kobject *kobj,
-	struct kobj_attribute *attr, char *buf);
+static ssize_t q2t_vp_parent_host_show(struct device *dev,
+	struct device_attribute *attr, char *buf);
 
-static struct kobj_attribute q2t_vp_parent_host_attr =
+static struct device_attribute q2t_vp_parent_host_attr =
 	__ATTR(parent_host, S_IRUGO, q2t_vp_parent_host_show, NULL);
 
-static const struct attribute *q2t_tgt_attrs[] = {
-	&q2t_expl_conf_attr.attr,
-	&q2t_abort_isp_attr.attr,
+static const struct device_attribute *q2t_tgt_attrs[] = {
+	&q2t_expl_conf_attr,
+	&q2t_abort_isp_attr,
 	NULL,
 };
 
@@ -6111,15 +6110,15 @@ out:
 
 #ifndef CONFIG_SCST_PROC
 
-static ssize_t q2t_show_expl_conf_enabled(struct kobject *kobj,
-	struct kobj_attribute *attr, char *buffer)
+static ssize_t q2t_show_expl_conf_enabled(struct device *dev,
+	struct device_attribute *attr, char *buffer)
 {
 	struct scst_tgt *scst_tgt;
 	struct q2t_tgt *tgt;
 	scsi_qla_host_t *ha;
 	ssize_t size;
 
-	scst_tgt = scst_kobj_to_tgt(kobj);
+	scst_tgt = scst_dev_to_tgt(dev);
 	tgt = (struct q2t_tgt *)scst_tgt_get_tgt_priv(scst_tgt);
 	ha = tgt->ha;
 
@@ -6129,15 +6128,15 @@ static ssize_t q2t_show_expl_conf_enabled(struct kobject *kobj,
 	return size;
 }
 
-static ssize_t q2t_store_expl_conf_enabled(struct kobject *kobj,
-	struct kobj_attribute *attr, const char *buffer, size_t size)
+static ssize_t q2t_store_expl_conf_enabled(struct device *dev,
+	struct device_attribute *attr, const char *buffer, size_t size)
 {
 	struct scst_tgt *scst_tgt;
 	struct q2t_tgt *tgt;
 	scsi_qla_host_t *ha, *pha;
 	unsigned long flags;
 
-	scst_tgt = scst_kobj_to_tgt(kobj);
+	scst_tgt = scst_dev_to_tgt(dev);
 	tgt = (struct q2t_tgt *)scst_tgt_get_tgt_priv(scst_tgt);
 	ha = tgt->ha;
 	pha = to_qla_parent(ha);
@@ -6166,14 +6165,14 @@ static ssize_t q2t_store_expl_conf_enabled(struct kobject *kobj,
 	return size;
 }
 
-static ssize_t q2t_abort_isp_store(struct kobject *kobj,
-	struct kobj_attribute *attr, const char *buffer, size_t size)
+static ssize_t q2t_abort_isp_store(struct device *dev,
+	struct device_attribute *attr, const char *buffer, size_t size)
 {
 	struct scst_tgt *scst_tgt;
 	struct q2t_tgt *tgt;
 	scsi_qla_host_t *ha;
 
-	scst_tgt = scst_kobj_to_tgt(kobj);
+	scst_tgt = scst_dev_to_tgt(dev);
 	tgt = (struct q2t_tgt *)scst_tgt_get_tgt_priv(scst_tgt);
 	ha = tgt->ha;
 
@@ -6185,8 +6184,7 @@ static ssize_t q2t_abort_isp_store(struct kobject *kobj,
 	return size;
 }
 
-static ssize_t q2t_version_show(struct kobject *kobj,
-	struct kobj_attribute *attr, char *buf)
+static ssize_t q2t_version_show(struct device_driver *drv, char *buf)
 {
 	sprintf(buf, "%s\n", Q2T_VERSION_STRING);
 
@@ -6210,14 +6208,14 @@ static ssize_t q2t_version_show(struct kobject *kobj,
 	return strlen(buf);
 }
 
-static ssize_t q2t_hw_target_show(struct kobject *kobj,
-	struct kobj_attribute *attr, char *buf)
+static ssize_t q2t_hw_target_show(struct device *dev,
+	struct device_attribute *attr, char *buf)
 {
 	return sprintf(buf, "%d\n", 1);
 }
 
-static ssize_t q2t_node_name_show(struct kobject *kobj,
-	struct kobj_attribute *attr, char *buf)
+static ssize_t q2t_node_name_show(struct device *dev,
+	struct device_attribute *attr, char *buf)
 {
 	struct scst_tgt *scst_tgt;
 	struct q2t_tgt *tgt;
@@ -6226,7 +6224,7 @@ static ssize_t q2t_node_name_show(struct kobject *kobj,
 	char *wwn;
 	uint8_t *node_name;
 
-	scst_tgt = scst_kobj_to_tgt(kobj);
+	scst_tgt = scst_dev_to_tgt(dev);
 	tgt = (struct q2t_tgt *)scst_tgt_get_tgt_priv(scst_tgt);
 	ha = tgt->ha;
 
@@ -6252,8 +6250,8 @@ out:
 	return res;
 }
 
-static ssize_t q2t_node_name_store(struct kobject *kobj,
-	struct kobj_attribute *attr, const char *buffer, size_t size)
+static ssize_t q2t_node_name_store(struct device *dev,
+	struct device_attribute *attr, const char *buffer, size_t size)
 {
 	struct scst_tgt *scst_tgt;
 	struct q2t_tgt *tgt;
@@ -6263,7 +6261,7 @@ static ssize_t q2t_node_name_store(struct kobject *kobj,
 
 	TRACE_ENTRY();
 
-	scst_tgt = scst_kobj_to_tgt(kobj);
+	scst_tgt = scst_dev_to_tgt(dev);
 	tgt = (struct q2t_tgt *)scst_tgt_get_tgt_priv(scst_tgt);
 	ha = tgt->ha;
 
@@ -6305,8 +6303,8 @@ out_default:
 	goto abort;
 }
 
-static ssize_t q2t_vp_parent_host_show(struct kobject *kobj,
-	struct kobj_attribute *attr, char *buf)
+static ssize_t q2t_vp_parent_host_show(struct device *dev,
+	struct device_attribute *attr, char *buf)
 {
 	struct scst_tgt *scst_tgt;
 	struct q2t_tgt *tgt;
@@ -6314,7 +6312,7 @@ static ssize_t q2t_vp_parent_host_show(struct kobject *kobj,
 	ssize_t res;
 	char *wwn;
 
-	scst_tgt = scst_kobj_to_tgt(kobj);
+	scst_tgt = scst_dev_to_tgt(dev);
 	tgt = (struct q2t_tgt *)scst_tgt_get_tgt_priv(scst_tgt);
 	ha = to_qla_parent(tgt->ha);
 
