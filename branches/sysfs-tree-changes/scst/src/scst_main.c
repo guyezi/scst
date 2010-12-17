@@ -1234,17 +1234,17 @@ void scst_unregister_virtual_device(int id)
 		scst_acg_del_lun(acg_dev->acg, acg_dev->lun, true);
 	}
 
-#ifdef CONFIG_SCST_PROC
-	scst_free_device(dev);
-#else
-	scst_dev_sysfs_put(dev);
-#endif
-
 	mutex_unlock(&scst_mutex);
 	scst_resume_activity();
 
 	PRINT_INFO("Detached from virtual device %s (id %d)",
 		dev->virt_name, dev->virt_id);
+
+#ifdef CONFIG_SCST_PROC
+	scst_free_device(dev);
+#else
+	scst_dev_sysfs_put(dev);
+#endif
 
 out:
 	TRACE_EXIT();
