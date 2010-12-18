@@ -1,0 +1,24 @@
+diff --git a/block/blk-ioc.c b/block/blk-ioc.c
+index 3c7a339..c7edf93 100644
+--- a/block/blk-ioc.c
++++ b/block/blk-ioc.c
+@@ -101,6 +101,7 @@ struct io_context *alloc_io_context(gfp_t gfp_flags, int node)
+ 
+ 	return ret;
+ }
++EXPORT_SYMBOL(alloc_io_context);
+ 
+ /*
+  * If the current task has no IO context then create one and initialise it.
+diff --git a/include/linux/iocontext.h b/include/linux/iocontext.h
+index b2eee89..e841e41 100644
+--- a/include/linux/iocontext.h
++++ b/include/linux/iocontext.h
+@@ -74,6 +74,7 @@ struct task_struct;
+ #ifdef CONFIG_BLOCK
+ int put_io_context(struct io_context *ioc);
+ void exit_io_context(struct task_struct *task);
++struct io_context *alloc_io_context(gfp_t gfp_flags, int node);
+ struct io_context *get_io_context(gfp_t gfp_flags, int node);
+ struct io_context *alloc_io_context(gfp_t gfp_flags, int node);
+ #else
