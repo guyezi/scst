@@ -404,7 +404,7 @@ static const struct device_attribute *vdisk_blockio_attrs[] = {
 };
 
 #if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 34)
-static const struct device_attribute *vdisk_nullio_attrs[] = {
+static struct device_attribute *vdisk_nullio_attrs[] = {
 #else
 static const struct device_attribute *vdisk_nullio_attrs[] = {
 #endif
