@@ -1566,20 +1566,65 @@ void scst_unregister_virtual_dev_driver(struct scst_dev_type *dev_type)
 }
 EXPORT_SYMBOL_GPL(scst_unregister_virtual_dev_driver);
 
-/* scst_mutex supposed to be held */
+static void initialize_io_context(struct scst_cmd_threads *cmd_threads)
+{
+	TRACE_ENTRY();
+
+	lockdep_assert_held(&scst_mutex);
+
+	WARN_ON(current->io_context);
+
+	if (cmd_threads->io_context == NULL) {
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 25)
+		cmd_threads->io_context = get_io_context(GFP_KERNEL, -1);
+#endif
+		TRACE_MGMT_DBG("Allocated new IO context %p (cmd_threads %p)",
+			       cmd_threads->io_context, cmd_threads);
+		/*
+		 * Put the extra reference. It isn't needed, because
+		 * we ref counted via nr_threads below.
+		 */
+		put_io_context(cmd_threads->io_context);
+	} else {
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 25)
+		put_io_context(current->io_context);
+		current->io_context = ioc_task_link(cmd_threads->io_context);
+#endif
+		TRACE_MGMT_DBG("Linked IO context %p (cmd_threads %p)",
+			       cmd_threads->io_context, cmd_threads);
+	}
+
+	TRACE_EXIT();
+}
+
+/**
+ * scst_add_threads() - Increase the number of command processing threads.
+ * @cmd_threads: Pointer to the thread pool information structure.
+ * @dev: If adding threads for a device, pointer to the device.
+ * @tgt_dev: If adding threads for a target device, pointer to the tgt dev.
+ * @num: Number of threads to add to the thread pool.
+ *
+ * This function either adds threads to the global command processing thread
+ * pool (if both dev and tgt_dev are NULL), a device specific thread pool
+ * (dev != NULL) or a target device specific thread pool (dev == NULL
+ * && tgt_dev != NULL).
+ *
+ * Note: The caller must hold scst_mutex.
+ */
 int scst_add_threads(struct scst_cmd_threads *cmd_threads,
 	struct scst_device *dev, struct scst_tgt_dev *tgt_dev, int num)
 {
-	int res = 0, i;
+	int res, i;
 	struct scst_cmd_thread_t *thr;
 	int n = 0, tgt_dev_num = 0;
 
 	TRACE_ENTRY();
 
-	if (num == 0) {
-		res = 0;
+	lockdep_assert_held(&scst_mutex);
+
+	res = 0;
+	if (num == 0)
 		goto out;
-	}
 
 	list_for_each_entry(thr, &cmd_threads->threads_list, thread_list_entry) {
 		n++;
@@ -1598,24 +1643,25 @@ int scst_add_threads(struct scst_cmd_threads *cmd_threads,
 		}
 	}
 
+	if (cmd_threads != &scst_main_cmd_threads
+	    && list_empty(&cmd_threads->threads_list))
+		initialize_io_context(cmd_threads);
+
 	for (i = 0; i < num; i++) {
 		thr = kmalloc(sizeof(*thr), GFP_KERNEL);
 		if (!thr) {
 			res = -ENOMEM;
 			PRINT_ERROR("Fail to allocate thr %d", res);
-			goto out_wait;
+			goto out_del;
 		}
 
 		if (dev != NULL) {
-			char nm[14]; /* to limit the name's len */
-			strlcpy(nm, dev->virt_name, ARRAY_SIZE(nm));
 			thr->cmd_thread = kthread_create(scst_cmd_thread,
-				cmd_threads, "%s%d", nm, n++);
+				cmd_threads, "%.13s%d", dev->virt_name, n++);
 		} else if (tgt_dev != NULL) {
-			char nm[11]; /* to limit the name's len */
-			strlcpy(nm, tgt_dev->dev->virt_name, ARRAY_SIZE(nm));
 			thr->cmd_thread = kthread_create(scst_cmd_thread,
-				cmd_threads, "%s%d_%d", nm, tgt_dev_num, n++);
+				cmd_threads, "%.11s%d_%d",
+				tgt_dev->dev->virt_name, tgt_dev_num, n++);
 		} else
 			thr->cmd_thread = kthread_create(scst_cmd_thread,
 				cmd_threads, "scstd%d", n++);
@@ -1624,7 +1670,7 @@ int scst_add_threads(struct scst_cmd_threads *cmd_threads,
 			res = PTR_ERR(thr->cmd_thread);
 			PRINT_ERROR("kthread_create() failed: %d", res);
 			kfree(thr);
-			goto out_wait;
+			goto out_del;
 		}
 
 		if (tgt_dev != NULL) {
@@ -1654,19 +1700,7 @@ int scst_add_threads(struct scst_cmd_threads *cmd_threads,
 		wake_up_process(thr->cmd_thread);
 	}
 
-out_wait:
-	if (cmd_threads != &scst_main_cmd_threads) {
-		/*
-		 * Wait for io_context gets initialized to avoid possible races
-		 * for it from the sharing it tgt_devs.
-		 */
-		while (!*(volatile bool*)&cmd_threads->io_context_ready) {
-			TRACE_DBG("Waiting for io_context for cmd_threads %p "
-				"initialized", cmd_threads);
-			msleep(50);
-		}
-	}
-
+out_del:
 	if (res != 0)
 		scst_del_threads(cmd_threads, i);
 
@@ -1675,12 +1709,20 @@ out:
 	return res;
 }
 
-/* scst_mutex supposed to be held */
+/**
+ * scst_del_threads() - Decrease the number of command processing threads.
+ * @cmd_threads: Pointer to the thread pool information structure.
+ * @num: Number of threads to remove from the thread pool.
+ *
+ * Note: The caller must hold scst_mutex.
+ */
 void scst_del_threads(struct scst_cmd_threads *cmd_threads, int num)
 {
 	struct scst_cmd_thread_t *ct, *tmp;
 
 	TRACE_ENTRY();
+
+	lockdep_assert_held(&scst_mutex);
 
 	if (num == 0)
 		goto out;
@@ -1691,7 +1733,7 @@ void scst_del_threads(struct scst_cmd_threads *cmd_threads, int num)
 		struct scst_device *dev;
 
 		rc = kthread_stop(ct->cmd_thread);
-		if (rc < 0)
+		if (rc != 0 && rc != -EINTR)
 			TRACE_MGMT_DBG("kthread_stop() failed: %d", rc);
 
 		list_del(&ct->thread_list_entry);
@@ -1712,6 +1754,10 @@ void scst_del_threads(struct scst_cmd_threads *cmd_threads, int num)
 		if (num == 0)
 			break;
 	}
+
+	if (cmd_threads != &scst_main_cmd_threads
+	    && cmd_threads->nr_threads == 0)
+		cmd_threads->io_context = NULL;
 
 	EXTRACHECKS_BUG_ON((cmd_threads->nr_threads == 0) &&
 		(cmd_threads->io_context != NULL));

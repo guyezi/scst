@@ -1696,8 +1696,6 @@ struct scst_cmd_threads {
 
 	struct io_context *io_context; /* IO context of the threads pool */
 
-	bool io_context_ready;
-
 	int nr_threads; /* number of processing threads */
 	struct list_head threads_list; /* processing threads */
 
