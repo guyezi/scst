@@ -2000,7 +2000,7 @@ void scst_dev_sysfs_del(struct scst_device *dev)
 }
 
 /**
- * scst_dev_sysfs_del() - Dereference a virtual or pass-through device.
+ * scst_dev_sysfs_put() - Dereference a virtual or pass-through device.
  */
 void scst_dev_sysfs_put(struct scst_device *dev)
 {
