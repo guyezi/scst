@@ -1114,6 +1114,7 @@ static int iscsi_attr_cmd(void __user *ptr, unsigned int cmd)
 		default:
 			sBUG();
 		}
+		mutex_unlock(&target->target_mutex);
 	}
 
 	if (i != NULL) {
