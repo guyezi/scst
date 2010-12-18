@@ -1234,9 +1234,6 @@ void scst_unregister_virtual_device(int id)
 		scst_acg_del_lun(acg_dev->acg, acg_dev->lun, true);
 	}
 
-	mutex_unlock(&scst_mutex);
-	scst_resume_activity();
-
 	PRINT_INFO("Detached from virtual device %s (id %d)",
 		dev->virt_name, dev->virt_id);
 
@@ -1245,6 +1242,9 @@ void scst_unregister_virtual_device(int id)
 #else
 	scst_dev_sysfs_put(dev);
 #endif
+
+	mutex_unlock(&scst_mutex);
+	scst_resume_activity();
 
 out:
 	TRACE_EXIT();
