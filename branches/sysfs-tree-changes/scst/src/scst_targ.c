@@ -4150,6 +4150,7 @@ static inline int test_cmd_threads(struct scst_cmd_threads *p_cmd_threads)
 int scst_cmd_thread(void *arg)
 {
 	struct scst_cmd_threads *p_cmd_threads = (struct scst_cmd_threads *)arg;
+	static DEFINE_MUTEX(io_context_mutex);
 
 	TRACE_ENTRY();
 
@@ -4160,6 +4161,39 @@ int scst_cmd_thread(void *arg)
 	set_user_nice(current, 10);
 #endif
 	current->flags |= PF_NOFREEZE;
+
+	mutex_lock(&io_context_mutex);
+
+	WARN_ON(current->io_context);
+
+	if (p_cmd_threads != &scst_main_cmd_threads) {
+		if (p_cmd_threads->io_context == NULL) {
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 25)
+			p_cmd_threads->io_context = get_io_context(GFP_KERNEL, -1);
+#endif
+			TRACE_MGMT_DBG("Alloced new IO context %p "
+				"(p_cmd_threads %p)",
+				p_cmd_threads->io_context,
+				p_cmd_threads);
+			/*
+			 * Put the extra reference. It isn't needed, because we
+			 * ref counted via nr_threads below.
+			 */
+			put_io_context(p_cmd_threads->io_context);
+		} else {
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 25)
+			put_io_context(current->io_context);
+			current->io_context = ioc_task_link(p_cmd_threads->io_context);
+#endif
+			TRACE_MGMT_DBG("Linked IO context %p "
+				"(p_cmd_threads %p)", p_cmd_threads->io_context,
+				p_cmd_threads);
+		}
+	}
+
+	mutex_unlock(&io_context_mutex);
+
+	p_cmd_threads->io_context_ready = true;
 
 	spin_lock_irq(&p_cmd_threads->cmd_list_lock);
 	while (!kthread_should_stop()) {
@@ -4195,6 +4229,11 @@ int scst_cmd_thread(void *arg)
 
 	EXTRACHECKS_BUG_ON((p_cmd_threads->nr_threads == 1) &&
 		 !list_empty(&p_cmd_threads->active_cmd_list));
+
+	if (p_cmd_threads != &scst_main_cmd_threads) {
+		if (p_cmd_threads->nr_threads == 1)
+			p_cmd_threads->io_context = NULL;
+	}
 
 	PRINT_INFO("Processing thread %s (PID %d) finished", current->comm,
 		current->pid);
