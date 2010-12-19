@@ -1652,7 +1652,7 @@ int scst_add_threads(struct scst_cmd_threads *cmd_threads,
 	}
 
 out_wait:
-	if (cmd_threads != &scst_main_cmd_threads) {
+	if (i > 0 && cmd_threads != &scst_main_cmd_threads) {
 		/*
 		 * Wait for io_context gets initialized to avoid possible races
 		 * for it from the sharing it tgt_devs.
@@ -1688,7 +1688,7 @@ void scst_del_threads(struct scst_cmd_threads *cmd_threads, int num)
 		struct scst_device *dev;
 
 		rc = kthread_stop(ct->cmd_thread);
-		if (rc < 0)
+		if (rc != 0 && rc != -EINTR)
 			TRACE_MGMT_DBG("kthread_stop() failed: %d", rc);
 
 		list_del(&ct->thread_list_entry);

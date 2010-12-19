@@ -1694,8 +1694,10 @@ struct scst_cmd_threads {
 	struct list_head active_cmd_list; /* commands queue */
 	wait_queue_head_t cmd_list_waitQ;
 
-	struct mutex io_context_mutex; /* Protects io_context */
+	/* io_context_mutex protects io_context and io_context_refcnt. */
+	struct mutex io_context_mutex;
 	struct io_context *io_context; /* IO context of the threads pool */
+	int io_context_refcnt;
 
 	bool io_context_ready;
 
