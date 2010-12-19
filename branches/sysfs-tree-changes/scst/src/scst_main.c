@@ -1906,6 +1906,7 @@ void scst_init_threads(struct scst_cmd_threads *cmd_threads)
 	INIT_LIST_HEAD(&cmd_threads->active_cmd_list);
 	init_waitqueue_head(&cmd_threads->cmd_list_waitQ);
 	INIT_LIST_HEAD(&cmd_threads->threads_list);
+	mutex_init(&cmd_threads->io_context_mutex);
 
 	mutex_lock(&scst_suspend_mutex);
 	list_add_tail(&cmd_threads->lists_list_entry,

@@ -4150,7 +4150,6 @@ static inline int test_cmd_threads(struct scst_cmd_threads *p_cmd_threads)
 int scst_cmd_thread(void *arg)
 {
 	struct scst_cmd_threads *p_cmd_threads = arg;
-	static DEFINE_MUTEX(io_context_mutex);
 
 	TRACE_ENTRY();
 
@@ -4162,7 +4161,7 @@ int scst_cmd_thread(void *arg)
 #endif
 	current->flags |= PF_NOFREEZE;
 
-	mutex_lock(&io_context_mutex);
+	mutex_lock(&p_cmd_threads->io_context_mutex);
 
 	WARN_ON(current->io_context);
 
@@ -4191,7 +4190,7 @@ int scst_cmd_thread(void *arg)
 		}
 	}
 
-	mutex_unlock(&io_context_mutex);
+	mutex_unlock(&p_cmd_threads->io_context_mutex);
 
 	p_cmd_threads->io_context_ready = true;
 
