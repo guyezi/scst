@@ -4167,8 +4167,10 @@ int scst_cmd_thread(void *arg)
 	WARN_ON(current->io_context);
 
 	if (p_cmd_threads != &scst_main_cmd_threads) {
-		WARN_ON(!!p_cmd_threads->io_context
-			!= !!p_cmd_threads->io_context_refcnt);
+		/*
+		 * For linked IO contexts io_context might be not NULL while
+		 * io_context 0.
+		 */
 		if (p_cmd_threads->io_context == NULL) {
 			p_cmd_threads->io_context = get_io_context(GFP_KERNEL, -1);
 			TRACE_MGMT_DBG("Alloced new IO context %p "
@@ -4229,12 +4231,8 @@ int scst_cmd_thread(void *arg)
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 25)
 	if (p_cmd_threads != &scst_main_cmd_threads) {
 		mutex_lock(&p_cmd_threads->io_context_mutex);
-		WARN_ON(!!p_cmd_threads->io_context
-			!= !!p_cmd_threads->io_context_refcnt);
 		if (--p_cmd_threads->io_context_refcnt == 0)
 			p_cmd_threads->io_context = NULL;
-		WARN_ON(!!p_cmd_threads->io_context
-			!= !!p_cmd_threads->io_context_refcnt);
 		mutex_unlock(&p_cmd_threads->io_context_mutex);
 	}
 #endif
