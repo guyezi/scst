@@ -3234,10 +3234,6 @@ int scst_tgt_dev_setup_threads(struct scst_tgt_dev *tgt_dev)
 		res = scst_add_threads(tgt_dev->active_cmd_threads, NULL,
 			tgt_dev,
 			dev->threads_num + tgt_dev->sess->tgt->tgtt->threads_num);
-		if (res != 0) {
-			/* Let's clear here, because no threads could be run */
-			tgt_dev->active_cmd_threads->io_context = NULL;
-		}
 		break;
 	}
 	case SCST_THREADS_POOL_SHARED:
