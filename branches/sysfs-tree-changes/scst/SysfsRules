@@ -82,7 +82,7 @@ options.
 
 An example:
 
-$ cat /sys/bus/scst_target/drivers/scst_local/version 
+$ cat /sys/bus/scst_target/drivers/scst_local/version
 1.0.0/20100910
 EXTRACHECKS
 DEBUG
@@ -176,7 +176,7 @@ The following attributes may be supported for a device:
 2. filename - For virtual devices, the path of the associated file or device.
 An example:
 
-# cat /sys/devices/disk01/filename  
+# cat /sys/devices/disk01/filename
 /dev/sdc
 [key]
 
