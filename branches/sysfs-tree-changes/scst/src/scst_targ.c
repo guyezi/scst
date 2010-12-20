@@ -4229,8 +4229,12 @@ int scst_cmd_thread(void *arg)
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 25)
 	if (p_cmd_threads != &scst_main_cmd_threads) {
 		mutex_lock(&p_cmd_threads->io_context_mutex);
+		WARN_ON(!!p_cmd_threads->io_context
+			!= !!p_cmd_threads->io_context_refcnt);
 		if (--p_cmd_threads->io_context_refcnt == 0)
 			p_cmd_threads->io_context = NULL;
+		WARN_ON(!!p_cmd_threads->io_context
+			!= !!p_cmd_threads->io_context_refcnt);
 		mutex_unlock(&p_cmd_threads->io_context_mutex);
 	}
 #endif
