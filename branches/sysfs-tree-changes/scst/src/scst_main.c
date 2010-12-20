@@ -1902,6 +1902,8 @@ void scst_init_threads(struct scst_cmd_threads *cmd_threads)
 {
 	TRACE_ENTRY();
 
+	memset(cmd_threads, 0, sizeof(*cmd_threads));
+
 	spin_lock_init(&cmd_threads->cmd_list_lock);
 	INIT_LIST_HEAD(&cmd_threads->active_cmd_list);
 	init_waitqueue_head(&cmd_threads->cmd_list_waitQ);
