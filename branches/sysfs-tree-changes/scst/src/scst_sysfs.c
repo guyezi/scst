@@ -1993,6 +1993,7 @@ void scst_dev_sysfs_del(struct scst_device *dev)
 
 	kobject_del(dev->dev_exp_kobj);
 	kobject_put(dev->dev_exp_kobj);
+	dev->dev_exp_kobj = NULL;
 
 	device_release_driver(&dev->dev_dev);
 
