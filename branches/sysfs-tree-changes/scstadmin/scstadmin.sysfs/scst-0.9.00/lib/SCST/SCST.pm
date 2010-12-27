@@ -273,7 +273,8 @@ sub scstAttributes {
 	}
 
 	foreach my $attribute (readdir($pHandle)) {
-		next if ($attribute eq '.' || $attribute eq '..');
+		next if ($attribute eq '.' || $attribute eq '..'
+			 || $attribute eq 'mgmt');
 		my $pPath = mkpath(SCST_ROOT, $attribute);
 		my $mode = (stat($pPath))[2];
 
@@ -1727,7 +1728,8 @@ sub deviceAttributes {
 	}
 
 	foreach my $attribute (readdir($pHandle)) {
-		next if ($attribute eq '.' || $attribute eq '..');
+		next if ($attribute eq '.' || $attribute eq '..'
+			 || $attribute eq 'uevent');
 		my $pPath = mkpath(SCST_DEVICES, $device, $attribute);
 		my $mode = (stat($pPath))[2];
 
@@ -1987,7 +1989,8 @@ sub targetAttributes {
 	}
 
 	foreach my $attribute (readdir($pHandle)) {
-		next if ($attribute eq '.' || $attribute eq '..');
+		next if ($attribute eq '.' || $attribute eq '..'
+			 || $attribute eq 'uevent');
 		my $pPath = mkpath(SCST_TARGETS, $driver, $target, $attribute);
 		my $mode = (stat($pPath))[2];
 
