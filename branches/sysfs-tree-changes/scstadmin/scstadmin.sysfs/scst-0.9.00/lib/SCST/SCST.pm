@@ -1758,20 +1758,16 @@ sub deviceAttributes {
 
 				$attributes{$attribute}->{'static'} = TRUE;
 			}
-		} elsif ($attribute eq 'handler') {
-			my $linked = readlink $pPath;
+		} elsif ($attribute eq 'driver') {
+			my $handler = readlink $pPath;
 
-			my $h = SCST_HANDLERS;
-
-			if ($linked =~ /\.\.\/\.\.\/$h\/(.*)/) {
-				my $handler = $1;
-				$attributes{$attribute}->{'static'} = TRUE;
-				$attributes{$attribute}->{'value'} = $handler;
-			}
+			$handler =~ s/.*\///;
+			$attributes{$attribute}->{'static'} = TRUE;
+			$attributes{$attribute}->{'value'} = $handler;
 		} elsif ($attribute eq 'scsi_device') {
 			my $linked = readlink $pPath;
 
-			$linked =~ s/^\.\.\/\.\.\/\.\.\/\.\.\//\/sys\//;
+			$linked =~ s/.*\///;
 
 			$attributes{$attribute}->{'static'} = TRUE;
 			$attributes{$attribute}->{'value'} = $linked;
@@ -1802,30 +1798,7 @@ sub deviceAttributes {
 				my $value = <$io>;
 				chomp $value;
 
-				my $is_key = <$io>;
-				$is_key = ($is_key =~ /\[key\]/) ? TRUE : FALSE;
-
-				my $key = 0;
-				if ($is_key) {
-					if ($attribute =~ /.*(\d+)$/) {
-						$key = $1;
-						$attribute =~ s/\d+$//;
-					}
-				}
-
-				if ($attribute eq 'type') {
-					my($type, $type_string) = split(/\s\-\s/, $value, 2);
-					$attributes{$attribute}->{'value'} = $type;
-					$attributes{'type_string'}->{'value'} = $type_string;
-					$attributes{'type_string'}->{'static'} = TRUE;
-				} else {
-					if ($is_key) {
-						$attributes{$attribute}->{'keys'}->{$key}->{'value'} = $value;
-					} else {
-						$attributes{$attribute}->{'value'} = $value;
-					}
-				}
-
+				$attributes{$attribute}->{'value'} = $value;
 				$attributes{$attribute}->{'static'} = $is_static;
 			}
 		}
@@ -2737,11 +2710,6 @@ sub handlerAttributes {
 				}
 			}
 			$attributes{$attribute}->{'set'} = \@possible;
-		} elsif ($attribute eq 'type') {
-			my($type, $type_string) = split(/\s\-\s/, $value, 2);
-			$attributes{$attribute}->{'value'} = $type;
-			$attributes{'type_string'}->{'value'} = $type_string;
-			$attributes{'type_string'}->{'static'} = TRUE;
 		} else {
 			if ($is_key) {
 				$attributes{$attribute}->{'keys'}->{$key}->{'value'} = $value;

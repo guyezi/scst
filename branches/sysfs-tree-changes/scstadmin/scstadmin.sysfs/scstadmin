@@ -1085,9 +1085,7 @@ sub writeConfiguration {
 			my $attribute_buff_nk;
 			foreach my $attribute (sort keys %{$attributes}) {
 				next if (defined($$attributes{$attribute}->{'set'}));
-
-				if (!defined($$handler_attrs{$attribute})) {
-					if (!$$attributes{$attribute}->{'static'}) {
+				if (defined($$handler_attrs{$attribute}) || !$$attributes{$attribute}->{'static'}) {
 						if (defined($$attributes{$attribute}->{'keys'})) {
 							foreach my $key (keys %{$$attributes{$attribute}->{'keys'}}) {
 								my $value = $$attributes{$attribute}->{'keys'}->{$key}->{'value'};
@@ -1106,7 +1104,6 @@ sub writeConfiguration {
 								 if (defined($value));
 							}
 						}
-					}
 				}
 			}
 
