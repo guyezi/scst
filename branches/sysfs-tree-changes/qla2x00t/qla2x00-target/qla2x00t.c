@@ -828,7 +828,7 @@ static int q24_get_loop_id(scsi_qla_host_t *ha, const uint8_t *s_id,
 	dma_addr_t gid_list_dma;
 	struct gid_list_info *gid_list;
 	char *id_iter;
-	int res, rc, i;
+	int res, rc, i, retries = 0;
 	uint16_t entries;
 
 	TRACE_ENTRY();
@@ -843,11 +843,19 @@ static int q24_get_loop_id(scsi_qla_host_t *ha, const uint8_t *s_id,
 	}
 
 	/* Get list of logged in devices */
+retry:
 	rc = qla2x00_get_id_list(ha, gid_list, gid_list_dma, &entries);
 	if (rc != QLA_SUCCESS) {
+		if (rc == QLA_FW_NOT_READY) {
+			retries++;
+			if (retries < 3) {
+				msleep(1000);
+				goto retry;
+			}
+		}
 		TRACE_MGMT_DBG("qla2x00t(%ld): get_id_list() failed: %x",
 			ha->instance, rc);
-		res = -1;
+		res = -rc;
 		goto out_free_id_list;
 	}
 
@@ -5653,7 +5661,10 @@ out_unlock:
 /* Must be called under tgt_host_action_mutex */
 static int q2t_add_target(scsi_qla_host_t *ha)
 {
-	int res, rc;
+	int res;
+#ifndef CONFIG_SCST_PROC
+	int rc;
+#endif
 	char *wwn;
 	int sg_tablesize;
 	struct q2t_tgt *tgt;
@@ -5915,6 +5926,9 @@ static bool q2t_is_tgt_enabled(struct scst_tgt *scst_tgt)
 	return qla_tgt_mode_enabled(ha);
 }
 
+#if ((LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 28)) || \
+     defined(FC_VPORT_CREATE_DEFINED)) || \
+     !defined(CONFIG_SCST_PROC)
 static int q2t_parse_wwn(const char *ns, u64 *nm)
 {
 	unsigned int i, j;
@@ -5948,6 +5962,7 @@ static int q2t_parse_wwn(const char *ns, u64 *nm)
 
 	return 0;
 }
+#endif
 
 #if ((LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 28)) || \
      defined(FC_VPORT_CREATE_DEFINED))
