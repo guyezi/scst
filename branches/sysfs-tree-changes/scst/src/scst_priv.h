@@ -1,9 +1,10 @@
 /*
  *  scst_priv.h
  *
- *  Copyright (C) 2004 - 2010 Vladislav Bolkhovitin <vst@vlnb.net>
+ *  Copyright (C) 2004 - 2011 Vladislav Bolkhovitin <vst@vlnb.net>
  *  Copyright (C) 2004 - 2005 Leonid Stoljar
  *  Copyright (C) 2007 - 2010 ID7 Ltd.
+ *  Copyright (C) 2010 - 2011 SCST Ltd.
  *
  *  This program is free software; you can redistribute it and/or
  *  modify it under the terms of the GNU General Public License
@@ -140,7 +141,6 @@ extern struct kmem_cache *scst_acgd_cachep;
 extern spinlock_t scst_main_lock;
 
 extern unsigned long scst_flags;
-extern atomic_t scst_cmd_count;
 extern struct list_head scst_template_list;
 extern struct list_head scst_dev_list;
 extern struct list_head scst_dev_type_list;
@@ -153,6 +153,9 @@ extern struct scst_acg *scst_default_acg;
 #else
 extern unsigned int scst_setup_id;
 #endif
+
+#define SCST_DEF_MAX_TASKLET_CMD 10
+extern int scst_max_tasklet_cmd;
 
 extern spinlock_t scst_init_lock;
 extern struct list_head scst_init_cmd_list;
@@ -167,12 +170,13 @@ extern struct list_head scst_active_mgmt_cmd_list;
 extern struct list_head scst_delayed_mgmt_cmd_list;
 extern wait_queue_head_t scst_mgmt_cmd_list_waitQ;
 
-struct scst_tasklet {
+struct scst_percpu_info {
+	atomic_t cpu_cmd_count;
 	spinlock_t tasklet_lock;
 	struct list_head tasklet_cmd_list;
 	struct tasklet_struct tasklet;
-};
-extern struct scst_tasklet scst_tasklets[NR_CPUS];
+} ____cacheline_aligned_in_smp;
+extern struct scst_percpu_info scst_percpu_infos[NR_CPUS];
 
 extern wait_queue_head_t scst_mgmt_waitQ;
 extern spinlock_t scst_mgmt_lock;
@@ -575,27 +579,53 @@ static inline void scst_check_unblock_dev(struct scst_cmd *cmd)
 	return;
 }
 
-static inline void __scst_get(void)
+/*
+ * Increases global SCST ref counters which prevent from entering into suspended
+ * activities stage, so protects from any global management operations.
+ */
+static inline atomic_t *scst_get(void)
 {
-	atomic_inc(&scst_cmd_count);
-	TRACE_DBG("Incrementing scst_cmd_count(new value %d)",
-		atomic_read(&scst_cmd_count));
+	atomic_t *a;
+	/*
+	 * We don't mind if we because of preemption inc counter from another
+	 * CPU as soon in the majority cases we will the correct one. So, let's
+	 * have preempt_disable/enable only in the debug build to avoid warning.
+	 */
+#ifdef CONFIG_DEBUG_PREEMPT
+	preempt_disable();
+#endif
+	a = &scst_percpu_infos[smp_processor_id()].cpu_cmd_count;
+	atomic_inc(a);
+#ifdef CONFIG_DEBUG_PREEMPT
+	preempt_enable();
+#endif
+	TRACE_DBG("Incrementing cpu_cmd_count %p (new value %d)",
+		a, atomic_read(a));
 	/* See comment about smp_mb() in scst_suspend_activity() */
 	smp_mb__after_atomic_inc();
+
+	return a;
 }
 
-static inline void __scst_put(void)
+/*
+ * Decreases global SCST ref counters which prevent from entering into suspended
+ * activities stage, so protects from any global management operations. On
+ * all them zero, if suspending activities is waiting, it will be proceed.
+ */
+static inline void scst_put(atomic_t *a)
 {
 	int f;
-	f = atomic_dec_and_test(&scst_cmd_count);
+	f = atomic_dec_and_test(a);
 	/* See comment about smp_mb() in scst_suspend_activity() */
-	if (f && unlikely(test_bit(SCST_FLAG_SUSPENDED, &scst_flags))) {
+	if (unlikely(test_bit(SCST_FLAG_SUSPENDED, &scst_flags)) && f) {
 		TRACE_MGMT_DBG("%s", "Waking up scst_dev_cmd_waitQ");
 		wake_up_all(&scst_dev_cmd_waitQ);
 	}
-	TRACE_DBG("Decrementing scst_cmd_count(new value %d)",
-	      atomic_read(&scst_cmd_count));
+	TRACE_DBG("Decrementing cpu_cmd_count %p (new value %d)",
+	      a, atomic_read(a));
 }
+
+int scst_get_cmd_counter(void);
 
 void scst_sched_session_free(struct scst_session *sess);
 

@@ -1,10 +1,11 @@
 /*
  *  include/scst.h
  *
- *  Copyright (C) 2004 - 2010 Vladislav Bolkhovitin <vst@vlnb.net>
+ *  Copyright (C) 2004 - 2011 Vladislav Bolkhovitin <vst@vlnb.net>
  *  Copyright (C) 2004 - 2005 Leonid Stoljar
  *  Copyright (C) 2007 - 2010 ID7 Ltd.
  *  Copyright (C) 2010 Bart Van Assche <bvanassche@acm.org>
+ *  Copyright (C) 2010 - 2011 SCST Ltd.
  *
  *  Main SCSI target mid-level include file.
  *
@@ -140,20 +141,6 @@ static inline unsigned int queue_max_hw_sectors(struct request_queue *q)
 }
 #endif
 
-/*
- * Version numbers, the same as for the kernel.
- *
- * Changing it don't forget to change SCST_FIO_REV in scst_vdisk.c
- * and FIO_REV in usr/fileio/common.h as well.
- */
-#define SCST_VERSION(a, b, c, d)    (((a) << 24) + ((b) << 16) + ((c) << 8) + d)
-#define SCST_VERSION_CODE	    SCST_VERSION(2, 0, 0, 0)
-#ifdef CONFIG_SCST_PROC
-#define SCST_VERSION_STRING_SUFFIX  "-procfs"
-#else
-#define SCST_VERSION_STRING_SUFFIX
-#endif
-#define SCST_VERSION_STRING	    "2.1.0-pre1" SCST_VERSION_STRING_SUFFIX
 #define SCST_INTERFACE_VERSION	    \
 		SCST_VERSION_STRING "$Revision$" SCST_CONST_VERSION
 
@@ -427,7 +414,7 @@ enum scst_exec_context {
 #define SCST_TGT_RES_FATAL_ERROR     -3
 
 /*************************************************************
- ** Allowed return codes for dev handler's exec()
+ ** Return codes for dev handler's exec()
  *************************************************************/
 
 /* The cmd is done, go to other ones */
@@ -435,15 +422,6 @@ enum scst_exec_context {
 
 /* The cmd should be sent to SCSI mid-level */
 #define SCST_EXEC_NOT_COMPLETED      1
-
-/*
- * Set if cmd is finished and there is status/sense to be sent.
- * The status should be not sent (i.e. the flag not set) if the
- * possibility to perform a command in "chunks" (i.e. with multiple
- * xmit_response()/rdy_to_xfer()) is used (not implemented yet).
- * Obsolete, use scst_cmd_get_is_send_status() instead.
- */
-#define SCST_TSC_FLAG_STATUS         0x2
 
 /*************************************************************
  ** Additional return code for dev handler's task_mgmt_fn()
@@ -520,7 +498,7 @@ enum scst_exec_context {
 /* Set if tgt_dev is RESERVED by another session */
 #define SCST_TGT_DEV_RESERVED		1
 
-/* Set if the corresponding context is atomic */
+/* Set if the corresponding context should be atomic */
 #define SCST_TGT_DEV_AFTER_INIT_WR_ATOMIC	5
 #define SCST_TGT_DEV_AFTER_EXEC_ATOMIC		6
 
@@ -1543,6 +1521,11 @@ struct scst_ext_latency_stat {
 
 #endif /* CONFIG_SCST_MEASURE_LATENCY */
 
+struct scst_io_stat_entry {
+	uint64_t cmd_count;
+	uint64_t io_byte_count;
+};
+
 /*
  * SCST session, analog of SCSI I_T nexus
  */
@@ -1588,6 +1571,9 @@ struct scst_session {
 	 * IO flow control.
 	 */
 	atomic_t sess_cmd_count;
+
+	/* Some statistics. Protected by sess_list_lock. */
+	struct scst_io_stat_entry io_stats[SCST_DATA_DIR_MAX];
 
 	/* Access control for this session and list entry there */
 	struct scst_acg *acg;
@@ -1724,6 +1710,8 @@ struct scst_cmd {
 
 	struct scst_session *sess;	/* corresponding session */
 
+	atomic_t *cpu_cmd_counter;
+
 	/* Cmd state, one of SCST_CMD_STATE_* constants */
 	int state;
 
@@ -1763,6 +1751,14 @@ struct scst_cmd {
 
 	/* Set if cmd is queued as hw pending */
 	unsigned int cmd_hw_pending:1;
+
+	/*
+	 * Set, if for this cmd required to not have any IO or FS calls on
+	 * memory buffers allocations, at least for READ and WRITE commands.
+	 * Needed for cases like file systems mounted over scst_local's
+	 * devices.
+	 */
+	unsigned noio_mem_alloc:1;
 
 	/*
 	 * Set if the target driver wants to alloc data buffers on its own.
@@ -2069,6 +2065,8 @@ struct scst_mgmt_cmd {
 
 	struct scst_session *sess;
 
+	atomic_t *cpu_cmd_counter;
+
 	/* Mgmt cmd state, one of SCST_MCMD_STATE_* constants */
 	int state;
 
@@ -2218,9 +2216,6 @@ struct scst_device {
 
 	/* Memory limits for this device */
 	struct scst_mem_lim dev_mem_lim;
-
-	/* How many write cmds alive on this dev. Temporary, ToDo */
-	atomic_t write_cmd_count;
 
 	/*************************************************************
 	 ** Persistent reservation fields. Protected by dev_pr_mutex.
@@ -2816,17 +2811,21 @@ static inline void scst_sess_set_tgt_priv(struct scst_session *sess,
 /**
  * Returns TRUE if cmd is being executed in atomic context.
  *
- * Note: checkpatch will complain on the use of in_atomic() below. You can
- * safely ignore this warning since in_atomic() is used here only for debugging
- * purposes.
+ * This function must be used outside of spinlocks and preempt/BH/IRQ
+ * disabled sections, because of the EXTRACHECK in it.
  */
 static inline bool scst_cmd_atomic(struct scst_cmd *cmd)
 {
 	int res = cmd->atomic;
 #ifdef CONFIG_SCST_EXTRACHECKS
+	/*
+	 * Checkpatch will complain on the use of in_atomic() below. You
+	 * can safely ignore this warning since in_atomic() is used here
+	 * only for debugging purposes.
+	 */
 	if (unlikely((in_atomic() || in_interrupt() || irqs_disabled()) &&
 		     !res)) {
-		printk(KERN_ERR "ERROR: atomic context and non-atomic cmd\n");
+		printk(KERN_ERR "ERROR: atomic context and non-atomic cmd!\n");
 		dump_stack();
 		cmd->atomic = 1;
 		res = 1;
@@ -2844,25 +2843,37 @@ static inline bool scst_cmd_prelim_completed(struct scst_cmd *cmd)
 	return cmd->completed || test_bit(SCST_CMD_ABORTED, &cmd->cmd_flags);
 }
 
-static inline enum scst_exec_context __scst_estimate_context(bool direct)
+static inline enum scst_exec_context __scst_estimate_context(bool atomic)
 {
 	if (in_irq())
 		return SCST_CONTEXT_TASKLET;
+/*
+ * We come here from many non reliable places, like the block layer, and don't
+ * have any reliable way to detect if we called under atomic context or not
+ * (in_atomic() isn't reliable), so let's be safe and disable this section
+ * for now to unconditionally return thread context.
+ */
+#if 0
 	else if (irqs_disabled())
 		return SCST_CONTEXT_THREAD;
+	else if (in_atomic())
+		return SCST_CONTEXT_DIRECT_ATOMIC;
 	else
-		return direct ? SCST_CONTEXT_DIRECT :
+		return atomic ? SCST_CONTEXT_DIRECT :
 				SCST_CONTEXT_DIRECT_ATOMIC;
+#else
+	return SCST_CONTEXT_THREAD;
+#endif
 }
 
 static inline enum scst_exec_context scst_estimate_context(void)
 {
-	return __scst_estimate_context(0);
+	return __scst_estimate_context(false);
 }
 
-static inline enum scst_exec_context scst_estimate_context_direct(void)
+static inline enum scst_exec_context scst_estimate_context_atomic(void)
 {
-	return __scst_estimate_context(1);
+	return __scst_estimate_context(true);
 }
 
 /* Returns cmd's CDB */
@@ -3202,6 +3213,19 @@ static inline void scst_cmd_set_tgt_sn(struct scst_cmd *cmd, uint32_t tgt_sn)
 {
 	cmd->tgt_sn_set = 1;
 	cmd->tgt_sn = tgt_sn;
+}
+
+/*
+ * Get/Set functions for noio_mem_alloc
+ */
+static inline bool scst_cmd_get_noio_mem_alloc(struct scst_cmd *cmd)
+{
+	return cmd->noio_mem_alloc;
+}
+
+static inline void scst_cmd_set_noio_mem_alloc(struct scst_cmd *cmd)
+{
+	cmd->noio_mem_alloc = 1;
 }
 
 /*
@@ -3912,9 +3936,6 @@ bool scst_analyze_sense(const uint8_t *sense, int len,
 unsigned long scst_random(void);
 
 void scst_set_resp_data_len(struct scst_cmd *cmd, int resp_data_len);
-
-void scst_get(void);
-void scst_put(void);
 
 void scst_cmd_get(struct scst_cmd *cmd);
 void scst_cmd_put(struct scst_cmd *cmd);

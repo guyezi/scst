@@ -1,8 +1,9 @@
 #
 #  Common makefile for SCSI target mid-level and its drivers
 #  
-#  Copyright (C) 2004 - 2010 Vladislav Bolkhovitin <vst@vlnb.net>
+#  Copyright (C) 2004 - 2011 Vladislav Bolkhovitin <vst@vlnb.net>
 #  Copyright (C) 2007 - 2010 ID7 Ltd.
+#  Copyright (C) 2010 - 2011 SCST Ltd.
 #  
 #  This program is free software; you can redistribute it and/or
 #  modify it under the terms of the GNU General Public License
@@ -397,6 +398,7 @@ enable_proc:
 #	@if [ -d $(SRP_DIR) ]; then cd $(SRP_DIR) && $(MAKE) $@; fi
 	@if [ -d $(ISCSI_DIR) ]; then cd $(ISCSI_DIR) && $(MAKE) $@; fi
 #	@if [ -d $(SCST_LOCAL_DIR) ]; then cd $(SCST_LOCAL_DIR) && $(MAKE) $@; fi
+	@if [ -d $(SCSTADM_DIR) ]; then cd $(SCSTADM_DIR) && $(MAKE) $@; fi
 
 disable_proc:
 	cd $(SCST_DIR) && $(MAKE) $@
@@ -406,6 +408,7 @@ disable_proc:
 #	@if [ -d $(SRP_DIR) ]; then cd $(SRP_DIR) && $(MAKE) $@; fi
 	@if [ -d $(ISCSI_DIR) ]; then cd $(ISCSI_DIR) && $(MAKE) $@; fi
 #	@if [ -d $(SCST_LOCAL_DIR) ]; then cd $(SCST_LOCAL_DIR) && $(MAKE) $@; fi
+	@if [ -d $(SCSTADM_DIR) ]; then cd $(SCSTADM_DIR) && $(MAKE) $@; fi
 
 .PHONY: all install uninstall clean extraclean tags help \
 	qla qla_install qla_uninstall qla_clean qla_extraclean \

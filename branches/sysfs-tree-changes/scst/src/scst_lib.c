@@ -1,9 +1,10 @@
 /*
  *  scst_lib.c
  *
- *  Copyright (C) 2004 - 2010 Vladislav Bolkhovitin <vst@vlnb.net>
+ *  Copyright (C) 2004 - 2011 Vladislav Bolkhovitin <vst@vlnb.net>
  *  Copyright (C) 2004 - 2005 Leonid Stoljar
  *  Copyright (C) 2007 - 2010 ID7 Ltd.
+ *  Copyright (C) 2010 - 2011 SCST Ltd.
  *
  *  This program is free software; you can redistribute it and/or
  *  modify it under the terms of the GNU General Public License
@@ -270,7 +271,7 @@ static const struct scst_sdbops scst_scsi_op_table[] = {
 			 SCST_WRITE_EXCL_ALLOWED,
 	 2, get_trans_len_3},
 	{0x15, "OMOOOOOOOOOOOOOO", "MODE SELECT(6)",
-	 SCST_DATA_WRITE, SCST_IMPLICIT_ORDERED, 4, get_trans_len_1},
+	 SCST_DATA_WRITE, FLAG_NONE, 4, get_trans_len_1},
 	{0x16, "MMMMMMMMMMMMMMMM", "RESERVE",
 	 SCST_DATA_NONE, SCST_SMALL_TIMEOUT|SCST_LOCAL_CMD|
 			 SCST_WRITE_EXCL_ALLOWED|SCST_EXCL_ACCESS_ALLOWED,
@@ -432,7 +433,7 @@ static const struct scst_sdbops scst_scsi_op_table[] = {
 	{0x4B, "     O          ", "PAUSE/RESUME",
 	 SCST_DATA_NONE, FLAG_NONE, 0, get_trans_len_none},
 	{0x4C, "OOOOOOOOOOOOOOOO", "LOG SELECT",
-	 SCST_DATA_WRITE, SCST_IMPLICIT_ORDERED, 7, get_trans_len_2},
+	 SCST_DATA_WRITE, FLAG_NONE, 7, get_trans_len_2},
 	{0x4D, "OOOOOOOOOOOOOOOO", "LOG SENSE",
 	 SCST_DATA_READ, SCST_SMALL_TIMEOUT|
 			 SCST_REG_RESERVE_ALLOWED|
@@ -458,7 +459,7 @@ static const struct scst_sdbops scst_scsi_op_table[] = {
 	{0x54, "     O          ", "SEND OPC INFORMATION",
 	 SCST_DATA_WRITE, FLAG_NONE, 7, get_trans_len_2},
 	{0x55, "OOOOOOOOOOOOOOOO", "MODE SELECT(10)",
-	 SCST_DATA_WRITE, SCST_IMPLICIT_ORDERED, 7, get_trans_len_2},
+	 SCST_DATA_WRITE, FLAG_NONE, 7, get_trans_len_2},
 	{0x56, "OOOOOOOOOOOOOOOO", "RESERVE(10)",
 	 SCST_DATA_NONE, SCST_SMALL_TIMEOUT|SCST_LOCAL_CMD,
 	 0, get_trans_len_none},
@@ -2579,7 +2580,6 @@ int scst_alloc_device(gfp_t gfp_mask, struct scst_device **out_dev)
 
 	dev->handler = &scst_null_devtype;
 	atomic_set(&dev->dev_cmd_count, 0);
-	atomic_set(&dev->write_cmd_count, 0);
 	scst_init_mem_lim(&dev->dev_mem_lim);
 	spin_lock_init(&dev->dev_lock);
 	INIT_LIST_HEAD(&dev->blocked_cmd_list);
@@ -3778,7 +3778,7 @@ static struct scst_cmd *scst_create_prepare_internal_cmd(
 
 	scst_sess_get(res->sess);
 	if (res->tgt_dev != NULL)
-		__scst_get();
+		res->cpu_cmd_counter = scst_get();
 
 	res->state = SCST_CMD_STATE_PARSE;
 
@@ -4272,7 +4272,7 @@ static void scst_destroy_put_cmd(struct scst_cmd *cmd)
 	 * At this point tgt_dev can be dead, but the pointer remains non-NULL
 	 */
 	if (likely(cmd->tgt_dev != NULL))
-		__scst_put();
+		scst_put(cmd->cpu_cmd_counter);
 
 	scst_destroy_cmd(cmd);
 	return;
@@ -4288,10 +4288,8 @@ void scst_free_cmd(struct scst_cmd *cmd)
 	TRACE_DBG("Freeing cmd %p (tag %llu)",
 		  cmd, (long long unsigned int)cmd->tag);
 
-	if (unlikely(test_bit(SCST_CMD_ABORTED, &cmd->cmd_flags))) {
-		TRACE_MGMT_DBG("Freeing aborted cmd %p (scst_cmd_count %d)",
-			cmd, atomic_read(&scst_cmd_count));
-	}
+	if (unlikely(test_bit(SCST_CMD_ABORTED, &cmd->cmd_flags)))
+		TRACE_MGMT_DBG("Freeing aborted cmd %p", cmd);
 
 	sBUG_ON(cmd->unblock_dev);
 
@@ -4458,7 +4456,7 @@ void scst_free_mgmt_cmd(struct scst_mgmt_cmd *mcmd)
 	scst_sess_put(mcmd->sess);
 
 	if (mcmd->mcmd_tgt_dev != NULL)
-		__scst_put();
+		scst_put(mcmd->cpu_cmd_counter);
 
 	mempool_free(mcmd, scst_mgmt_mempool);
 
@@ -4770,7 +4768,7 @@ int scst_scsi_exec_async(struct scst_cmd *cmd, void *data,
 	struct request *rq;
 	struct scsi_io_context *sioc;
 	int write = (cmd->data_direction & SCST_DATA_WRITE) ? WRITE : READ;
-	gfp_t gfp = GFP_KERNEL;
+	gfp_t gfp = cmd->noio_mem_alloc ? GFP_NOIO : GFP_KERNEL;
 	int cmd_len = cmd->cdb_len;
 
 	sioc = kmem_cache_zalloc(scsi_io_context_cache, gfp);
@@ -6857,9 +6855,8 @@ void scst_xmit_process_aborted_cmd(struct scst_cmd *cmd)
 {
 	TRACE_ENTRY();
 
-	TRACE_MGMT_DBG("Aborted cmd %p done (cmd_ref %d, "
-		"scst_cmd_count %d)", cmd, atomic_read(&cmd->cmd_ref),
-		atomic_read(&scst_cmd_count));
+	TRACE_MGMT_DBG("Aborted cmd %p done (cmd_ref %d)", cmd,
+		atomic_read(&cmd->cmd_ref));
 
 	scst_done_cmd_mgmt(cmd);
 

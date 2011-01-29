@@ -1,10 +1,11 @@
 /*
  *  qla2x00t.h
  *
- *  Copyright (C) 2004 - 2010 Vladislav Bolkhovitin <vst@vlnb.net>
+ *  Copyright (C) 2004 - 2011 Vladislav Bolkhovitin <vst@vlnb.net>
  *  Copyright (C) 2004 - 2005 Leonid Stoljar
  *  Copyright (C) 2006 Nathaniel Clark <nate@misrule.us>
  *  Copyright (C) 2006 - 2010 ID7 Ltd.
+ *  Copyright (C) 2010 - 2011 SCST Ltd.
  *
  *  QLogic 22xx/23xx/24xx/25xx FC target driver.
  *
@@ -30,7 +31,7 @@
 
 /* Version numbers, the same as for the kernel */
 #define Q2T_VERSION(a, b, c, d)	(((a) << 030) + ((b) << 020) + (c) << 010 + (d))
-#define Q2T_VERSION_CODE	Q2T_VERSION(1, 0, 2, 0)
+#define Q2T_VERSION_CODE	Q2T_VERSION(2, 1, 0, 0)
 #define Q2T_VERSION_STRING	"2.1.0-pre1"
 #define Q2T_PROC_VERSION_NAME	"version"
 

@@ -1,8 +1,9 @@
 /*
  *  include/scst_const.h
  *
- *  Copyright (C) 2004 - 2010 Vladislav Bolkhovitin <vst@vlnb.net>
+ *  Copyright (C) 2004 - 2011 Vladislav Bolkhovitin <vst@vlnb.net>
  *  Copyright (C) 2007 - 2010 ID7 Ltd.
+ *  Copyright (C) 2010 - 2011 SCST Ltd.
  *
  *  Contains common SCST constants.
  *
@@ -29,6 +30,22 @@
 #include <linux/version.h>
 #endif
 #include <scsi/scsi.h>
+
+/*
+ * Version numbers, the same as for the kernel.
+ *
+ * Changing it don't forget to change SCST_FIO_REV in scst_vdisk.c
+ * and FIO_REV in usr/fileio/common.h as well.
+ */
+#define SCST_VERSION(a, b, c, d)    (((a) << 24) + ((b) << 16) + ((c) << 8) + d)
+#define SCST_VERSION_CODE	    SCST_VERSION(2, 1, 0, 0)
+#ifdef CONFIG_SCST_PROC
+#define SCST_VERSION_STRING_SUFFIX  "-procfs"
+#else
+#define SCST_VERSION_STRING_SUFFIX
+#endif
+#define SCST_VERSION_NAME	    "2.1.0-pre1"
+#define SCST_VERSION_STRING	    SCST_VERSION_NAME SCST_VERSION_STRING_SUFFIX
 
 #define SCST_CONST_VERSION "$Revision$"
 
@@ -171,14 +188,13 @@ enum scst_cdb_flags {
 	SCST_INFO_VALID =			0x0010, /* must be single bit */
 	SCST_VERIFY_BYTCHK_MISMATCH_ALLOWED =	0x0020,
 	SCST_IMPLICIT_HQ =			0x0040,
-	SCST_IMPLICIT_ORDERED =			0x0080, /* ToDo: remove it's nonsense */
-	SCST_SKIP_UA =				0x0100,
-	SCST_WRITE_MEDIUM =			0x0200,
-	SCST_LOCAL_CMD =			0x0400,
-	SCST_FULLY_LOCAL_CMD =			0x0800,
-	SCST_REG_RESERVE_ALLOWED =		0x1000,
-	SCST_WRITE_EXCL_ALLOWED =		0x2000,
-	SCST_EXCL_ACCESS_ALLOWED =		0x4000,
+	SCST_SKIP_UA =				0x0080,
+	SCST_WRITE_MEDIUM =			0x0100,
+	SCST_LOCAL_CMD =			0x0200,
+	SCST_FULLY_LOCAL_CMD =			0x0400,
+	SCST_REG_RESERVE_ALLOWED =		0x0800,
+	SCST_WRITE_EXCL_ALLOWED =		0x1000,
+	SCST_EXCL_ACCESS_ALLOWED =		0x2000,
 #ifdef CONFIG_SCST_TEST_IO_IN_SIRQ
 	SCST_TEST_IO_IN_SIRQ_ALLOWED =		0x8000,
 #endif
@@ -186,13 +202,15 @@ enum scst_cdb_flags {
 
 /*************************************************************
  ** Data direction aliases. Changing it don't forget to change
- ** scst_to_tgt_dma_dir as well!!
+ ** scst_to_tgt_dma_dir and SCST_DATA_DIR_MAX as well!!
  *************************************************************/
 #define SCST_DATA_UNKNOWN		0
 #define SCST_DATA_WRITE			1
 #define SCST_DATA_READ			2
 #define SCST_DATA_BIDI			(SCST_DATA_WRITE | SCST_DATA_READ)
 #define SCST_DATA_NONE			4
+
+#define SCST_DATA_DIR_MAX		(SCST_DATA_NONE+1)
 
 #ifdef CONFIG_SCST_PROC
 

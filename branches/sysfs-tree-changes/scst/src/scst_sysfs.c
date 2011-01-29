@@ -2,9 +2,10 @@
  *  scst_sysfs.c
  *
  *  Copyright (C) 2009 Daniel Henrique Debonzi <debonzi@linux.vnet.ibm.com>
- *  Copyright (C) 2009 - 2010 Vladislav Bolkhovitin <vst@vlnb.net>
+ *  Copyright (C) 2009 - 2011 Vladislav Bolkhovitin <vst@vlnb.net>
  *  Copyright (C) 2009 - 2010 ID7 Ltd.
  *  Copyright (C) 2010 Bart Van Assche <bvanassche@acm.org>
+ *  Copyright (C) 2010 - 2011 SCST Ltd.
  *
  *  This program is free software; you can redistribute it and/or
  *  modify it under the terms of the GNU General Public License
@@ -66,7 +67,7 @@ enum mgmt_path_type {
 static struct bus_type scst_target_bus;
 static struct bus_type scst_device_bus;
 
-static const char *scst_dev_handler_types[] = {
+static const char *const scst_dev_handler_types[] = {
 	"Direct-access device (e.g., magnetic disk)",
 	"Sequential-access device (e.g., magnetic tape)",
 	"Printer device",
@@ -2487,10 +2488,69 @@ static ssize_t scst_sess_sysfs_initiator_name_show(struct kobject *kobj,
 static struct kobj_attribute session_initiator_name_attr =
 	__ATTR(initiator_name, S_IRUGO, scst_sess_sysfs_initiator_name_show, NULL);
 
+#define SCST_SESS_SYSFS_STAT_ATTR(name, exported_name, dir, kb)		\
+static ssize_t scst_sess_sysfs_##exported_name##_show(struct kobject *kobj,	\
+       struct kobj_attribute *attr, char *buf)					\
+{										\
+	struct scst_session *sess;						\
+	int res;								\
+	uint64_t v;								\
+										\
+	BUILD_BUG_ON(SCST_DATA_UNKNOWN != 0);					\
+	BUILD_BUG_ON(SCST_DATA_WRITE != 1);					\
+	BUILD_BUG_ON(SCST_DATA_READ != 2);					\
+	BUILD_BUG_ON(SCST_DATA_BIDI != 3);					\
+	BUILD_BUG_ON(SCST_DATA_NONE != 4);					\
+										\
+	BUILD_BUG_ON(dir >= SCST_DATA_DIR_MAX);					\
+										\
+	sess = container_of(kobj, struct scst_session, sess_kobj);		\
+	v = sess->io_stats[dir].name;						\
+	if (kb)									\
+		v >>= 10;							\
+	res = sprintf(buf, "%llu\n", (unsigned long long)v);			\
+	return res;								\
+}										\
+										\
+static ssize_t scst_sess_sysfs_##exported_name##_store(struct kobject *kobj,	\
+	struct kobj_attribute *attr, const char *buf, size_t count)		\
+{										\
+	struct scst_session *sess;						\
+	sess = container_of(kobj, struct scst_session, sess_kobj);		\
+	spin_lock_irq(&sess->sess_list_lock);					\
+	BUILD_BUG_ON(dir >= SCST_DATA_DIR_MAX);					\
+	sess->io_stats[dir].cmd_count = 0;					\
+	sess->io_stats[dir].io_byte_count = 0;					\
+	spin_unlock_irq(&sess->sess_list_lock);					\
+	return count;								\
+}										\
+										\
+static struct kobj_attribute session_##exported_name##_attr =			\
+	__ATTR(exported_name, S_IRUGO | S_IWUSR,				\
+		scst_sess_sysfs_##exported_name##_show,	\
+		scst_sess_sysfs_##exported_name##_store);
+
+SCST_SESS_SYSFS_STAT_ATTR(cmd_count, unknown_cmd_count, SCST_DATA_UNKNOWN, 0);
+SCST_SESS_SYSFS_STAT_ATTR(cmd_count, write_cmd_count, SCST_DATA_WRITE, 0);
+SCST_SESS_SYSFS_STAT_ATTR(io_byte_count, write_io_count_kb, SCST_DATA_WRITE, 1);
+SCST_SESS_SYSFS_STAT_ATTR(cmd_count, read_cmd_count, SCST_DATA_READ, 0);
+SCST_SESS_SYSFS_STAT_ATTR(io_byte_count, read_io_count_kb, SCST_DATA_READ, 1);
+SCST_SESS_SYSFS_STAT_ATTR(cmd_count, bidi_cmd_count, SCST_DATA_BIDI, 0);
+SCST_SESS_SYSFS_STAT_ATTR(io_byte_count, bidi_io_count_kb, SCST_DATA_BIDI, 1);
+SCST_SESS_SYSFS_STAT_ATTR(cmd_count, none_cmd_count, SCST_DATA_NONE, 0);
+
 struct attribute *scst_session_attrs[] = {
 	&session_commands_attr.attr,
 	&session_active_commands_attr.attr,
 	&session_initiator_name_attr.attr,
+	&session_unknown_cmd_count_attr.attr,
+	&session_write_cmd_count_attr.attr,
+	&session_write_io_count_kb_attr.attr,
+	&session_read_cmd_count_attr.attr,
+	&session_read_io_count_kb_attr.attr,
+	&session_bidi_cmd_count_attr.attr,
+	&session_bidi_io_count_kb_attr.attr,
+	&session_none_cmd_count_attr.attr,
 #ifdef CONFIG_SCST_MEASURE_LATENCY
 	&session_latency_attr.attr,
 #endif /* CONFIG_SCST_MEASURE_LATENCY */
@@ -4276,6 +4336,47 @@ out:
 	return res;
 }
 
+static ssize_t scst_max_tasklet_cmd_show(struct device *device,
+				  struct device_attribute *attr, char *buf)
+{
+	int count;
+
+	TRACE_ENTRY();
+
+	count = sprintf(buf, "%d\n", scst_max_tasklet_cmd);
+
+	TRACE_EXIT();
+	return count;
+}
+
+static ssize_t scst_max_tasklet_cmd_store(struct device *device,
+	struct device_attribute *attr, const char *buf, size_t count)
+{
+	int res;
+	unsigned long val;
+
+	TRACE_ENTRY();
+
+	res = strict_strtoul(buf, 0, &val);
+	if (res != 0) {
+		PRINT_ERROR("strict_strtoul() for %s failed: %d ", buf, res);
+		goto out;
+	}
+
+	scst_max_tasklet_cmd = val;
+	PRINT_INFO("Changed scst_max_tasklet_cmd to %d", scst_max_tasklet_cmd);
+
+	res = count;
+
+out:
+	TRACE_EXIT_RES(res);
+	return res;
+}
+
+static struct device_attribute scst_max_tasklet_cmd_attr =
+	__ATTR(max_tasklet_cmd, S_IRUGO | S_IWUSR, scst_max_tasklet_cmd_show,
+	       scst_max_tasklet_cmd_store);
+
 #if defined(CONFIG_SCST_DEBUG) || defined(CONFIG_SCST_TRACING)
 
 static ssize_t scst_main_trace_level_show(struct device *device,
@@ -4392,6 +4493,7 @@ static const struct device_attribute *scst_root_default_attrs[] = {
 	&scst_mgmt_attr,
 	&scst_threads_attr,
 	&scst_setup_id_attr,
+	&scst_max_tasklet_cmd_attr,
 #if defined(CONFIG_SCST_DEBUG) || defined(CONFIG_SCST_TRACING)
 	&scst_main_trace_level_attr,
 #endif

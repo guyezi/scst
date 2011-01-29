@@ -1,8 +1,9 @@
 /*
  *  include/scst_user.h
  *
- *  Copyright (C) 2007 - 2010 Vladislav Bolkhovitin <vst@vlnb.net>
+ *  Copyright (C) 2007 - 2011 Vladislav Bolkhovitin <vst@vlnb.net>
  *  Copyright (C) 2007 - 2010 ID7 Ltd.
+ *  Copyright (C) 2010 - 2011 SCST Ltd.
  *
  *  Contains constants and data structures for scst_user module.
  *  See http://scst.sourceforge.net/doc/scst_user_spec.txt or
@@ -30,7 +31,7 @@
 
 #define DEV_USER_NAME			"scst_user"
 #define DEV_USER_PATH			"/dev/"
-#define DEV_USER_VERSION_NAME		"2.1.0-pre1"
+#define DEV_USER_VERSION_NAME		SCST_VERSION_NAME
 #define DEV_USER_VERSION		\
 	DEV_USER_VERSION_NAME "$Revision$" SCST_CONST_VERSION
 

@@ -10,9 +10,12 @@ any device handlers that you load in SCST should be visible, including tapes
 and so forth.
 
 You can freely use any sg, sd, st, etc. devices imported from target,
-except the following: you can't mount file systems or put swap on them.
-This is a limitation of Linux memory/cache manager. See SCST README file
-for details.
+except the following: you can't mount file systems or put swap on them
+for all dev handlers, except BLOCKIO and pass-through, because it can
+lead to recursive memory allocation deadlock. This is a limitation of
+Linux memory/cache manager. See SCST README file for details. For
+BLOCKIO and pass-through dev handlers there's no such limitation, so you
+can freely mount file systems over them.
 
 To build, simply issue 'make' in the scst_local directory.
 
@@ -223,6 +226,24 @@ user space:
    found sg/bsg devices.
 
 For other connected initiators steps 3-6 should be repeated.
+
+
+Compilation options
+===================
+
+There are the following compilation options, that could be commented
+in/out in Makefile:
+
+ - CONFIG_SCST_LOCAL_FORCE_DIRECT_PROCESSING - by default, when this option
+   is not defined, scst_local reschedules all commands for processing in
+   one of the SCST threads. If this option is defined, scst_local tries
+   to not do it, if possible (sometimes queuecommand() called under
+   various locks held), but instead process them in the submitter's
+   context. This is to increase performance, but as on 2.6.37 and below
+   Linux block layer doesn't work with such kind of reentrance, hence
+   this option disabled by default. Note! At the moment in
+   scst_estimate_context*() returning DIRECT contexts disabled, so this
+   option doesn't have any real effect.
 
 
 Change log

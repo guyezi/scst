@@ -1,10 +1,11 @@
 /*
  *  qla2x00t.c
  *
- *  Copyright (C) 2004 - 2010 Vladislav Bolkhovitin <vst@vlnb.net>
+ *  Copyright (C) 2004 - 2011 Vladislav Bolkhovitin <vst@vlnb.net>
  *  Copyright (C) 2004 - 2005 Leonid Stoljar
  *  Copyright (C) 2006 Nathaniel Clark <nate@misrule.us>
  *  Copyright (C) 2006 - 2010 ID7 Ltd.
+ *  Copyright (C) 2010 - 2011 SCST Ltd.
  *
  *  QLogic 22xx/23xx/24xx/25xx FC target driver.
  *
@@ -274,6 +275,20 @@ static inline struct q2t_sess *q2t_find_sess_by_loop_id(struct q2t_tgt *tgt,
 	struct q2t_sess *sess;
 	list_for_each_entry(sess, &tgt->sess_list, sess_list_entry) {
 		if ((loop_id == sess->loop_id) && !sess->deleted)
+			return sess;
+	}
+	return NULL;
+}
+
+/* pha->hardware_lock supposed to be held on entry (to protect tgt->sess_list) */
+static inline struct q2t_sess *q2t_find_sess_by_s_id_include_deleted(
+	struct q2t_tgt *tgt, const uint8_t *s_id)
+{
+	struct q2t_sess *sess;
+	list_for_each_entry(sess, &tgt->sess_list, sess_list_entry) {
+		if ((sess->s_id.b.al_pa == s_id[2]) &&
+		    (sess->s_id.b.area == s_id[1]) &&
+		    (sess->s_id.b.domain == s_id[0]))
 			return sess;
 	}
 	return NULL;
@@ -777,7 +792,7 @@ static void q2t_clear_tgt_db(struct q2t_tgt *tgt, bool local_only)
 
 	TRACE_ENTRY();
 
-	TRACE(TRACE_MGMT, "qla2x00t: Clearing targets DB %p", tgt);
+	TRACE(TRACE_MGMT, "qla2x00t: Clearing targets DB for target %p", tgt);
 
 	list_for_each_entry_safe(sess, sess_tmp, &tgt->sess_list,
 					sess_list_entry) {
@@ -981,9 +996,9 @@ retry:
 
 	TRACE_MGMT_DBG("Updating sess %p s_id %x:%x:%x, "
 		"loop_id %d) to d_id %x:%x:%x, loop_id %d", sess,
-		sess->s_id.b.domain, sess->s_id.b.al_pa,
-		sess->s_id.b.area, sess->loop_id, fcport->d_id.b.domain,
-		fcport->d_id.b.al_pa, fcport->d_id.b.area, fcport->loop_id);
+		sess->s_id.b.domain, sess->s_id.b.area,
+		sess->s_id.b.al_pa, sess->loop_id, fcport->d_id.b.domain,
+		fcport->d_id.b.area, fcport->d_id.b.al_pa, fcport->loop_id);
 
 	sess->s_id = fcport->d_id;
 	sess->loop_id = fcport->loop_id;
@@ -1099,9 +1114,9 @@ static struct q2t_sess *q2t_create_sess(scsi_qla_host_t *ha, fc_port_t *fcport,
 			TRACE_MGMT_DBG("Double sess %p found (s_id %x:%x:%x, "
 				"loop_id %d), updating to d_id %x:%x:%x, "
 				"loop_id %d", sess, sess->s_id.b.domain,
-				sess->s_id.b.al_pa, sess->s_id.b.area,
+				sess->s_id.b.area, sess->s_id.b.al_pa,
 				sess->loop_id, fcport->d_id.b.domain,
-				fcport->d_id.b.al_pa, fcport->d_id.b.area,
+				fcport->d_id.b.area, fcport->d_id.b.al_pa,
 				fcport->loop_id);
 
 			if (sess->deleted)
@@ -4039,17 +4054,19 @@ out:
  */
 static int q24_handle_els(scsi_qla_host_t *ha, notify24xx_entry_t *iocb)
 {
-	int res = 0;
+	int res = 1; /* send notify ack */
 
 	TRACE_ENTRY();
 
-	TRACE(TRACE_MGMT, "qla2x00t(%ld): ELS opcode %x", ha->instance,
+	TRACE_MGMT_DBG("qla2x00t(%ld): ELS opcode %x", ha->instance,
 		iocb->status_subcode);
 
 	switch (iocb->status_subcode) {
 	case ELS_PLOGI:
 	case ELS_FLOGI:
 	case ELS_PRLI:
+		break;
+
 	case ELS_LOGO:
 	case ELS_PRLO:
 		res = q2t_reset(ha, iocb, Q2T_NEXUS_LOSS_SESS);
@@ -4063,14 +4080,15 @@ static int q24_handle_els(scsi_qla_host_t *ha, notify24xx_entry_t *iocb)
 			q24_send_notify_ack(ha, &tgt->link_reinit_iocb, 0, 0, 0);
 			tgt->link_reinit_iocb_pending = 0;
 		}
-		res = 1; /* send notify ack */
 		break;
 	}
 
 	default:
 		PRINT_ERROR("qla2x00t(%ld): Unsupported ELS command %x "
 			"received", ha->instance, iocb->status_subcode);
+#if 0
 		res = q2t_reset(ha, iocb, Q2T_NEXUS_LOSS_SESS);
+#endif
 		break;
 	}
 
@@ -4632,8 +4650,11 @@ static void q2t_handle_imm_notify(scsi_qla_host_t *ha, void *iocb)
 			/* set the Clear LIP reset event flag */
 			add_flags |= NOTIFY_ACK_CLEAR_LIP_RESET;
 		}
-		if (q2t_reset(ha, iocb, Q2T_ABORT_ALL) == 0)
-			send_notify_ack = 0;
+		/*
+		 * No additional resets or aborts are needed, because firmware
+		 * will as required by FCP either generate TARGET RESET or
+		 * reject all affected commands with LIP_RESET status.
+		 */
 		break;
 	}
 
@@ -4684,9 +4705,6 @@ static void q2t_handle_imm_notify(scsi_qla_host_t *ha, void *iocb)
 	case IMM_NTFY_PORT_CONFIG:
 		TRACE(TRACE_MGMT, "qla2x00t(%ld): Port config changed (%x)",
 			ha->instance, status);
-		if (q2t_reset(ha, iocb, Q2T_ABORT_ALL) == 0)
-			send_notify_ack = 0;
-		/* The sessions will be cleared in the callback, if needed */
 		break;
 
 	case IMM_NTFY_GLBL_LOGO:
@@ -4806,14 +4824,22 @@ static void q24_send_busy(scsi_qla_host_t *ha, atio7_entry_t *atio,
 {
 	ctio7_status1_entry_t *ctio;
 	struct q2t_sess *sess;
+	uint16_t loop_id;
 
 	TRACE_ENTRY();
 
-	sess = q2t_find_sess_by_s_id(ha->tgt, atio->fcp_hdr.s_id);
-	if (sess == NULL) {
-		q24_send_term_exchange(ha, NULL, atio, 1);
-		goto out;
-	}
+	/*
+	 * In some cases, for instance for ATIO_EXCHANGE_ADDRESS_UNKNOWN, the
+	 * spec requires to issue queue full SCSI status. So, let's search among
+	 * being deleted sessions as well and use CTIO7_NHANDLE_UNRECOGNIZED,
+	 * if we can't find sess.
+	 */
+	sess = q2t_find_sess_by_s_id_include_deleted(ha->tgt,
+					atio->fcp_hdr.s_id);
+	if (sess != NULL)
+		loop_id = sess->loop_id;
+	else
+		loop_id = CTIO7_NHANDLE_UNRECOGNIZED;
 
 	/* Sending marker isn't necessary, since we called from ISR */
 
@@ -4827,7 +4853,7 @@ static void q24_send_busy(scsi_qla_host_t *ha, atio7_entry_t *atio,
 	ctio->common.entry_type = CTIO_TYPE7;
 	ctio->common.entry_count = 1;
 	ctio->common.handle = Q2T_SKIP_HANDLE | CTIO_COMPLETION_HANDLE_MARK;
-	ctio->common.nport_handle = sess->loop_id;
+	ctio->common.nport_handle = loop_id;
 	ctio->common.timeout = __constant_cpu_to_le16(Q2T_TIMEOUT);
 	ctio->common.vp_index = ha->vp_idx;
 	ctio->common.initiator_id[0] = atio->fcp_hdr.s_id[2];
@@ -5231,40 +5257,38 @@ static void q2t_async_event(uint16_t code, scsi_qla_host_t *ha,
 		break;
 
 	case MBA_LOOP_UP:
-	{
-		TRACE(TRACE_MGMT, "qla2x00t(%ld): Async LOOP_UP occured "
-			"(m[1]=%x, m[2]=%x, m[3]=%x, m[4]=%x)", ha->instance,
-			le16_to_cpu(mailbox[1]), le16_to_cpu(mailbox[2]),
-			le16_to_cpu(mailbox[3]), le16_to_cpu(mailbox[4]));
+		TRACE(TRACE_MGMT, "qla2x00t(%ld): Loop up occured",
+			ha->instance);
 		if (tgt->link_reinit_iocb_pending) {
 			q24_send_notify_ack(ha, &tgt->link_reinit_iocb, 0, 0, 0);
 			tgt->link_reinit_iocb_pending = 0;
 		}
 		break;
-	}
 
 	case MBA_LIP_OCCURRED:
+		TRACE(TRACE_MGMT, "qla2x00t(%ld): LIP occured", ha->instance);
+		break;
+
 	case MBA_LOOP_DOWN:
+		TRACE(TRACE_MGMT, "qla2x00t(%ld): Loop down occured",
+			ha->instance);
+		break;
+
 	case MBA_LIP_RESET:
-		TRACE(TRACE_MGMT, "qla2x00t(%ld): Async event %#x occured "
-			"(m[1]=%x, m[2]=%x, m[3]=%x, m[4]=%x)", ha->instance,
-			code, le16_to_cpu(mailbox[1]), le16_to_cpu(mailbox[2]),
-			le16_to_cpu(mailbox[3]), le16_to_cpu(mailbox[4]));
+		TRACE(TRACE_MGMT, "qla2x00t(%ld): LIP reset occured",
+			ha->instance);
 		break;
 
 	case MBA_PORT_UPDATE:
 	case MBA_RSCN_UPDATE:
-		TRACE(TRACE_MGMT, "qla2x00t(%ld): Port update async event %#x "
-			"occured: updating the ports database (m[1]=%x, m[2]=%x, "
-			"m[3]=%x, m[4]=%x)", ha->instance, code,
-			le16_to_cpu(mailbox[1]), le16_to_cpu(mailbox[2]),
-			le16_to_cpu(mailbox[3]), le16_to_cpu(mailbox[4]));
+		TRACE_MGMT_DBG("qla2x00t(%ld): Port update async event %#x "
+			"occured", ha->instance, code);
 		/* .mark_all_devices_lost() is handled by the initiator driver */
 		break;
 
 	default:
 		TRACE(TRACE_MGMT, "qla2x00t(%ld): Async event %#x occured: "
-			"ignore (m[1]=%x, m[2]=%x, m[3]=%x, m[4]=%x)",
+			"ignoring (m[1]=%x, m[2]=%x, m[3]=%x, m[4]=%x)",
 			ha->instance, code,
 			le16_to_cpu(mailbox[1]), le16_to_cpu(mailbox[2]),
 			le16_to_cpu(mailbox[3]), le16_to_cpu(mailbox[4]));
@@ -5360,6 +5384,8 @@ retry:
 			"discovery (counter was %d, new %d), retrying",
 			ha->instance, global_resets,
 			atomic_read(&ha->tgt->tgt_global_resets_count));
+		kfree(fcport);
+		fcport = NULL;
 		goto retry;
 	}
 

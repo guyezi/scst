@@ -1,7 +1,7 @@
 /*
  * Copyright (C) 2008 - 2010 Richard Sharpe
  * Copyright (C) 1992 Eric Youngdale
- * Copyright (C) 2008 - 2010 Vladislav Bolkhovitin <vst@vlnb.net>
+ * Copyright (C) 2008 - 2011 Vladislav Bolkhovitin <vst@vlnb.net>
  *
  * Simulate a host adapter and an SCST target adapter back to back
  *
@@ -85,9 +85,6 @@ static unsigned long scst_local_trace_flag = SCST_LOCAL_DEFAULT_LOG_FLAGS;
 #define scsi_sglist(cmd) ((struct scatterlist *)(cmd)->request_buffer)
 #define scsi_bufflen(cmd) ((cmd)->request_bufflen)
 #endif
-
-#define TRUE 1
-#define FALSE 0
 
 #define SCST_LOCAL_VERSION "1.0.0"
 static const char *scst_local_version_date = "20100910";
@@ -808,7 +805,7 @@ static int scst_local_abort(struct scsi_cmnd *SCpnt)
 	sess = to_scst_lcl_sess(scsi_get_device(SCpnt->device->host));
 
 	ret = scst_rx_mgmt_fn_tag(sess->scst_sess, SCST_ABORT_TASK, SCpnt->tag,
-				 FALSE, &dev_reset_completion);
+				 false, &dev_reset_completion);
 
 	/* Now wait for the completion ... */
 	wait_for_completion_interruptible(&dev_reset_completion);
@@ -836,7 +833,7 @@ static int scst_local_device_reset(struct scsi_cmnd *SCpnt)
 	lun = cpu_to_be16(SCpnt->device->lun);
 
 	ret = scst_rx_mgmt_fn_lun(sess->scst_sess, SCST_LUN_RESET,
-			(const uint8_t *)&lun, sizeof(lun), FALSE,
+			(const uint8_t *)&lun, sizeof(lun), false,
 			&dev_reset_completion);
 
 	/* Now wait for the completion ... */
@@ -866,7 +863,7 @@ static int scst_local_target_reset(struct scsi_cmnd *SCpnt)
 	lun = cpu_to_be16(SCpnt->device->lun);
 
 	ret = scst_rx_mgmt_fn_lun(sess->scst_sess, SCST_TARGET_RESET,
-			(const uint8_t *)&lun, sizeof(lun), FALSE,
+			(const uint8_t *)&lun, sizeof(lun), false,
 			&dev_reset_completion);
 
 	/* Now wait for the completion ... */
@@ -933,13 +930,8 @@ static int scst_local_send_resp(struct scsi_cmnd *cmnd,
  * This does the heavy lifting ... we pass all the commands on to the
  * target driver and have it do its magic ...
  */
-#if LINUX_VERSION_CODE <= KERNEL_VERSION(2, 6, 36)
-static int scst_local_queuecommand(struct scsi_cmnd *SCpnt,
-				   void (*done)(struct scsi_cmnd *))
-#else
-static int scst_local_queuecommand(struct Scsi_Host *SChost,
-				   struct scsi_cmnd *SCpnt)
-#endif
+static int scst_local_queuecommand_lck(struct scsi_cmnd *SCpnt,
+				       void (*done)(struct scsi_cmnd *))
 	__acquires(&h->host_lock)
 	__releases(&h->host_lock)
 {
@@ -970,11 +962,11 @@ static int scst_local_queuecommand(struct Scsi_Host *SChost,
 	if (!tgt_specific) {
 		PRINT_ERROR("Unable to create tgt_specific (size %zu)",
 			sizeof(*tgt_specific));
-		return -ENOMEM;
+		return SCSI_MLQUEUE_HOST_BUSY;
 	}
 	tgt_specific->cmnd = SCpnt;
 	tgt_specific->done = done;
-#elif LINUX_VERSION_CODE <= KERNEL_VERSION(2, 6, 36)
+#elif LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 37)
 	/*
 	 * We save a pointer to the done routine in SCpnt->scsi_done and
 	 * we save that as tgt specific stuff below.
@@ -987,13 +979,17 @@ static int scst_local_queuecommand(struct Scsi_Host *SChost,
 	/*
 	 * Tell the target that we have a command ... but first we need
 	 * to get the LUN into a format that SCST understand
+	 *
+	 * NOTE! We need to call it with atomic parameter true to not
+	 * get into mem alloc deadlock when mounting file systems over
+	 * our devices.
 	 */
 	lun = cpu_to_be16(SCpnt->device->lun);
 	scst_cmd = scst_rx_cmd(sess->scst_sess, (const uint8_t *)&lun,
-			       sizeof(lun), SCpnt->cmnd, SCpnt->cmd_len, TRUE);
+			       sizeof(lun), SCpnt->cmnd, SCpnt->cmd_len, true);
 	if (!scst_cmd) {
 		PRINT_ERROR("%s", "scst_rx_cmd() failed");
-		return -ENOMEM;
+		return SCSI_MLQUEUE_HOST_BUSY;
 	}
 
 	scst_cmd_set_tag(scst_cmd, SCpnt->tag);
@@ -1052,11 +1048,13 @@ static int scst_local_queuecommand(struct Scsi_Host *SChost,
 	case DMA_TO_DEVICE:
 		dir = SCST_DATA_WRITE;
 		scst_cmd_set_expected(scst_cmd, dir, scsi_bufflen(SCpnt));
+		scst_cmd_set_noio_mem_alloc(scst_cmd);
 		scst_cmd_set_tgt_sg(scst_cmd, sgl, sgl_count);
 		break;
 	case DMA_FROM_DEVICE:
 		dir = SCST_DATA_READ;
 		scst_cmd_set_expected(scst_cmd, dir, scsi_bufflen(SCpnt));
+		scst_cmd_set_noio_mem_alloc(scst_cmd);
 		scst_cmd_set_tgt_sg(scst_cmd, sgl, sgl_count);
 		break;
 	case DMA_BIDIRECTIONAL:
@@ -1066,6 +1064,7 @@ static int scst_local_queuecommand(struct Scsi_Host *SChost,
 		scst_cmd_set_expected(scst_cmd, dir, scsi_bufflen(SCpnt));
 		scst_cmd_set_expected_out_transfer_len(scst_cmd,
 			scsi_in(SCpnt)->length);
+		scst_cmd_set_noio_mem_alloc(scst_cmd);
 		scst_cmd_set_tgt_sg(scst_cmd, scsi_in(SCpnt)->table.sgl,
 			scsi_in(SCpnt)->table.nents);
 		scst_cmd_set_tgt_out_sg(scst_cmd, sgl, sgl_count);
@@ -1085,11 +1084,20 @@ static int scst_local_queuecommand(struct Scsi_Host *SChost,
 	scst_cmd_set_tgt_priv(scst_cmd, SCpnt);
 #endif
 
+/*
+ * Although starting from 2.6.37 queuecommand() called with no host_lock
+ * held, in reality without DEF_SCSI_QCMD() this doesn't work and leading
+ * to various problems like commands lost under highload. So, until that fixed
+ * we have to go ahead under host_lock, although absolutely don't need it.
+ *
+ * NOTE! At the moment in scst_estimate_context*() returning DIRECT contexts
+ * disabled, so this option doesn't have any real effect.
+ */
 #ifdef CONFIG_SCST_LOCAL_FORCE_DIRECT_PROCESSING
 	{
 		struct Scsi_Host *h = SCpnt->device->host;
 		spin_unlock_irq(h->host_lock);
-		scst_cmd_init_done(scst_cmd, scst_estimate_context_direct());
+		scst_cmd_init_done(scst_cmd, scst_estimate_context_atomic());
 		spin_lock_irq(h->host_lock);
 	}
 #else
@@ -1103,6 +1111,14 @@ static int scst_local_queuecommand(struct Scsi_Host *SChost,
 	TRACE_EXIT();
 	return 0;
 }
+
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 37)
+/*
+ * See comment in scst_local_queuecommand_lck() near
+ * CONFIG_SCST_LOCAL_FORCE_DIRECT_PROCESSING
+ */
+static DEF_SCSI_QCMD(scst_local_queuecommand)
+#endif
 
 static int scst_local_targ_pre_exec(struct scst_cmd *scst_cmd)
 {
@@ -1412,7 +1428,11 @@ static struct scsi_host_template scst_lcl_ini_driver_template = {
 	.info				= scst_local_info,
 #endif
 	.name				= SCST_LOCAL_NAME,
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 37)
+	.queuecommand			= scst_local_queuecommand_lck,
+#else
 	.queuecommand			= scst_local_queuecommand,
+#endif
 	.eh_abort_handler		= scst_local_abort,
 	.eh_device_reset_handler	= scst_local_device_reset,
 #if (LINUX_VERSION_CODE > KERNEL_VERSION(2, 6, 25))
@@ -1573,7 +1593,7 @@ static void scst_local_release_adapter(struct device *dev)
 	cancel_work_sync(&sess->aen_work);
 #endif
 
-	scst_unregister_session(sess->scst_sess, TRUE, NULL);
+	scst_unregister_session(sess->scst_sess, true, NULL);
 
 	kfree(sess);
 
@@ -1675,7 +1695,7 @@ unregister_dev:
 #endif
 
 unregister_session:
-	scst_unregister_session(sess->scst_sess, TRUE, NULL);
+	scst_unregister_session(sess->scst_sess, true, NULL);
 
 out_free:
 	kfree(sess);

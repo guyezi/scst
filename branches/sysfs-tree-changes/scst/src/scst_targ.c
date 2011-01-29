@@ -1,9 +1,10 @@
 /*
  *  scst_targ.c
  *
- *  Copyright (C) 2004 - 2010 Vladislav Bolkhovitin <vst@vlnb.net>
+ *  Copyright (C) 2004 - 2011 Vladislav Bolkhovitin <vst@vlnb.net>
  *  Copyright (C) 2004 - 2005 Leonid Stoljar
  *  Copyright (C) 2007 - 2010 ID7 Ltd.
+ *  Copyright (C) 2010 - 2011 SCST Ltd.
  *
  *  This program is free software; you can redistribute it and/or
  *  modify it under the terms of the GNU General Public License
@@ -38,13 +39,8 @@
 #include "scst_priv.h"
 #include "scst_pres.h"
 
-#if 0 /* Temporary left for future performance investigations */
-/* Deleting it don't forget to delete write_cmd_count */
-#define CONFIG_SCST_ORDERED_READS
-#endif
-
 #if 0 /* Let's disable it for now to see if users will complain about it */
-/* Deleting it don't forget to delete write_cmd_count */
+/* Deleting it don't forget to delete dev_cmd_count */
 #define CONFIG_SCST_PER_DEVICE_CMD_COUNT_LIMIT
 #endif
 
@@ -83,16 +79,27 @@ EXPORT_SYMBOL_GPL(scst_post_alloc_data_buf);
 
 static inline void scst_schedule_tasklet(struct scst_cmd *cmd)
 {
-	struct scst_tasklet *t = &scst_tasklets[smp_processor_id()];
+	struct scst_percpu_info *i = &scst_percpu_infos[smp_processor_id()];
 	unsigned long flags;
 
-	spin_lock_irqsave(&t->tasklet_lock, flags);
-	TRACE_DBG("Adding cmd %p to tasklet %d cmd list", cmd,
-		smp_processor_id());
-	list_add_tail(&cmd->cmd_list_entry, &t->tasklet_cmd_list);
-	spin_unlock_irqrestore(&t->tasklet_lock, flags);
+	if (atomic_read(&i->cpu_cmd_count) <= scst_max_tasklet_cmd) {
+		spin_lock_irqsave(&i->tasklet_lock, flags);
+		TRACE_DBG("Adding cmd %p to tasklet %d cmd list", cmd,
+			smp_processor_id());
+		list_add_tail(&cmd->cmd_list_entry, &i->tasklet_cmd_list);
+		spin_unlock_irqrestore(&i->tasklet_lock, flags);
 
-	tasklet_schedule(&t->tasklet);
+		tasklet_schedule(&i->tasklet);
+	} else {
+		spin_lock_irqsave(&cmd->cmd_threads->cmd_list_lock, flags);
+		TRACE_DBG("Too many tasklet commands (%d), adding cmd %p to "
+			"active cmd list", atomic_read(&i->cpu_cmd_count), cmd);
+		list_add_tail(&cmd->cmd_list_entry,
+			&cmd->cmd_threads->active_cmd_list);
+		wake_up(&cmd->cmd_threads->cmd_list_waitQ);
+		spin_unlock_irqrestore(&cmd->cmd_threads->cmd_list_lock, flags);
+	}
+	return;
 }
 
 /**
@@ -183,16 +190,19 @@ static int scst_init_cmd(struct scst_cmd *cmd, enum scst_exec_context *context)
 	EXTRACHECKS_BUG_ON(*context == SCST_CONTEXT_SAME);
 
 #ifdef CONFIG_SCST_TEST_IO_IN_SIRQ
-	scst_get_cdb_info(cmd);
 	if (cmd->op_flags & SCST_TEST_IO_IN_SIRQ_ALLOWED)
 		goto out;
 #endif
 
 	/* Small context optimization */
-	if (((*context == SCST_CONTEXT_TASKLET) ||
-	     (*context == SCST_CONTEXT_DIRECT_ATOMIC)) &&
-	      scst_cmd_is_expected_set(cmd)) {
-		if (cmd->expected_data_direction & SCST_DATA_WRITE) {
+	if ((*context == SCST_CONTEXT_TASKLET) ||
+	    (*context == SCST_CONTEXT_DIRECT_ATOMIC)) {
+		/*
+		 * If any data_direction not set, it's SCST_DATA_UNKNOWN,
+		 * which is 0, so we can safely | them
+		 */
+		BUILD_BUG_ON(SCST_DATA_UNKNOWN != 0);
+		if ((cmd->data_direction | cmd->expected_data_direction) & SCST_DATA_WRITE) {
 			if (!test_bit(SCST_TGT_DEV_AFTER_INIT_WR_ATOMIC,
 					&cmd->tgt_dev->tgt_dev_flags))
 				*context = SCST_CONTEXT_THREAD;
@@ -221,8 +231,7 @@ out_redirect:
 	} else {
 		unsigned long flags;
 		spin_lock_irqsave(&scst_init_lock, flags);
-		TRACE_MGMT_DBG("Adding cmd %p to init cmd list (scst_cmd_count "
-			"%d)", cmd, atomic_read(&scst_cmd_count));
+		TRACE_MGMT_DBG("Adding cmd %p to init cmd list)", cmd);
 		list_add_tail(&cmd->cmd_list_entry, &scst_init_cmd_list);
 		if (test_bit(SCST_CMD_ABORTED, &cmd->cmd_flags))
 			scst_init_poll_cnt++;
@@ -282,6 +291,7 @@ void scst_cmd_init_done(struct scst_cmd *cmd,
 		PRINT_ERROR("Wrong context %d in IRQ from target %s, use "
 			"SCST_CONTEXT_THREAD instead", pref_context,
 			cmd->tgtt->name);
+		dump_stack();
 		pref_context = SCST_CONTEXT_THREAD;
 	}
 #endif
@@ -352,14 +362,6 @@ active:
 		scst_schedule_tasklet(cmd);
 		break;
 
-	case SCST_CONTEXT_DIRECT:
-		scst_process_active_cmd(cmd, false);
-		break;
-
-	case SCST_CONTEXT_DIRECT_ATOMIC:
-		scst_process_active_cmd(cmd, true);
-		break;
-
 	default:
 		PRINT_ERROR("Context %x is undefined, using the thread one",
 			pref_context);
@@ -375,6 +377,14 @@ active:
 				&cmd->cmd_threads->active_cmd_list);
 		wake_up(&cmd->cmd_threads->cmd_list_waitQ);
 		spin_unlock_irqrestore(&cmd->cmd_threads->cmd_list_lock, flags);
+		break;
+
+	case SCST_CONTEXT_DIRECT:
+		scst_process_active_cmd(cmd, false);
+		break;
+
+	case SCST_CONTEXT_DIRECT_ATOMIC:
+		scst_process_active_cmd(cmd, true);
 		break;
 	}
 
@@ -489,7 +499,7 @@ static int scst_parse_cmd(struct scst_cmd *cmd)
 			 * It shouldn't be because of the SCST_TGT_DEV_AFTER_*
 			 * optimization.
 			 */
-			TRACE_DBG("Dev handler %s parse() needs thread "
+			TRACE_MGMT_DBG("Dev handler %s parse() needs thread "
 				"context, rescheduling", dev->handler->name);
 			res = SCST_CMD_STATE_RES_NEED_THREAD;
 			goto out;
@@ -787,6 +797,21 @@ set_res:
 	if (unlikely(cmd->completed))
 		goto out_done;
 
+#ifndef CONFIG_SCST_TEST_IO_IN_SIRQ
+	/*
+	 * We can't allow atomic command on the exec stages. It shouldn't
+	 * be because of the SCST_TGT_DEV_AFTER_* optimization, but during
+	 * parsing data_direction can change, so we need to recheck.
+	 */
+	if (unlikely(scst_cmd_atomic(cmd) &&
+		     !(cmd->data_direction & SCST_DATA_WRITE))) {
+		TRACE_DBG_FLAG(TRACE_DEBUG|TRACE_MINOR, "Atomic context and "
+			"non-WRITE data direction, rescheduling (cmd %p)", cmd);
+		res = SCST_CMD_STATE_RES_NEED_THREAD;
+		goto out;
+	}
+#endif
+
 out:
 	TRACE_EXIT_HRES(res);
 	return res;
@@ -860,7 +885,7 @@ static int scst_prepare_space(struct scst_cmd *cmd)
 			 * It shouldn't be because of the SCST_TGT_DEV_AFTER_*
 			 * optimization.
 			 */
-			TRACE_DBG("Dev handler %s alloc_data_buf() needs "
+			TRACE_MGMT_DBG("Dev handler %s alloc_data_buf() needs "
 				"thread context, rescheduling",
 				dev->handler->name);
 			res = SCST_CMD_STATE_RES_NEED_THREAD;
@@ -1050,6 +1075,7 @@ void scst_restart_cmd(struct scst_cmd *cmd, int status,
 		PRINT_ERROR("Wrong context %d in IRQ from target %s, use "
 			"SCST_CONTEXT_THREAD instead", pref_context,
 			cmd->tgtt->name);
+		dump_stack();
 		pref_context = SCST_CONTEXT_THREAD;
 	}
 #endif
@@ -1076,6 +1102,7 @@ void scst_restart_cmd(struct scst_cmd *cmd, int status,
 
 	case SCST_PREPROCESS_STATUS_ERROR_SENSE_SET:
 		scst_set_cmd_abnormal_done_state(cmd);
+		pref_context = SCST_CONTEXT_THREAD;
 		break;
 
 	case SCST_PREPROCESS_STATUS_ERROR_FATAL:
@@ -1086,12 +1113,14 @@ void scst_restart_cmd(struct scst_cmd *cmd, int status,
 			scst_set_cmd_error(cmd,
 				SCST_LOAD_SENSE(scst_sense_hardw_error));
 		scst_set_cmd_abnormal_done_state(cmd);
+		pref_context = SCST_CONTEXT_THREAD;
 		break;
 
 	default:
 		PRINT_ERROR("%s() received unknown status %x", __func__,
 			status);
 		scst_set_cmd_abnormal_done_state(cmd);
+		pref_context = SCST_CONTEXT_THREAD;
 		break;
 	}
 
@@ -1116,7 +1145,15 @@ static int scst_rdy_to_xfer(struct scst_cmd *cmd)
 
 	if ((tgtt->rdy_to_xfer == NULL) || unlikely(cmd->internal)) {
 		cmd->state = SCST_CMD_STATE_TGT_PRE_EXEC;
-		res = SCST_CMD_STATE_RES_CONT_SAME;
+#ifndef CONFIG_SCST_TEST_IO_IN_SIRQ
+		/* We can't allow atomic command on the exec stages */
+		if (scst_cmd_atomic(cmd)) {
+			TRACE_DBG("NULL rdy_to_xfer() and atomic context, "
+				"rescheduling (cmd %p)", cmd);
+			res = SCST_CMD_STATE_RES_NEED_THREAD;
+		} else
+#endif
+			res = SCST_CMD_STATE_RES_CONT_SAME;
 		goto out;
 	}
 
@@ -1125,8 +1162,8 @@ static int scst_rdy_to_xfer(struct scst_cmd *cmd)
 		 * It shouldn't be because of the SCST_TGT_DEV_AFTER_*
 		 * optimization.
 		 */
-		TRACE_DBG("Target driver %s rdy_to_xfer() needs thread "
-			      "context, rescheduling", tgtt->name);
+		TRACE_MGMT_DBG("Target driver %s rdy_to_xfer() needs thread "
+			"context, rescheduling", tgtt->name);
 		res = SCST_CMD_STATE_RES_NEED_THREAD;
 		goto out;
 	}
@@ -1224,6 +1261,9 @@ static void scst_process_redirect_cmd(struct scst_cmd *cmd,
 
 	TRACE_DBG("Context: %x", context);
 
+	if (check_retries)
+		scst_check_retries(tgt);
+
 	if (context == SCST_CONTEXT_SAME)
 		context = scst_cmd_atomic(cmd) ? SCST_CONTEXT_DIRECT_ATOMIC :
 						 SCST_CONTEXT_DIRECT;
@@ -1234,9 +1274,11 @@ static void scst_process_redirect_cmd(struct scst_cmd *cmd,
 		break;
 
 	case SCST_CONTEXT_DIRECT:
-		if (check_retries)
-			scst_check_retries(tgt);
 		scst_process_active_cmd(cmd, false);
+		break;
+
+	case SCST_CONTEXT_TASKLET:
+		scst_schedule_tasklet(cmd);
 		break;
 
 	default:
@@ -1244,8 +1286,6 @@ static void scst_process_redirect_cmd(struct scst_cmd *cmd,
 			    context);
 		/* go through */
 	case SCST_CONTEXT_THREAD:
-		if (check_retries)
-			scst_check_retries(tgt);
 		spin_lock_irqsave(&cmd->cmd_threads->cmd_list_lock, flags);
 		TRACE_DBG("Adding cmd %p to active cmd list", cmd);
 		if (unlikely(cmd->queue_type == SCST_CMD_QUEUE_HEAD_OF_QUEUE))
@@ -1256,12 +1296,6 @@ static void scst_process_redirect_cmd(struct scst_cmd *cmd,
 				&cmd->cmd_threads->active_cmd_list);
 		wake_up(&cmd->cmd_threads->cmd_list_waitQ);
 		spin_unlock_irqrestore(&cmd->cmd_threads->cmd_list_lock, flags);
-		break;
-
-	case SCST_CONTEXT_TASKLET:
-		if (check_retries)
-			scst_check_retries(tgt);
-		scst_schedule_tasklet(cmd);
 		break;
 	}
 
@@ -1301,6 +1335,7 @@ void scst_rx_data(struct scst_cmd *cmd, int status,
 		PRINT_ERROR("Wrong context %d in IRQ from target %s, use "
 			"SCST_CONTEXT_THREAD instead", pref_context,
 			cmd->tgtt->name);
+		dump_stack();
 		pref_context = SCST_CONTEXT_THREAD;
 	}
 #endif
@@ -1352,6 +1387,7 @@ void scst_rx_data(struct scst_cmd *cmd, int status,
 
 	case SCST_RX_STATUS_ERROR_SENSE_SET:
 		scst_set_cmd_abnormal_done_state(cmd);
+		pref_context = SCST_CONTEXT_THREAD;
 		break;
 
 	case SCST_RX_STATUS_ERROR_FATAL:
@@ -1361,12 +1397,14 @@ void scst_rx_data(struct scst_cmd *cmd, int status,
 		scst_set_cmd_error(cmd,
 			   SCST_LOAD_SENSE(scst_sense_hardw_error));
 		scst_set_cmd_abnormal_done_state(cmd);
+		pref_context = SCST_CONTEXT_THREAD;
 		break;
 
 	default:
 		PRINT_ERROR("scst_rx_data() received unknown status %x",
 			status);
 		scst_set_cmd_abnormal_done_state(cmd);
+		pref_context = SCST_CONTEXT_THREAD;
 		break;
 	}
 
@@ -2519,7 +2557,7 @@ out_complete:
 	if (ctx_changed)
 		scst_reset_io_context(cmd->tgt_dev, old_ctx);
 
-	TRACE_EXIT();
+	TRACE_EXIT_RES(res);
 	return res;
 
 out_error:
@@ -2545,7 +2583,6 @@ static inline int scst_real_exec(struct scst_cmd *cmd)
 	__scst_cmd_get(cmd);
 
 	res = scst_do_real_exec(cmd);
-
 	if (likely(res == SCST_EXEC_COMPLETED)) {
 		scst_post_exec_sn(cmd, true);
 		if (cmd->dev->scsi_dev != NULL)
@@ -2942,8 +2979,14 @@ static int scst_pre_dev_done(struct scst_cmd *cmd)
 				SCST_LOAD_SENSE(scst_sense_hardw_error));
 		}
 		goto out;
-	} else if (unlikely(scst_check_sense(cmd)))
+	} else if (unlikely(scst_check_sense(cmd))) {
+		/*
+		 * We can't allow atomic command on the exec stages, so
+		 * restart to the thread
+		 */
+		res = SCST_CMD_STATE_RES_NEED_THREAD;
 		goto out;
+	}
 
 	if (likely(scsi_status_is_good(cmd->status))) {
 		unsigned char type = cmd->dev->type;
@@ -3187,8 +3230,8 @@ static int scst_dev_done(struct scst_cmd *cmd)
 			 * It shouldn't be because of the SCST_TGT_DEV_AFTER_*
 			 * optimization.
 			 */
-			TRACE_DBG("Dev handler %s dev_done() needs thread "
-			      "context, rescheduling", dev->handler->name);
+			TRACE_MGMT_DBG("Dev handler %s dev_done() needs thread "
+				"context, rescheduling", dev->handler->name);
 			res = SCST_CMD_STATE_RES_NEED_THREAD;
 			goto out;
 		}
@@ -3257,6 +3300,24 @@ static int scst_dev_done(struct scst_cmd *cmd)
 	if (unlikely(cmd->internal))
 		cmd->state = SCST_CMD_STATE_FINISHED_INTERNAL;
 
+#ifndef CONFIG_SCST_TEST_IO_IN_SIRQ
+	if (cmd->state != SCST_CMD_STATE_PRE_XMIT_RESP) {
+		/* We can't allow atomic command on the exec stages */
+		if (scst_cmd_atomic(cmd)) {
+			switch (state) {
+			case SCST_CMD_STATE_TGT_PRE_EXEC:
+			case SCST_CMD_STATE_SEND_FOR_EXEC:
+			case SCST_CMD_STATE_LOCAL_EXEC:
+			case SCST_CMD_STATE_REAL_EXEC:
+				TRACE_DBG("Atomic context and redirect, "
+					"rescheduling (cmd %p)", cmd);
+				res = SCST_CMD_STATE_RES_NEED_THREAD;
+				break;
+			}
+		}
+	}
+#endif
+
 out:
 	TRACE_EXIT_HRES(res);
 	return res;
@@ -3293,11 +3354,6 @@ static int scst_pre_xmit_response(struct scst_cmd *cmd)
 		atomic_dec(&cmd->tgt_dev->tgt_dev_cmd_count);
 #ifdef CONFIG_SCST_PER_DEVICE_CMD_COUNT_LIMIT
 		atomic_dec(&cmd->dev->dev_cmd_count);
-#endif
-#ifdef CONFIG_SCST_ORDERED_READS
-		/* If expected values not set, expected direction is UNKNOWN */
-		if (cmd->expected_data_direction & SCST_DATA_WRITE)
-			atomic_dec(&cmd->dev->write_cmd_count);
 #endif
 		if (unlikely(cmd->queue_type == SCST_CMD_QUEUE_HEAD_OF_QUEUE))
 			scst_on_hq_cmd_response(cmd);
@@ -3355,8 +3411,8 @@ static int scst_xmit_response(struct scst_cmd *cmd)
 		 * It shouldn't be because of the SCST_TGT_DEV_AFTER_*
 		 * optimization.
 		 */
-		TRACE_DBG("Target driver %s xmit_response() needs thread "
-			      "context, rescheduling", tgtt->name);
+		TRACE_MGMT_DBG("Target driver %s xmit_response() needs thread "
+			"context, rescheduling", tgtt->name);
 		res = SCST_CMD_STATE_RES_NEED_THREAD;
 		goto out;
 	}
@@ -3492,7 +3548,11 @@ void scst_tgt_cmd_done(struct scst_cmd *cmd,
 
 	cmd->cmd_hw_pending = 0;
 
+	if (unlikely(cmd->tgt_dev == NULL))
+		pref_context = SCST_CONTEXT_THREAD;
+
 	cmd->state = SCST_CMD_STATE_FINISHED;
+
 	scst_process_redirect_cmd(cmd, pref_context, 1);
 
 	TRACE_EXIT();
@@ -3504,6 +3564,7 @@ static int scst_finish_cmd(struct scst_cmd *cmd)
 {
 	int res;
 	struct scst_session *sess = cmd->sess;
+	struct scst_io_stat_entry *stat;
 
 	TRACE_ENTRY();
 
@@ -3527,16 +3588,21 @@ static int scst_finish_cmd(struct scst_cmd *cmd)
 	atomic_dec(&sess->sess_cmd_count);
 
 	spin_lock_irq(&sess->sess_list_lock);
+
+	stat = &sess->io_stats[cmd->data_direction];
+	stat->cmd_count++;
+	stat->io_byte_count += cmd->bufflen + cmd->out_bufflen;
+
 	list_del(&cmd->sess_cmd_list_entry);
+
 	spin_unlock_irq(&sess->sess_list_lock);
 
 	cmd->finished = 1;
 	smp_mb(); /* to sync with scst_abort_cmd() */
 
 	if (unlikely(test_bit(SCST_CMD_ABORTED, &cmd->cmd_flags))) {
-		TRACE_MGMT_DBG("Aborted cmd %p finished (cmd_ref %d, "
-			"scst_cmd_count %d)", cmd, atomic_read(&cmd->cmd_ref),
-			atomic_read(&scst_cmd_count));
+		TRACE_MGMT_DBG("Aborted cmd %p finished (cmd_ref %d)",
+			cmd, atomic_read(&cmd->cmd_ref));
 
 		scst_finish_cmd_mgmt(cmd);
 	}
@@ -3589,14 +3655,6 @@ static void scst_cmd_set_sn(struct scst_cmd *cmd)
 	switch (cmd->queue_type) {
 	case SCST_CMD_QUEUE_SIMPLE:
 	case SCST_CMD_QUEUE_UNTAGGED:
-#ifdef CONFIG_SCST_ORDERED_READS
-		if (scst_cmd_is_expected_set(cmd)) {
-			if ((cmd->expected_data_direction == SCST_DATA_READ) &&
-			    (atomic_read(&cmd->dev->write_cmd_count) == 0))
-				goto ordered;
-		} else
-			goto ordered;
-#endif
 		if (likely(tgt_dev->num_free_sn_slots >= 0)) {
 			/*
 			 * atomic_inc_return() implies memory barrier to sync
@@ -3694,8 +3752,7 @@ static int scst_translate_lun(struct scst_cmd *cmd)
 
 	TRACE_ENTRY();
 
-	/* See comment about smp_mb() in scst_suspend_activity() */
-	__scst_get();
+	cmd->cpu_cmd_counter = scst_get();
 
 	if (likely(!test_bit(SCST_FLAG_SUSPENDED, &scst_flags))) {
 		struct list_head *head =
@@ -3729,11 +3786,11 @@ static int scst_translate_lun(struct scst_cmd *cmd)
 				"tgt_dev for LUN %lld not found, command to "
 				"unexisting LU?",
 				(long long unsigned int)cmd->lun);
-			__scst_put();
+			scst_put(cmd->cpu_cmd_counter);
 		}
 	} else {
 		TRACE_MGMT_DBG("%s", "FLAG SUSPENDED set, skipping");
-		__scst_put();
+		scst_put(cmd->cpu_cmd_counter);
 		res = 1;
 	}
 
@@ -3784,12 +3841,6 @@ static int __scst_init_cmd(struct scst_cmd *cmd)
 				failure = true;
 			}
 		}
-#endif
-
-#ifdef CONFIG_SCST_ORDERED_READS
-		/* If expected values not set, expected direction is UNKNOWN */
-		if (cmd->expected_data_direction & SCST_DATA_WRITE)
-			atomic_inc(&cmd->dev->write_cmd_count);
 #endif
 
 		if (unlikely(failure))
@@ -3973,8 +4024,7 @@ void scst_process_active_cmd(struct scst_cmd *cmd, bool atomic)
 	 * for debugging purposes.
 	 */
 	EXTRACHECKS_BUG_ON(in_irq() || irqs_disabled());
-	EXTRACHECKS_WARN_ON((in_atomic() || in_interrupt() || irqs_disabled()) &&
-			     !atomic);
+	EXTRACHECKS_WARN_ON((in_atomic() || in_interrupt()) && !atomic);
 
 	cmd->atomic = atomic;
 
@@ -4035,8 +4085,8 @@ void scst_process_active_cmd(struct scst_cmd *cmd, bool atomic)
 
 		case SCST_CMD_STATE_PRE_DEV_DONE:
 			res = scst_pre_dev_done(cmd);
-			EXTRACHECKS_BUG_ON(res ==
-				SCST_CMD_STATE_RES_NEED_THREAD);
+			EXTRACHECKS_BUG_ON((res == SCST_CMD_STATE_RES_NEED_THREAD) &&
+				(cmd->state == SCST_CMD_STATE_PRE_DEV_DONE));
 			break;
 
 		case SCST_CMD_STATE_MODE_SELECT_CHECKS:
@@ -4246,13 +4296,13 @@ int scst_cmd_thread(void *arg)
 
 void scst_cmd_tasklet(long p)
 {
-	struct scst_tasklet *t = (struct scst_tasklet *)p;
+	struct scst_percpu_info *i = (struct scst_percpu_info *)p;
 
 	TRACE_ENTRY();
 
-	spin_lock_irq(&t->tasklet_lock);
-	scst_do_job_active(&t->tasklet_cmd_list, &t->tasklet_lock, true);
-	spin_unlock_irq(&t->tasklet_lock);
+	spin_lock_irq(&i->tasklet_lock);
+	scst_do_job_active(&i->tasklet_cmd_list, &i->tasklet_lock, true);
+	spin_unlock_irq(&i->tasklet_lock);
 
 	TRACE_EXIT();
 	return;
@@ -4274,13 +4324,12 @@ static int scst_mgmt_translate_lun(struct scst_mgmt_cmd *mcmd)
 	TRACE_DBG("Finding tgt_dev for mgmt cmd %p (lun %lld)", mcmd,
 	      (long long unsigned int)mcmd->lun);
 
-	/* See comment about smp_mb() in scst_suspend_activity() */
-	__scst_get();
+	mcmd->cpu_cmd_counter = scst_get();
 
 	if (unlikely(test_bit(SCST_FLAG_SUSPENDED, &scst_flags) &&
 		     !test_bit(SCST_FLAG_SUSPENDING, &scst_flags))) {
 		TRACE_MGMT_DBG("%s", "FLAG SUSPENDED set, skipping");
-		__scst_put();
+		scst_put(mcmd->cpu_cmd_counter);
 		res = 1;
 		goto out;
 	}
@@ -4295,7 +4344,7 @@ static int scst_mgmt_translate_lun(struct scst_mgmt_cmd *mcmd)
 		}
 	}
 	if (mcmd->mcmd_tgt_dev == NULL)
-		__scst_put();
+		scst_put(mcmd->cpu_cmd_counter);
 
 out:
 	TRACE_EXIT_HRES(res);
@@ -5340,9 +5389,6 @@ static int scst_abort_all_nexus_loss_tgt(struct scst_mgmt_cmd *mcmd,
 				int rc;
 
 				__scst_abort_task_set(mcmd, tgt_dev);
-
-				if (nexus_loss)
-					scst_nexus_loss(tgt_dev, true);
 
 				if (mcmd->sess == tgt_dev->sess) {
 					rc = scst_call_dev_task_mgmt_fn(
