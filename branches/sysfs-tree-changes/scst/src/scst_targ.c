@@ -394,7 +394,7 @@ out:
 }
 EXPORT_SYMBOL(scst_cmd_init_done);
 
-static int scst_pre_parse(struct scst_cmd *cmd)
+int scst_pre_parse(struct scst_cmd *cmd)
 {
 	int res;
 	struct scst_device *dev = cmd->dev;
@@ -1739,6 +1739,9 @@ out_compl:
 						"REPORTED LUNS DATA CHANGED UA "
 						"%p", ua);
 					list_del(&ua->UA_list_entry);
+					if (list_empty(&tgt_dev->UA_list))
+						clear_bit(SCST_TGT_DEV_UA_PENDING,
+							  &tgt_dev->tgt_dev_flags);
 					mempool_free(ua, scst_ua_mempool);
 					break;
 				}

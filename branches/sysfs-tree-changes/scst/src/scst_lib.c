@@ -1976,6 +1976,7 @@ int scst_set_cmd_abnormal_done_state(struct scst_cmd *cmd)
 	case SCST_CMD_STATE_PRE_DEV_DONE:
 	case SCST_CMD_STATE_MODE_SELECT_CHECKS:
 	case SCST_CMD_STATE_PRE_XMIT_RESP:
+	case SCST_CMD_STATE_FINISHED_INTERNAL:
 		break;
 	default:
 		PRINT_CRIT_ERROR("Wrong cmd state %d (cmd %p, op %x)",
@@ -3754,6 +3755,7 @@ static struct scst_cmd *scst_create_prepare_internal_cmd(
 	unsigned int cdb_len, int bufsize)
 {
 	struct scst_cmd *res;
+	int rc;
 	gfp_t gfp_mask = scst_cmd_atomic(orig_cmd) ? GFP_ATOMIC : GFP_KERNEL;
 
 	TRACE_ENTRY();
@@ -3779,6 +3781,9 @@ static struct scst_cmd *scst_create_prepare_internal_cmd(
 	scst_sess_get(res->sess);
 	if (res->tgt_dev != NULL)
 		res->cpu_cmd_counter = scst_get();
+
+	rc = scst_pre_parse(res);
+	sBUG_ON(rc != 0);
 
 	res->state = SCST_CMD_STATE_PARSE;
 
@@ -5311,10 +5316,9 @@ __be64 scst_pack_lun(const uint64_t lun, enum scst_lun_addr_method addr_method)
 }
 
 /*
- * Routine to extract a lun number from an 8-byte LUN structure
- * in network byte order (BE).
- * (see SAM-2, Section 4.12.3 page 40)
- * Supports 2 types of lun unpacking: peripheral and logical unit.
+ * Function to extract a LUN number from an 8-byte LUN structure in network byte
+ * order (big endian). Supports three LUN addressing methods: peripheral, flat
+ * and logical unit. See also SAM-2, section 4.9.4 (page 40).
  */
 uint64_t scst_unpack_lun(const uint8_t *lun, int len)
 {
@@ -6254,6 +6258,9 @@ again:
 							"needed global UA %p",
 							ua);
 						list_del(&ua->UA_list_entry);
+						if (list_empty(&tgt_dev->UA_list))
+						    clear_bit(SCST_TGT_DEV_UA_PENDING,
+							      &tgt_dev->tgt_dev_flags);
 						mempool_free(ua, scst_ua_mempool);
 						break;
 					}
