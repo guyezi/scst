@@ -1203,7 +1203,6 @@ static int vdisk_do_job(struct scst_cmd *cmd)
 	case UNMAP:
 		vdisk_exec_unmap(cmd, thr);
 		break;
-		/* else go through */
 	case REPORT_LUNS:
 	default:
 		TRACE_DBG("Invalid opcode %d", opcode);
