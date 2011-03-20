@@ -372,6 +372,14 @@ enum scst_cdb_flags {
 #define SCST_INQ_NORMACA_BIT         0x20
 
 /*************************************************************
+ ** TPGS field in byte 5 of the INQUIRY response (SPC-4).
+ *************************************************************/
+enum {
+	SCST_INQ_TPGS_MODE_IMPLICIT = 0x10,
+	SCST_INQ_TPGS_MODE_EXPLICIT = 0x20,
+};
+
+/*************************************************************
  ** Byte 2 in RESERVE_10 CDB
  *************************************************************/
 #define SCST_RES_3RDPTY              0x10

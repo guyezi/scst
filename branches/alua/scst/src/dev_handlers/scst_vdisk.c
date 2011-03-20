@@ -1648,6 +1648,7 @@ static void vdisk_exec_inquiry(struct scst_cmd *cmd)
 		if (cmd->tgtt->fake_aca)
 			buf[3] |= 0x20;
 		buf[4] = 31;/* n - 4 = 35 - 4 = 31 for full 36 byte data */
+		buf[5] = SCST_INQ_TPGS_MODE_IMPLICIT;
 		buf[6] = 1; /* MultiP 1 */
 		buf[7] = 2; /* CMDQUE 1, BQue 0 => commands queuing supported */
 
