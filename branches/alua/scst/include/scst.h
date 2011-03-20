@@ -1465,6 +1465,9 @@ struct scst_tgt {
 
 	uint16_t rel_tgt_id;
 
+	/* Entry in scst_target_group.tgt_list. */
+	struct list_head target_group_entry;
+
 #ifdef CONFIG_SCST_PROC
 	/* Name of the default security group ("Default_target_name") */
 	char *default_group_name;
@@ -2530,6 +2533,53 @@ struct scst_acn {
 	struct kobj_attribute *acn_attr;
 };
 
+/**
+ * struct scst_target_group - A group of SCSI targets (struct scst_tgt).
+ * @group_id: 16-bit group number that identifies this group in SCSI commands.
+ * @name: ASCII name that identifies this group in sysfs.
+ * @entry: Entry in scst_target_group_list.
+ * @tgt_list: List of targets associated with this group.
+ * @dev_list: List of devices associated with this group.
+ * @kobj: kernel object for exporting via sysfs.
+ *
+ * Such a group is either a primary target port group or a secondary
+ * port group. See also SPC-4 for more information.
+ */
+struct scst_target_group {
+	uint16_t group_id;
+	char *name;
+	struct list_head entry;
+	struct list_head tgt_list;
+	struct list_head dev_list;
+	struct kobject kobj;
+};
+
+/** SCSI target port group asymmetric access state */
+enum scst_tg_state {
+	SCST_TG_STATE_OPTIMIZED		= 0x0,
+	SCST_TG_STATE_NONOPTIMIZED	= 0x1,
+	SCST_TG_STATE_STANDBY		= 0x2,
+	SCST_TG_STATE_UNAVAILABLE	= 0x3,
+	SCST_TG_STATE_LBA_DEPENDENT	= 0x4,
+	SCST_TG_STATE_OFFLINE		= 0xe,
+	SCST_TG_STATE_TRANSITIONING	= 0xf,
+};
+
+/**
+ * struct scst_target_group_dev - Group-specific device information.
+ * @entry: Entry in scst_target_group.dev_list.
+ * @state: Target group asymmetric access state for a device.
+ * @kobj: kernel object for exporting via sysfs.
+ *
+ * In this context the name 'device' refers to a 'struct scst_device'.
+ */
+struct scst_target_group_dev {
+	struct list_head entry;
+	struct scst_device *dev;
+	enum scst_tg_state state;
+	struct kobject kobj;
+};
+
 /*
  * Used to store per-session UNIT ATTENTIONs
  */
@@ -2809,6 +2859,9 @@ static inline void scst_sess_set_tgt_priv(struct scst_session *sess,
 {
 	sess->tgt_priv = val;
 }
+
+int scst_tg_get_group_info(void **buf, uint32_t *response_length,
+			   struct scst_device *dev, uint8_t data_format);
 
 /**
  * Returns TRUE if cmd is being executed in atomic context.

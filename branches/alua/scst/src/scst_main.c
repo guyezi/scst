@@ -93,6 +93,7 @@ struct list_head scst_dev_list;
 /* Protected by scst_mutex */
 struct list_head scst_dev_type_list;
 struct list_head scst_virtual_dev_type_list;
+struct list_head scst_target_group_list;
 
 spinlock_t scst_main_lock;
 
@@ -2152,6 +2153,7 @@ static int __init init_scst(void)
 	INIT_LIST_HEAD(&scst_dev_list);
 	INIT_LIST_HEAD(&scst_dev_type_list);
 	INIT_LIST_HEAD(&scst_virtual_dev_type_list);
+	INIT_LIST_HEAD(&scst_target_group_list);
 	spin_lock_init(&scst_main_lock);
 #ifdef CONFIG_SCST_PROC
 	INIT_LIST_HEAD(&scst_acg_list);

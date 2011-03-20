@@ -278,6 +278,7 @@ static void vdisk_exec_verify(struct scst_cmd *cmd,
 	struct scst_vdisk_thr *thr, loff_t loff);
 static void vdisk_exec_read_capacity(struct scst_cmd *cmd);
 static void vdisk_exec_read_capacity16(struct scst_cmd *cmd);
+static void vdisk_exec_report_tpgs(struct scst_cmd *cmd);
 static void vdisk_exec_inquiry(struct scst_cmd *cmd);
 static void vdisk_exec_request_sense(struct scst_cmd *cmd);
 static void vdisk_exec_mode_sense(struct scst_cmd *cmd);
@@ -1196,15 +1197,26 @@ static int vdisk_do_job(struct scst_cmd *cmd)
 		vdisk_exec_read_capacity(cmd);
 		break;
 	case SERVICE_ACTION_IN:
-		if ((cmd->cdb[1] & 0x1f) == SAI_READ_CAPACITY_16) {
+		if ((cmd->cdb[1] & 0x1f) == SAI_READ_CAPACITY_16)
 			vdisk_exec_read_capacity16(cmd);
-			break;
-		}
+		else
+			goto invalid_opcode;
+		break;
 	case UNMAP:
 		vdisk_exec_unmap(cmd, thr);
 		break;
+	case MAINTENANCE_IN:
+		switch (cmd->cdb[1] & 0x1f) {
+		case MI_REPORT_TARGET_PGS:
+			vdisk_exec_report_tpgs(cmd);
+			break;
+		default:
+			goto invalid_opcode;
+		}
+		break;
 	case REPORT_LUNS:
 	default:
+invalid_opcode:
 		TRACE_DBG("Invalid opcode %d", opcode);
 		scst_set_cmd_error(cmd,
 		    SCST_LOAD_SENSE(scst_sense_invalid_opcode));
@@ -2401,6 +2413,53 @@ static void vdisk_exec_read_capacity16(struct scst_cmd *cmd)
 out:
 	TRACE_EXIT();
 	return;
+}
+
+/* SPC-4 REPORT TARGET PORT GROUPS command */
+static void vdisk_exec_report_tpgs(struct scst_cmd *cmd)
+{
+	struct scst_device *dev;
+	uint8_t *address;
+	void *buf;
+	int32_t length;
+	uint32_t allocation_length, response_length;
+	uint8_t data_format;
+	int res;
+
+	TRACE_ENTRY();
+
+	length = scst_get_buf_first(cmd, &address);
+	if (length < 0) {
+		PRINT_ERROR("scst_get_buf_first() failed: %d)", length);
+		scst_set_cmd_error(cmd,
+			SCST_LOAD_SENSE(scst_sense_hardw_error));
+		goto out;
+	}
+
+	dev = cmd->dev;
+	data_format = cmd->cdb[1] >> 5;
+	allocation_length = get_unaligned((__be32 *)(cmd->cdb + 6));
+
+	res = scst_tg_get_group_info(&buf, &response_length, dev, data_format);
+	switch (res) {
+	case -EINVAL:
+		scst_set_cmd_error(cmd,
+			SCST_LOAD_SENSE(scst_sense_invalid_field_in_cdb));
+		goto out;
+	case -ENOMEM:
+		scst_set_busy(cmd);
+		goto out;
+	}
+
+	length = min_t(uint32_t, min(allocation_length, response_length),
+		       length);
+	memcpy(address, buf, length);
+	kfree(buf);
+	scst_set_resp_data_len(cmd, length);
+	scst_put_buf(cmd, address);
+
+out:
+	TRACE_EXIT();
 }
 
 static void vdisk_exec_read_toc(struct scst_cmd *cmd)
