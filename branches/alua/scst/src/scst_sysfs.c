@@ -39,6 +39,7 @@ static DECLARE_COMPLETION(scst_sysfs_root_release_completion);
 static struct kobject *scst_targets_kobj;
 static struct kobject *scst_devices_kobj;
 static struct kobject *scst_handlers_kobj;
+static struct kobject *scst_target_groups_kobj;
 
 static const char *const scst_dev_handler_types[] = {
 	"Direct-access device (e.g., magnetic disk)",
@@ -4798,6 +4799,33 @@ void scst_devt_sysfs_del(struct scst_dev_type *devt)
 }
 
 /**
+ ** SCST sysfs target_groups directory implementation.
+ **/
+
+static ssize_t scst_target_groups_mgmt_show(struct kobject *kobj,
+					    struct kobj_attribute *attr,
+					    char *buf)
+{
+	return -EINVAL;
+}
+
+static ssize_t scst_target_groups_mgmt_store(struct kobject *kobj,
+					     struct kobj_attribute *attr,
+					     const char *buf, size_t count)
+{
+	return -EINVAL;
+}
+
+static struct kobj_attribute scst_target_groups_mgmt =
+	__ATTR(mgmt, S_IRUGO | S_IWUSR, scst_target_groups_mgmt_show,
+	       scst_target_groups_mgmt_store);
+
+static const struct attribute *scst_target_groups_attrs[] = {
+	&scst_target_groups_mgmt.attr,
+	NULL,
+};
+
+/**
  ** SCST sysfs root directory implementation
  **/
 
@@ -5374,9 +5402,26 @@ int __init scst_sysfs_init(void)
 	if (scst_handlers_kobj == NULL)
 		goto handlers_kobj_error;
 
+	scst_target_groups_kobj = kobject_create_and_add("target_groups",
+							 &scst_sysfs_root_kobj);
+	if (scst_target_groups_kobj == NULL)
+		goto target_groups_kobj_error;
+
+	if (sysfs_create_files(scst_target_groups_kobj,
+			       scst_target_groups_attrs))
+		goto target_groups_attrs_error;
+
 out:
 	TRACE_EXIT_RES(res);
 	return res;
+
+target_groups_attrs_error:
+	kobject_del(scst_target_groups_kobj);
+	kobject_put(scst_target_groups_kobj);
+
+target_groups_kobj_error:
+	kobject_del(scst_handlers_kobj);
+	kobject_put(scst_handlers_kobj);
 
 handlers_kobj_error:
 	scst_del_put_sgv_kobj();
@@ -5419,6 +5464,11 @@ void scst_sysfs_cleanup(void)
 
 	kobject_del(scst_handlers_kobj);
 	kobject_put(scst_handlers_kobj);
+
+	sysfs_remove_files(scst_target_groups_kobj, scst_target_groups_attrs);
+
+	kobject_del(scst_target_groups_kobj);
+	kobject_put(scst_target_groups_kobj);
 
 	kobject_del(&scst_sysfs_root_kobj);
 	kobject_put(&scst_sysfs_root_kobj);
