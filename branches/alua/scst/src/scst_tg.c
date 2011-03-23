@@ -86,6 +86,7 @@ int scst_tg_get_group_info(void **buf, uint32_t *response_length,
 	p = *buf;
 	/* Return data length. */
 	put_unaligned(cpu_to_be32(*response_length), (__be32 *)p);
+	p += 4;
 	if (data_format == 1) {
 		/* Extended header */
 		*p++ = 0x10; /* format = 1 */
