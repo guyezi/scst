@@ -2424,16 +2424,16 @@ static void vdisk_exec_report_tpgs(struct scst_cmd *cmd)
 	struct scst_device *dev;
 	uint8_t *address;
 	void *buf;
-	int32_t length;
-	uint32_t allocation_length, response_length;
+	int32_t buf_len;
+	uint32_t allocation_length, data_length, length;
 	uint8_t data_format;
 	int res;
 
 	TRACE_ENTRY();
 
-	length = scst_get_buf_first(cmd, &address);
-	if (length < 0) {
-		PRINT_ERROR("scst_get_buf_first() failed: %d)", length);
+	buf_len = scst_get_buf_first(cmd, &address);
+	if (buf_len < 0) {
+		PRINT_ERROR("scst_get_buf_first() failed: %d)", buf_len);
 		scst_set_cmd_error(cmd,
 			SCST_LOAD_SENSE(scst_sense_hardw_error));
 		goto out;
@@ -2443,7 +2443,7 @@ static void vdisk_exec_report_tpgs(struct scst_cmd *cmd)
 	data_format = cmd->cdb[1] >> 5;
 	allocation_length = get_unaligned((__be32 *)(cmd->cdb + 6));
 
-	res = scst_tg_get_group_info(&buf, &response_length, dev, data_format);
+	res = scst_tg_get_group_info(&buf, &data_length, dev, data_format);
 	switch (res) {
 	case -EINVAL:
 		scst_set_cmd_error(cmd,
@@ -2454,8 +2454,7 @@ static void vdisk_exec_report_tpgs(struct scst_cmd *cmd)
 		goto out;
 	}
 
-	length = min_t(uint32_t, min(allocation_length, response_length),
-		       length);
+	length = min_t(uint32_t, min(allocation_length, data_length), buf_len);
 	memcpy(address, buf, length);
 	kfree(buf);
 	scst_set_resp_data_len(cmd, length);
