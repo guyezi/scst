@@ -1197,11 +1197,11 @@ static int vdisk_do_job(struct scst_cmd *cmd)
 		vdisk_exec_read_capacity(cmd);
 		break;
 	case SERVICE_ACTION_IN:
-		if ((cmd->cdb[1] & 0x1f) == SAI_READ_CAPACITY_16)
+		if ((cmd->cdb[1] & 0x1f) == SAI_READ_CAPACITY_16) {
 			vdisk_exec_read_capacity16(cmd);
-		else
-			goto invalid_opcode;
-		break;
+			break;
+		}
+		goto out_invalid_opcode;
 	case UNMAP:
 		vdisk_exec_unmap(cmd, thr);
 		break;
@@ -1211,15 +1211,12 @@ static int vdisk_do_job(struct scst_cmd *cmd)
 			vdisk_exec_report_tpgs(cmd);
 			break;
 		default:
-			goto invalid_opcode;
+			goto out_invalid_opcode;
 		}
 		break;
 	case REPORT_LUNS:
 	default:
-invalid_opcode:
-		TRACE_DBG("Invalid opcode %d", opcode);
-		scst_set_cmd_error(cmd,
-		    SCST_LOAD_SENSE(scst_sense_invalid_opcode));
+		goto out_invalid_opcode;
 	}
 
 out_compl:
@@ -1236,6 +1233,12 @@ out_thr:
 
 	TRACE_EXIT_RES(res);
 	return res;
+
+out_invalid_opcode:
+	TRACE_DBG("Invalid opcode %d", opcode);
+	scst_set_cmd_error(cmd,
+		    SCST_LOAD_SENSE(scst_sense_invalid_opcode));
+	goto out_compl;
 }
 
 static int vdisk_get_block_shift(struct scst_cmd *cmd)
