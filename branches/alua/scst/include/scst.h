@@ -5,6 +5,7 @@
  *  Copyright (C) 2004 - 2005 Leonid Stoljar
  *  Copyright (C) 2007 - 2010 ID7 Ltd.
  *  Copyright (C) 2010 - 2011 SCST Ltd.
+ *  Copyright (C) 2010 - 2011 Bart Van Assche <bvanassche@acm.org>.
  *
  *  Main SCSI target mid-level include file.
  *
