@@ -2556,7 +2556,6 @@ struct scst_dev_group {
 struct scst_dg_dev {
 	struct list_head	entry;
 	struct scst_device	*dev;
-	struct kobject		kobj;
 };
 
 /**
@@ -2595,7 +2594,6 @@ struct scst_target_group {
 struct scst_tg_tgt {
 	struct list_head	entry;
 	struct scst_tgt		*tgt;
-	struct kobject		kobj;
 };
 
 
@@ -4114,6 +4112,9 @@ struct scst_sysfs_work_item {
 		struct {
 			struct scst_tgt *tgt;
 			unsigned long l;
+		};
+		struct {
+			struct kobject* kobj;
 		};
 	};
 	int work_res;

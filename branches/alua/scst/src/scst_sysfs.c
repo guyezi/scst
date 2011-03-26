@@ -4799,8 +4799,200 @@ void scst_devt_sysfs_del(struct scst_dev_type *devt)
 }
 
 /**
+ ** SCST sysfs device_groups/<dg>/devices directory implementation.
+ **/
+
+static ssize_t scst_dg_dev_mgmt_show(struct kobject *kobj,
+				 struct kobj_attribute *attr,
+				 char *buf)
+{
+	static const char help[] =
+		"Usage: echo \"add device\" >mgmt\n"
+		"       echo \"del device\" >mgmt\n";
+
+	return scnprintf(buf, PAGE_SIZE, help);
+}
+
+static int scst_dg_dev_mgmt_store_work_fn(struct scst_sysfs_work_item *w)
+{
+	struct scst_dev_group *dg;
+	char *cmd, *p, *pp, *dev_name;
+	int res;
+
+	TRACE_ENTRY();
+
+	cmd = w->buf;
+	dg = scst_lookup_dg_by_kobj(w->kobj);
+	WARN_ON(!dg);
+
+	p = strchr(cmd, '\n');
+	if (p)
+		*p = '\0';
+
+	res = -EINVAL;
+	pp = cmd;
+	p = scst_get_next_lexem(&pp);
+	if (strcasecmp(p, "add") == 0) {
+		dev_name = scst_get_next_lexem(&pp);
+		if (!*dev_name)
+			goto out;
+		res = scst_dg_dev_add(dg, dev_name);
+	} else if (strcasecmp(p, "del") == 0) {
+		dev_name = scst_get_next_lexem(&pp);
+		if (!*dev_name)
+			goto out;
+		res = scst_dg_dev_remove_by_name(dg, dev_name);
+	}
+out:
+	TRACE_EXIT_RES(res);
+	return res;
+}
+
+static ssize_t scst_dg_dev_mgmt_store(struct kobject *kobj,
+				      struct kobj_attribute *attr,
+				      const char *buf, size_t count)
+{
+	char *cmd;
+	struct scst_sysfs_work_item *work;
+	int res;
+
+	TRACE_ENTRY();
+
+	res = -ENOMEM;
+	cmd = kasprintf(GFP_KERNEL, "%.*s", (int)count, buf);
+	if (!cmd)
+		goto out;
+
+	res = scst_alloc_sysfs_work(scst_dg_dev_mgmt_store_work_fn, false,
+				    &work);
+	if (res)
+		goto out;
+
+	work->buf = cmd;
+	work->kobj = kobj;
+
+	res = scst_sysfs_queue_wait_work(work);
+
+out:
+	if (res == 0)
+		res = count;
+	TRACE_EXIT_RES(res);
+	return res;
+}
+
+static struct kobj_attribute scst_dg_dev_mgmt =
+	__ATTR(mgmt, S_IRUGO | S_IWUSR, scst_dg_dev_mgmt_show,
+	       scst_dg_dev_mgmt_store);
+
+static const struct attribute *scst_dg_dev_attrs[] = {
+	&scst_dg_dev_mgmt.attr,
+	NULL,
+};
+
+int scst_dg_dev_sysfs_add(struct scst_dev_group *dg, struct scst_dg_dev *dgdev)
+{
+	int res;
+
+	TRACE_ENTRY();
+	res = sysfs_create_link(dg->dev_kobj, &dgdev->dev->dev_kobj,
+				dgdev->dev->virt_name);
+	TRACE_EXIT_RES(res);
+	return res;
+}
+
+void scst_dg_dev_sysfs_del(struct scst_dev_group *dg, struct scst_dg_dev *dgdev)
+{
+	TRACE_ENTRY();
+	sysfs_remove_link(dg->dev_kobj, dgdev->dev->virt_name);
+	TRACE_EXIT();
+}
+
+/**
+ ** SCST sysfs device_groups/<dg>/target_groups directory implementation.
+ **/
+
+static ssize_t scst_dg_tg_mgmt_show(struct kobject *kobj,
+					    struct kobj_attribute *attr,
+					    char *buf)
+{
+	static const char help[] =
+		"Usage: echo \"add group_name\" >mgmt\n"
+		"       echo \"del group_name\" >mgmt\n";
+
+	return scnprintf(buf, PAGE_SIZE, help);
+}
+
+static ssize_t scst_dg_tg_mgmt_store(struct kobject *kobj,
+				      struct kobj_attribute *attr,
+				      const char *buf, size_t count)
+{
+	return -EINVAL;
+}
+
+static struct kobj_attribute scst_dg_tg_mgmt =
+	__ATTR(mgmt, S_IRUGO | S_IWUSR, scst_dg_tg_mgmt_show,
+	       scst_dg_tg_mgmt_store);
+
+static const struct attribute *scst_dg_tg_attrs[] = {
+	&scst_dg_tg_mgmt.attr,
+	NULL,
+};
+
+/**
  ** SCST sysfs device_groups directory implementation.
  **/
+
+int scst_dg_sysfs_add(struct kobject *parent, struct scst_dev_group *dg)
+{
+	int res;
+
+	dg->dev_kobj = NULL;
+	dg->tg_kobj = NULL;
+	res = kobject_init_and_add(&dg->kobj, &scst_dg_ktype, parent, "%s",
+				   dg->name);
+	if (res)
+		goto err;
+	res = -EEXIST;
+	dg->dev_kobj = kobject_create_and_add("devices", &dg->kobj);
+	if (!dg->dev_kobj)
+		goto err;
+	res = sysfs_create_files(dg->dev_kobj, scst_dg_dev_attrs);
+	if (res)
+		goto err;
+	dg->tg_kobj = kobject_create_and_add("target_groups", &dg->kobj);
+	if (!dg->tg_kobj)
+		goto err;
+	res = sysfs_create_files(dg->tg_kobj, scst_dg_tg_attrs);
+	if (res)
+		goto err;
+out:
+	return res;
+err:
+	scst_dg_sysfs_del(dg);
+	goto out;
+}
+
+void scst_dg_sysfs_del(struct scst_dev_group *dg)
+{
+	if (dg->tg_kobj) {
+		sysfs_remove_files(dg->tg_kobj, scst_dg_tg_attrs);
+		kobject_del(dg->tg_kobj);
+		kobject_put(dg->tg_kobj);
+		dg->tg_kobj = NULL;
+	}
+	if (dg->dev_kobj) {
+		sysfs_remove_files(dg->dev_kobj, scst_dg_dev_attrs);
+		kobject_del(dg->dev_kobj);
+		kobject_put(dg->dev_kobj);
+		dg->dev_kobj = NULL;
+	}
+	kobject_del(&dg->kobj);
+}
+
+void scst_dg_sysfs_put(struct scst_dev_group *dg)
+{
+	kobject_put(&dg->kobj);
+}
 
 static ssize_t scst_device_groups_mgmt_show(struct kobject *kobj,
 					    struct kobj_attribute *attr,
@@ -4834,12 +5026,12 @@ static ssize_t scst_device_groups_mgmt_store(struct kobject *kobj,
 		group_name = scst_get_next_lexem(&pp);
 		if (!*group_name)
 			goto out;
-		res = scst_dg_create(scst_device_groups_kobj, group_name);
+		res = scst_dg_add(scst_device_groups_kobj, group_name);
 	} else if (strcasecmp(p, "del") == 0) {
 		group_name = scst_get_next_lexem(&pp);
 		if (!*group_name)
 			goto out;
-		res = scst_dg_destroy(group_name);
+		res = scst_dg_remove(group_name);
 	}
 out:
 	kfree(input);
