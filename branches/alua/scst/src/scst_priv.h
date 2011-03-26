@@ -145,7 +145,6 @@ extern struct list_head scst_template_list;
 extern struct list_head scst_dev_list;
 extern struct list_head scst_dev_type_list;
 extern struct list_head scst_virtual_dev_type_list;
-extern struct list_head scst_target_group_list;
 extern wait_queue_head_t scst_dev_cmd_waitQ;
 
 #ifdef CONFIG_SCST_PROC
@@ -409,6 +408,11 @@ void scst_free_mgmt_cmd(struct scst_mgmt_cmd *mcmd);
 void scst_done_cmd_mgmt(struct scst_cmd *cmd);
 
 static inline void scst_devt_cleanup(struct scst_dev_type *devt) { }
+
+void scst_tg_init(void);
+void scst_tg_cleanup(void);
+int scst_tg_create(struct kobject *parent, const char *name);
+int scst_tg_destroy(const char *name);
 
 #ifdef CONFIG_SCST_PROC
 

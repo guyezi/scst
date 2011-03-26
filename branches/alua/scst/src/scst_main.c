@@ -93,7 +93,6 @@ struct list_head scst_dev_list;
 /* Protected by scst_mutex */
 struct list_head scst_dev_type_list;
 struct list_head scst_virtual_dev_type_list;
-struct list_head scst_target_group_list;
 
 spinlock_t scst_main_lock;
 
@@ -2153,7 +2152,6 @@ static int __init init_scst(void)
 	INIT_LIST_HEAD(&scst_dev_list);
 	INIT_LIST_HEAD(&scst_dev_type_list);
 	INIT_LIST_HEAD(&scst_virtual_dev_type_list);
-	INIT_LIST_HEAD(&scst_target_group_list);
 	spin_lock_init(&scst_main_lock);
 #ifdef CONFIG_SCST_PROC
 	INIT_LIST_HEAD(&scst_acg_list);
@@ -2265,6 +2263,8 @@ static int __init init_scst(void)
 	if (res != 0)
 		goto out_destroy_aen_mempool;
 
+	scst_tg_init();
+
 	if (scst_max_cmd_mem == 0) {
 		struct sysinfo si;
 		si_meminfo(&si);
@@ -2354,6 +2354,7 @@ out_free_acg:
 
 out_destroy_sgv_pool:
 	scst_sgv_pools_deinit();
+	scst_tg_cleanup();
 
 out_sysfs_cleanup:
 	scst_sysfs_cleanup();
@@ -2428,6 +2429,8 @@ static void __exit exit_scst(void)
 #endif
 
 	scst_sgv_pools_deinit();
+
+	scst_tg_cleanup();
 
 	scst_sysfs_cleanup();
 

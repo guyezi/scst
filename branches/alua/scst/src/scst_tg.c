@@ -19,6 +19,46 @@
 #include "scst.h"
 #include "scst_priv.h"
 
+static struct list_head scst_target_group_list;
+
+void scst_tg_init(void)
+{
+	INIT_LIST_HEAD(&scst_target_group_list);
+}
+
+static void __scst_tg_destroy(struct scst_target_group *tg)
+{
+	kobject_del(&tg->kobj);
+	list_del(&tg->entry);
+	INIT_LIST_HEAD(&tg->tgt_list);
+	INIT_LIST_HEAD(&tg->dev_list);
+	kobject_put(&tg->kobj);
+}
+
+void scst_tg_cleanup(void)
+{
+	struct scst_target_group *tg;
+
+	mutex_lock(&scst_mutex);
+	while (!list_empty(&scst_target_group_list)) {
+		tg = list_first_entry(&scst_target_group_list,
+				      struct scst_target_group, entry);
+		__scst_tg_destroy(tg);
+	}
+	mutex_unlock(&scst_mutex);
+}
+
+static struct scst_target_group *__lookup_tg(const char *name)
+{
+	struct scst_target_group *tg;
+
+	list_for_each_entry(tg, &scst_target_group_list, entry)
+		if (strcmp(tg->name, name) == 0)
+			return tg;
+
+	return NULL;
+}
+
 static struct scst_target_group_dev *
 __lookup_tg_dev(struct scst_target_group *tg, struct scst_device *dev)
 {
@@ -29,6 +69,85 @@ __lookup_tg_dev(struct scst_target_group *tg, struct scst_device *dev)
 			return tgdev;
 
 	return NULL;
+}
+
+static void scst_release_target_group(struct kobject *kobj)
+{
+	struct scst_target_group *tg;
+
+	tg = container_of(kobj, struct scst_target_group, kobj);
+	kfree(tg->name);
+	kfree(tg);
+}
+
+static struct kobj_type scst_tg_ktype = {
+	.sysfs_ops = &scst_sysfs_ops,
+	.release = scst_release_target_group,
+};
+
+/**
+ * scst_tg_create() - Create a new target group object and add it to sysfs.
+ */
+int scst_tg_create(struct kobject *parent, const char *name)
+{
+	struct scst_target_group *tg;
+	int res;
+
+	TRACE_ENTRY();
+
+	res = mutex_lock_interruptible(&scst_mutex);
+	if (res)
+		goto out;
+	res = -EEXIST;
+	if (__lookup_tg(name))
+		goto out_unlock;
+	res = -ENOMEM;
+	tg = kzalloc(sizeof(*tg), GFP_KERNEL);
+	if (!tg)
+		goto out_unlock;
+	tg->name = kstrdup(name, GFP_KERNEL);
+	if (!tg->name)
+		goto out_free;
+	INIT_LIST_HEAD(&tg->tgt_list);
+	INIT_LIST_HEAD(&tg->dev_list);
+	list_add_tail(&tg->entry, &scst_target_group_list);
+	res = kobject_init_and_add(&tg->kobj, &scst_tg_ktype, parent, "%s",
+				   name);
+	if (res)
+		goto out_del_put;
+out_unlock:
+	mutex_unlock(&scst_mutex);
+out:
+	TRACE_EXIT_RES(res);
+	return res;
+
+out_del_put:
+	list_del(&tg->entry);
+	kobject_put(&tg->kobj);
+	goto out_unlock;
+out_free:
+	kfree(tg);
+	goto out_unlock;
+}
+
+int scst_tg_destroy(const char *name)
+{
+	struct scst_target_group *tg;
+	int res;
+
+	res = mutex_lock_interruptible(&scst_mutex);
+	if (res)
+		goto out;
+	res = -EINVAL;
+	tg = __lookup_tg(name);
+	if (!tg)
+		goto out_unlock;
+	__scst_tg_destroy(tg);
+	res = 0;
+out_unlock:
+	mutex_unlock(&scst_mutex);
+out:
+	return res;
 }
 
 /**

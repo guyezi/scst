@@ -4806,14 +4806,47 @@ static ssize_t scst_target_groups_mgmt_show(struct kobject *kobj,
 					    struct kobj_attribute *attr,
 					    char *buf)
 {
-	return -EINVAL;
+	static const char help[] =
+		"Usage: echo \"add group_name\" >mgmt\n"
+		"       echo \"del group_name\" >mgmt\n";
+
+	return scnprintf(buf, PAGE_SIZE, help);
 }
 
 static ssize_t scst_target_groups_mgmt_store(struct kobject *kobj,
 					     struct kobj_attribute *attr,
 					     const char *buf, size_t count)
 {
-	return -EINVAL;
+	int res;
+	char *p, *pp, *input, *group_name;
+
+	TRACE_ENTRY();
+
+	input = kasprintf(GFP_KERNEL, "%.*s", (int)count, buf);
+	pp = input;
+	p = strchr(input, '\n');
+	if (p)
+		*p = '\0';
+
+	res = -EINVAL;
+	p = scst_get_next_lexem(&pp);
+	if (strcasecmp(p, "add") == 0) {
+		group_name = scst_get_next_lexem(&pp);
+		if (!*group_name)
+			goto out;
+		res = scst_tg_create(scst_target_groups_kobj, group_name);
+	} else if (strcasecmp(p, "del") == 0) {
+		group_name = scst_get_next_lexem(&pp);
+		if (!*group_name)
+			goto out;
+		res = scst_tg_destroy(group_name);
+	}
+out:
+	kfree(input);
+	if (res == 0)
+		res = count;
+	TRACE_EXIT_RES(res);
+	return res;
 }
 
 static struct kobj_attribute scst_target_groups_mgmt =
