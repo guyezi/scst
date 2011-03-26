@@ -1469,9 +1469,6 @@ struct scst_tgt {
 
 	uint16_t rel_tgt_id;
 
-	/* Entry in scst_target_group.tgt_list. */
-	struct list_head target_group_entry;
-
 #ifdef CONFIG_SCST_PROC
 	/* Name of the default security group ("Default_target_name") */
 	char *default_group_name;
@@ -2538,27 +2535,35 @@ struct scst_acn {
 };
 
 /**
- * struct scst_target_group - A group of SCSI targets (struct scst_tgt).
- * @group_id: 16-bit group number that identifies this group in SCSI commands.
- * @name: ASCII name that identifies this group in sysfs.
- * @entry: Entry in scst_target_group_list.
- * @tgt_list: List of targets associated with this group.
- * @dev_list: List of devices associated with this group.
- * @kobj: kernel object for exporting via sysfs.
+ * struct scst_dev_group - A group of SCST devices (struct scst_device).
  *
- * Such a group is either a primary target port group or a secondary
- * port group. See also SPC-4 for more information.
+ * Each device belongs to zero or one device groups. With each device there
+ * are zero or more target groups associated.
  */
-struct scst_target_group {
-	uint16_t group_id;
-	char *name;
-	struct list_head entry;
-	struct list_head tgt_list;
-	struct list_head dev_list;
-	struct kobject kobj;
+struct scst_dev_group {
+	char			*name;
+	struct list_head	entry;
+	struct list_head	dev_list;
+	struct list_head	tg_list;
+	struct kobject		kobj;
+	struct kobject		*dev_kobj;
+	struct kobject		*tg_kobj;
 };
 
-/** SCSI target port group asymmetric access state */
+/**
+ * struct scst_dg_dev - A node in scst_dev_group.dev_list.
+ */
+struct scst_dg_dev {
+	struct list_head	entry;
+	struct scst_device	*dev;
+	struct kobject		kobj;
+};
+
+/**
+ * enum scst_tg_state - SCSI target port group asymmetric access state.
+ *
+ * See also the documentation of the REPORT TARGET PORT GROUPS command in SPC-4.
+ */
 enum scst_tg_state {
 	SCST_TG_STATE_OPTIMIZED		= 0x0,
 	SCST_TG_STATE_NONOPTIMIZED	= 0x1,
@@ -2570,19 +2575,29 @@ enum scst_tg_state {
 };
 
 /**
- * struct scst_target_group_dev - Group-specific device information.
- * @entry: Entry in scst_target_group.dev_list.
- * @state: Target group asymmetric access state for a device.
- * @kobj: kernel object for exporting via sysfs.
+ * struct scst_target_group - A group of SCSI targets (struct scst_tgt).
  *
- * In this context the name 'device' refers to a 'struct scst_device'.
+ * Such a group is either a primary target port group or a secondary
+ * port group. See also SPC-4 for more information.
  */
-struct scst_target_group_dev {
-	struct list_head entry;
-	struct scst_device *dev;
-	enum scst_tg_state state;
-	struct kobject kobj;
+struct scst_target_group {
+	char			*name;
+	uint16_t		group_id;
+	enum scst_tg_state	state;
+	struct list_head	entry;
+	struct list_head	tgt_list;
+	struct kobject		kobj;
 };
+
+/**
+ * struct scst_tg_tgt - A node in scst_target_group.tgt_list.
+ */
+struct scst_tg_tgt {
+	struct list_head	entry;
+	struct scst_tgt		*tgt;
+	struct kobject		kobj;
+};
+
 
 /*
  * Used to store per-session UNIT ATTENTIONs

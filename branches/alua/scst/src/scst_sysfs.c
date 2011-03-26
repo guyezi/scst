@@ -39,7 +39,7 @@ static DECLARE_COMPLETION(scst_sysfs_root_release_completion);
 static struct kobject *scst_targets_kobj;
 static struct kobject *scst_devices_kobj;
 static struct kobject *scst_handlers_kobj;
-static struct kobject *scst_target_groups_kobj;
+static struct kobject *scst_device_groups_kobj;
 
 static const char *const scst_dev_handler_types[] = {
 	"Direct-access device (e.g., magnetic disk)",
@@ -4799,10 +4799,10 @@ void scst_devt_sysfs_del(struct scst_dev_type *devt)
 }
 
 /**
- ** SCST sysfs target_groups directory implementation.
+ ** SCST sysfs device_groups directory implementation.
  **/
 
-static ssize_t scst_target_groups_mgmt_show(struct kobject *kobj,
+static ssize_t scst_device_groups_mgmt_show(struct kobject *kobj,
 					    struct kobj_attribute *attr,
 					    char *buf)
 {
@@ -4813,7 +4813,7 @@ static ssize_t scst_target_groups_mgmt_show(struct kobject *kobj,
 	return scnprintf(buf, PAGE_SIZE, help);
 }
 
-static ssize_t scst_target_groups_mgmt_store(struct kobject *kobj,
+static ssize_t scst_device_groups_mgmt_store(struct kobject *kobj,
 					     struct kobj_attribute *attr,
 					     const char *buf, size_t count)
 {
@@ -4834,12 +4834,12 @@ static ssize_t scst_target_groups_mgmt_store(struct kobject *kobj,
 		group_name = scst_get_next_lexem(&pp);
 		if (!*group_name)
 			goto out;
-		res = scst_tg_create(scst_target_groups_kobj, group_name);
+		res = scst_dg_create(scst_device_groups_kobj, group_name);
 	} else if (strcasecmp(p, "del") == 0) {
 		group_name = scst_get_next_lexem(&pp);
 		if (!*group_name)
 			goto out;
-		res = scst_tg_destroy(group_name);
+		res = scst_dg_destroy(group_name);
 	}
 out:
 	kfree(input);
@@ -4849,12 +4849,12 @@ out:
 	return res;
 }
 
-static struct kobj_attribute scst_target_groups_mgmt =
-	__ATTR(mgmt, S_IRUGO | S_IWUSR, scst_target_groups_mgmt_show,
-	       scst_target_groups_mgmt_store);
+static struct kobj_attribute scst_device_groups_mgmt =
+	__ATTR(mgmt, S_IRUGO | S_IWUSR, scst_device_groups_mgmt_show,
+	       scst_device_groups_mgmt_store);
 
-static const struct attribute *scst_target_groups_attrs[] = {
-	&scst_target_groups_mgmt.attr,
+static const struct attribute *scst_device_groups_attrs[] = {
+	&scst_device_groups_mgmt.attr,
 	NULL,
 };
 
@@ -5435,24 +5435,24 @@ int __init scst_sysfs_init(void)
 	if (scst_handlers_kobj == NULL)
 		goto handlers_kobj_error;
 
-	scst_target_groups_kobj = kobject_create_and_add("target_groups",
+	scst_device_groups_kobj = kobject_create_and_add("device_groups",
 							 &scst_sysfs_root_kobj);
-	if (scst_target_groups_kobj == NULL)
-		goto target_groups_kobj_error;
+	if (scst_device_groups_kobj == NULL)
+		goto device_groups_kobj_error;
 
-	if (sysfs_create_files(scst_target_groups_kobj,
-			       scst_target_groups_attrs))
-		goto target_groups_attrs_error;
+	if (sysfs_create_files(scst_device_groups_kobj,
+			       scst_device_groups_attrs))
+		goto device_groups_attrs_error;
 
 out:
 	TRACE_EXIT_RES(res);
 	return res;
 
-target_groups_attrs_error:
-	kobject_del(scst_target_groups_kobj);
-	kobject_put(scst_target_groups_kobj);
+device_groups_attrs_error:
+	kobject_del(scst_device_groups_kobj);
+	kobject_put(scst_device_groups_kobj);
 
-target_groups_kobj_error:
+device_groups_kobj_error:
 	kobject_del(scst_handlers_kobj);
 	kobject_put(scst_handlers_kobj);
 
@@ -5498,10 +5498,10 @@ void scst_sysfs_cleanup(void)
 	kobject_del(scst_handlers_kobj);
 	kobject_put(scst_handlers_kobj);
 
-	sysfs_remove_files(scst_target_groups_kobj, scst_target_groups_attrs);
+	sysfs_remove_files(scst_device_groups_kobj, scst_device_groups_attrs);
 
-	kobject_del(scst_target_groups_kobj);
-	kobject_put(scst_target_groups_kobj);
+	kobject_del(scst_device_groups_kobj);
+	kobject_put(scst_device_groups_kobj);
 
 	kobject_del(&scst_sysfs_root_kobj);
 	kobject_put(&scst_sysfs_root_kobj);

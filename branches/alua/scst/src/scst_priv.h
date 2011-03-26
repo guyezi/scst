@@ -411,8 +411,8 @@ static inline void scst_devt_cleanup(struct scst_dev_type *devt) { }
 
 void scst_tg_init(void);
 void scst_tg_cleanup(void);
-int scst_tg_create(struct kobject *parent, const char *name);
-int scst_tg_destroy(const char *name);
+int scst_dg_create(struct kobject *parent, const char *name);
+int scst_dg_destroy(const char *name);
 
 #ifdef CONFIG_SCST_PROC
 

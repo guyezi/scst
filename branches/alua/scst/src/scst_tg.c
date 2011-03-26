@@ -19,78 +19,65 @@
 #include "scst.h"
 #include "scst_priv.h"
 
-static struct list_head scst_target_group_list;
+static struct list_head scst_dev_group_list;
 
-void scst_tg_init(void)
+/* Look up a device group by name. */
+static struct scst_dev_group *__lookup_dg_by_name(const char *name)
 {
-	INIT_LIST_HEAD(&scst_target_group_list);
-}
+	struct scst_dev_group *dg;
 
-static void __scst_tg_destroy(struct scst_target_group *tg)
-{
-	kobject_del(&tg->kobj);
-	list_del(&tg->entry);
-	INIT_LIST_HEAD(&tg->tgt_list);
-	INIT_LIST_HEAD(&tg->dev_list);
-	kobject_put(&tg->kobj);
-}
-
-void scst_tg_cleanup(void)
-{
-	struct scst_target_group *tg;
-
-	mutex_lock(&scst_mutex);
-	while (!list_empty(&scst_target_group_list)) {
-		tg = list_first_entry(&scst_target_group_list,
-				      struct scst_target_group, entry);
-		__scst_tg_destroy(tg);
-	}
-	mutex_unlock(&scst_mutex);
-}
-
-static struct scst_target_group *__lookup_tg(const char *name)
-{
-	struct scst_target_group *tg;
-
-	list_for_each_entry(tg, &scst_target_group_list, entry)
-		if (strcmp(tg->name, name) == 0)
-			return tg;
+	list_for_each_entry(dg, &scst_dev_group_list, entry)
+		if (strcmp(dg->name, name) == 0)
+			return dg;
 
 	return NULL;
 }
 
-static struct scst_target_group_dev *
-__lookup_tg_dev(struct scst_target_group *tg, struct scst_device *dev)
+/* Look up a device node in a device group by device. */
+static struct scst_dg_dev *
+__lookup_dg_dev(struct scst_dev_group *dg, struct scst_device *dev)
 {
-	struct scst_target_group_dev *tgdev;
+	struct scst_dg_dev *dgd;
 
-	list_for_each_entry(tgdev, &tg->dev_list, entry)
-		if (tgdev->dev == dev)
-			return tgdev;
+	list_for_each_entry(dgd, &dg->dev_list, entry)
+		if (dgd->dev == dev)
+			return dgd;
 
 	return NULL;
 }
 
-static void scst_release_target_group(struct kobject *kobj)
+/* Look up a device group by device. */
+static struct scst_dev_group *__lookup_dg_by_dev(struct scst_device *dev)
 {
-	struct scst_target_group *tg;
+	struct scst_dev_group *dg;
 
-	tg = container_of(kobj, struct scst_target_group, kobj);
-	kfree(tg->name);
-	kfree(tg);
+	list_for_each_entry(dg, &scst_dev_group_list, entry)
+		if (__lookup_dg_dev(dg, dev))
+		    return dg;
+
+	return NULL;
 }
 
-static struct kobj_type scst_tg_ktype = {
+static void scst_release_dev_group(struct kobject *kobj)
+{
+	struct scst_dev_group *dg;
+
+	dg = container_of(kobj, struct scst_dev_group, kobj);
+	kfree(dg->name);
+	kfree(dg);
+}
+
+static struct kobj_type scst_dg_ktype = {
 	.sysfs_ops = &scst_sysfs_ops,
-	.release = scst_release_target_group,
+	.release = scst_release_dev_group,
 };
 
 /**
- * scst_tg_create() - Create a new target group object and add it to sysfs.
+ * scst_dg_create() - Create a new device group object and add it to sysfs.
  */
-int scst_tg_create(struct kobject *parent, const char *name)
+int scst_dg_create(struct kobject *parent, const char *name)
 {
-	struct scst_target_group *tg;
+	struct scst_dev_group *dg;
 	int res;
 
 	TRACE_ENTRY();
@@ -99,55 +86,105 @@ int scst_tg_create(struct kobject *parent, const char *name)
 	if (res)
 		goto out;
 	res = -EEXIST;
-	if (__lookup_tg(name))
+	if (__lookup_dg_by_name(name))
 		goto out_unlock;
 	res = -ENOMEM;
-	tg = kzalloc(sizeof(*tg), GFP_KERNEL);
-	if (!tg)
+	dg = kzalloc(sizeof(*dg), GFP_KERNEL);
+	if (!dg)
 		goto out_unlock;
-	tg->name = kstrdup(name, GFP_KERNEL);
-	if (!tg->name)
+	dg->name = kstrdup(name, GFP_KERNEL);
+	if (!dg->name)
 		goto out_free;
-	INIT_LIST_HEAD(&tg->tgt_list);
-	INIT_LIST_HEAD(&tg->dev_list);
-	list_add_tail(&tg->entry, &scst_target_group_list);
-	res = kobject_init_and_add(&tg->kobj, &scst_tg_ktype, parent, "%s",
+	INIT_LIST_HEAD(&dg->dev_list);
+	INIT_LIST_HEAD(&dg->tg_list);
+	list_add_tail(&dg->entry, &scst_dev_group_list);
+	res = kobject_init_and_add(&dg->kobj, &scst_dg_ktype, parent, "%s",
 				   name);
 	if (res)
 		goto out_del_put;
+	res = -EEXIST;
+	dg->dev_kobj = kobject_create_and_add("devices", &dg->kobj);
+	if (!dg->dev_kobj)
+		goto out_put_dev;
+	dg->tg_kobj = kobject_create_and_add("target_groups", &dg->kobj);
+	if (!dg->tg_kobj)
+		goto out_put_tg;
+	res = 0;
 out_unlock:
 	mutex_unlock(&scst_mutex);
 out:
 	TRACE_EXIT_RES(res);
 	return res;
 
+out_put_tg:
+	kobject_del(dg->tg_kobj);
+	kobject_put(dg->tg_kobj);
+out_put_dev:
+	kobject_del(dg->dev_kobj);
+	kobject_put(dg->dev_kobj);
 out_del_put:
-	list_del(&tg->entry);
-	kobject_put(&tg->kobj);
+	kobject_del(&dg->kobj);
+	list_del(&dg->entry);
+	kobject_put(&dg->kobj);
 	goto out_unlock;
 out_free:
-	kfree(tg);
+	kfree(dg);
 	goto out_unlock;
 }
 
-int scst_tg_destroy(const char *name)
+static void __scst_dg_destroy(struct scst_dev_group *dg)
 {
-	struct scst_target_group *tg;
+	kobject_del(dg->tg_kobj);
+	kobject_put(dg->tg_kobj);
+	kobject_del(dg->dev_kobj);
+	kobject_put(dg->dev_kobj);
+	kobject_del(&dg->kobj);
+	list_del(&dg->entry);
+	while (!list_empty(&dg->dev_list))
+		kfree(list_first_entry(&dg->dev_list, struct scst_dg_dev,
+				       entry));
+	while (!list_empty(&dg->tg_list))
+		kfree(list_first_entry(&dg->tg_list, struct scst_tg_tgt,
+				       entry));
+	kobject_put(&dg->kobj);
+}
+
+int scst_dg_destroy(const char *name)
+{
+	struct scst_dev_group *dg;
 	int res;
 
 	res = mutex_lock_interruptible(&scst_mutex);
 	if (res)
 		goto out;
 	res = -EINVAL;
-	tg = __lookup_tg(name);
-	if (!tg)
+	dg = __lookup_dg_by_name(name);
+	if (!dg)
 		goto out_unlock;
-	__scst_tg_destroy(tg);
+	__scst_dg_destroy(dg);
 	res = 0;
 out_unlock:
 	mutex_unlock(&scst_mutex);
 out:
 	return res;
+}
+
+void scst_tg_init(void)
+{
+	INIT_LIST_HEAD(&scst_dev_group_list);
+}
+
+void scst_tg_cleanup(void)
+{
+	struct scst_dev_group *tg;
+
+	mutex_lock(&scst_mutex);
+	while (!list_empty(&scst_dev_group_list)) {
+		tg = list_first_entry(&scst_dev_group_list,
+				      struct scst_dev_group, entry);
+		__scst_dg_destroy(tg);
+	}
+	mutex_unlock(&scst_mutex);
 }
 
 /**
@@ -160,8 +197,9 @@ out:
 int scst_tg_get_group_info(void **buf, uint32_t *length,
 			   struct scst_device *dev, uint8_t data_format)
 {
+	struct scst_dev_group *dg;
 	struct scst_target_group *tg;
-	struct scst_target_group_dev *tgdev;
+	struct scst_tg_tgt *tgtgt;
 	struct scst_tgt *tgt;
 	uint8_t *p;
 	uint32_t ret_data_len;
@@ -184,18 +222,25 @@ int scst_tg_get_group_info(void **buf, uint32_t *length,
 		goto out;
 	}
 
+	*length = 4;
+
 	mutex_lock(&scst_mutex);
 
-	list_for_each_entry(tg, &scst_target_group_list, entry) {
+	res = 0;
+	dg = __lookup_dg_by_dev(dev);
+	if (!dg)
+		goto out_unlock;
+
+	list_for_each_entry(tg, &dg->tg_list, entry) {
 		/* Target port group descriptor header. */
 		ret_data_len += 8;
-		list_for_each_entry(tgt, &tg->tgt_list, target_group_entry) {
+		list_for_each_entry(tgtgt, &tg->tgt_list, entry) {
 			/* Target port descriptor. */
 			ret_data_len += 4;
 		}
 	}
 
-	*length = ret_data_len + 4;
+	*length += ret_data_len;
 
 	res = -ENOMEM;
 	*buf = kzalloc(*length, GFP_KERNEL);
@@ -213,22 +258,20 @@ int scst_tg_get_group_info(void **buf, uint32_t *length,
 		p += 2;      /* reserved */
 	}
 
-	list_for_each_entry(tg, &scst_target_group_list, entry) {
-		tgdev = __lookup_tg_dev(tg, dev);
-		if (!tgdev)
-			continue;
+	list_for_each_entry(tg, &dg->tg_list, entry) {
 		/* Target port group descriptor header. */
-		*p++ = tgdev->state;
+		*p++ = tg->state;
 		*p++ = 0xCF; /* T_SUP; O_SUP; U_SUP; S_SUP; AN_SUP; AO_SUP */
 		put_unaligned(cpu_to_be16(tg->group_id), (__be16 *)p);
 		p += 2;
 		p++;      /* reserved */
 		*p++ = 2; /* status code: implicit transition */
 		p++;      /* vendor specific */
-		list_for_each_entry(tgdev, &tg->tgt_list, entry)
+		list_for_each_entry(tgtgt, &tg->tgt_list, entry)
 			(*p)++; /* target port count */
 		p++;
-		list_for_each_entry(tgt, &tg->tgt_list, target_group_entry) {
+		list_for_each_entry(tgtgt, &tg->tgt_list, entry) {
+			tgt = tgtgt->tgt;
 			/* Target port descriptor. */
 			p += 2; /* reserved */
 			/* Relative target port identifier. */
