@@ -631,6 +631,8 @@ again:
 
 	del_timer_sync(&tgt->retry_timer);
 
+	scst_tg_tgt_remove_by_tgt(tgt);
+
 #ifdef CONFIG_SCST_PROC
 	scst_cleanup_proc_target_entries(tgt);
 #else

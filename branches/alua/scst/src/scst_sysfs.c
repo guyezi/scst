@@ -4893,7 +4893,7 @@ static ssize_t scst_dg_devs_mgmt_store(struct kobject *kobj,
 
 	work->buf = cmd;
 	work->kobj = kobj;
-	kobject_get(w->kobj);
+	kobject_get(kobj);
 	res = scst_sysfs_queue_wait_work(work);
 
 out:
@@ -4926,8 +4926,7 @@ int scst_tg_tgt_sysfs_add(struct scst_target_group *tg, struct scst_tgt *tgt)
 	return res;
 }
 
-void scst_tg_tgt_sysfs_del(struct scst_target_group *tg,
-			      struct scst_tgt *tgt)
+void scst_tg_tgt_sysfs_del(struct scst_target_group *tg, struct scst_tgt *tgt)
 {
 	TRACE_ENTRY();
 	sysfs_remove_link(&tg->kobj, tgt->tgt_name);
