@@ -2537,8 +2537,8 @@ struct scst_acn {
 /**
  * struct scst_dev_group - A group of SCST devices (struct scst_device).
  *
- * Each device belongs to zero or one device groups. With each device there
- * are zero or more target groups associated.
+ * Each device is member of zero or one device groups. With each device group
+ * there are zero or more target groups associated.
  */
 struct scst_dev_group {
 	char			*name;
@@ -2580,6 +2580,7 @@ enum scst_tg_state {
  * port group. See also SPC-4 for more information.
  */
 struct scst_target_group {
+	struct scst_dev_group	*dg;
 	char			*name;
 	uint16_t		group_id;
 	enum scst_tg_state	state;
