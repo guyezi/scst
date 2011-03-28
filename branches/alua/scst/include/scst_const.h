@@ -268,6 +268,7 @@ enum scst_cdb_flags {
 #define scst_sense_reservation_preempted	UNIT_ATTENTION,  0x2A, 0x03
 #define scst_sense_reservation_released		UNIT_ATTENTION,  0x2A, 0x04
 #define scst_sense_registrations_preempted	UNIT_ATTENTION,  0x2A, 0x05
+#define scst_sense_asym_access_state_changed	UNIT_ATTENTION,  0x2A, 0x06
 #define scst_sense_reported_luns_data_changed	UNIT_ATTENTION,  0x3F, 0xE
 #define scst_sense_inquery_data_changed		UNIT_ATTENTION,  0x3F, 0x3
 

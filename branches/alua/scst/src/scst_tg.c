@@ -292,6 +292,7 @@ int scst_tg_add(struct scst_dev_group *dg, const char *name)
 	if (!tg->name)
 		goto out_put;
 	tg->dg = dg;
+	tg->state = SCST_TG_STATE_OPTIMIZED;
 	INIT_LIST_HEAD(&tg->tgt_list);
 
 	res = mutex_lock_interruptible(&scst_mutex);
@@ -354,6 +355,34 @@ int scst_tg_remove_by_name(struct scst_dev_group *dg, const char *name)
 	__scst_tg_remove(dg, tg);
 	res = 0;
 out_unlock:
+	mutex_unlock(&scst_mutex);
+out:
+	return res;
+}
+
+int scst_tg_set_state(struct scst_target_group *tg, enum scst_tg_state state)
+{
+	struct scst_dg_dev *dg_dev;
+	struct scst_device *dev;
+	struct scst_tgt_dev *tgt_dev;
+	int res;
+
+	res = mutex_lock_interruptible(&scst_mutex);
+	if (res)
+		goto out;
+
+	tg->state = state;
+
+	list_for_each_entry(dg_dev, &tg->dg->dev_list, entry) {
+		dev = dg_dev->dev;
+		list_for_each_entry(tgt_dev, &dev->dev_tgt_dev_list,
+				    dev_tgt_dev_list_entry) {
+			TRACE_MGMT_DBG("ALUA state of tgt_dev %p has changed",
+				       tgt_dev);
+			scst_gen_aen_or_ua(tgt_dev,
+			 SCST_LOAD_SENSE(scst_sense_asym_access_state_changed));
+		}
+	}
 	mutex_unlock(&scst_mutex);
 out:
 	return res;

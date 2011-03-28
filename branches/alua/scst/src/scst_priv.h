@@ -419,6 +419,7 @@ int scst_dg_dev_remove_by_name(struct scst_dev_group *dg, const char *name);
 int scst_dg_dev_remove_by_dev(struct scst_device *dev);
 int scst_tg_add(struct scst_dev_group *dg, const char *name);
 int scst_tg_remove_by_name(struct scst_dev_group *dg, const char *name);
+int scst_tg_set_state(struct scst_target_group *tg, enum scst_tg_state state);
 int scst_tg_tgt_add(struct scst_target_group *tg, const char *name);
 int scst_tg_tgt_remove_by_name(struct scst_target_group *tg, const char *name);
 void scst_tg_tgt_remove_by_tgt(struct scst_tgt *tgt);

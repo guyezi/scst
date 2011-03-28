@@ -4937,9 +4937,99 @@ void scst_tg_tgt_sysfs_del(struct scst_target_group *tg, struct scst_tgt *tgt)
  ** SCST sysfs device_groups/<dg>/target_groups/<tg> directory implementation.
  **/
 
+static struct { enum scst_tg_state s; const char* n; } scst_tg_state_names[] = {
+	{ SCST_TG_STATE_OPTIMIZED,	"active"	},
+	{ SCST_TG_STATE_NONOPTIMIZED,	"nonoptimized"	},
+	{ SCST_TG_STATE_STANDBY,	"standby"	},
+	{ SCST_TG_STATE_UNAVAILABLE,	"unavailable"	},
+	{ SCST_TG_STATE_OFFLINE,	"offline"	},
+	{ SCST_TG_STATE_TRANSITIONING,	"transitioning"	},
+};
+
+static ssize_t scst_tg_state_show(struct kobject *kobj,
+				  struct kobj_attribute *attr,
+				  char *buf)
+{
+	struct scst_target_group *tg;
+	int i;
+
+	tg = container_of(kobj, struct scst_target_group, kobj);
+	for (i = ARRAY_SIZE(scst_tg_state_names) - 1; i >= 0; i--)
+		if (scst_tg_state_names[i].s == tg->state)
+			break;
+
+	return scnprintf(buf, PAGE_SIZE, "%s\n" SCST_SYSFS_KEY_MARK "\n",
+			 i >= 0 ? scst_tg_state_names[i].n : "???");
+}
+
+static int scst_tg_state_store_work_fn(struct scst_sysfs_work_item *w)
+{
+	struct scst_target_group *tg;
+	char *cmd, *p;
+	int i, res;
+
+	TRACE_ENTRY();
+
+	cmd = w->buf;
+	tg = container_of(w->kobj, struct scst_target_group, kobj);
+
+	p = strchr(cmd, '\n');
+	if (p)
+		*p = '\0';
+
+	for (i = ARRAY_SIZE(scst_tg_state_names) - 1; i >= 0; i--)
+		if (strcmp(scst_tg_state_names[i].n, cmd) == 0)
+			break;
+
+	res = -EINVAL;
+	if (i < 0)
+		goto out;
+	res = scst_tg_set_state(tg, scst_tg_state_names[i].s);
+out:
+	kobject_put(w->kobj);
+	TRACE_EXIT_RES(res);
+	return res;
+}
+
+static ssize_t scst_tg_state_store(struct kobject *kobj,
+				  struct kobj_attribute *attr,
+				  const char *buf, size_t count)
+{
+	char *cmd;
+	struct scst_sysfs_work_item *work;
+	int res;
+
+	TRACE_ENTRY();
+
+	res = -ENOMEM;
+	cmd = kasprintf(GFP_KERNEL, "%.*s", (int)count, buf);
+	if (!cmd)
+		goto out;
+
+	res = scst_alloc_sysfs_work(scst_tg_state_store_work_fn, false,
+				    &work);
+	if (res)
+		goto out;
+
+	work->buf = cmd;
+	work->kobj = kobj;
+	kobject_get(kobj);
+	res = scst_sysfs_queue_wait_work(work);
+
+out:
+	if (res == 0)
+		res = count;
+	TRACE_EXIT_RES(res);
+	return res;
+}
+
+static struct kobj_attribute scst_tg_state =
+	__ATTR(state, S_IRUGO | S_IWUSR, scst_tg_state_show,
+	       scst_tg_state_store);
+
 static ssize_t scst_tg_mgmt_show(struct kobject *kobj,
-				    struct kobj_attribute *attr,
-				    char *buf)
+				 struct kobj_attribute *attr,
+				 char *buf)
 {
 	static const char help[] =
 		"Usage: echo \"add target\" >mgmt\n"
@@ -5021,6 +5111,7 @@ static struct kobj_attribute scst_tg_mgmt =
 
 static const struct attribute *scst_tg_attrs[] = {
 	&scst_tg_mgmt.attr,
+	&scst_tg_state.attr,
 	NULL,
 };
 
