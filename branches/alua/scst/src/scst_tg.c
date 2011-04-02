@@ -47,18 +47,18 @@ static struct scst_tgt *__lookup_tgt(const char *name)
 	return NULL;
 }
 
-/* Look up a target by target pointer in the given device group. */
+/* Look up a target by name in the given device group. */
 static struct scst_tg_tgt *__lookup_dg_tgt(struct scst_dev_group *dg,
-					   struct scst_tgt *tgt)
+					   const char *tgt_name)
 {
 	struct scst_target_group *tg;
 	struct scst_tg_tgt *tg_tgt;
 
 	BUG_ON(!dg);
-	BUG_ON(!tgt);
+	BUG_ON(!tgt_name);
 	list_for_each_entry(tg, &dg->tg_list, entry)
 		list_for_each_entry(tg_tgt, &tg->tgt_list, entry)
-			if (tg_tgt->tgt == tgt)
+			if (strcmp(tg_tgt->name, tgt_name) == 0)
 				return tg_tgt;
 
 	return NULL;
@@ -160,6 +160,20 @@ static struct scst_dev_group *__lookup_dg_by_dev(struct scst_device *dev)
  * Target group contents management.
  */
 
+static void scst_release_tg_tgt(struct kobject *kobj)
+{
+	struct scst_tg_tgt *tg_tgt;
+
+	tg_tgt = container_of(kobj, struct scst_tg_tgt, kobj);
+	kfree(tg_tgt->name);
+	kfree(tg_tgt);
+}
+
+static struct kobj_type scst_tg_tgt_ktype = {
+	.sysfs_ops = &scst_sysfs_ops,
+	.release = scst_release_tg_tgt,
+};
+
 /**
  * scst_tg_tgt_add() - Add a target to a target group.
  */
@@ -176,16 +190,20 @@ int scst_tg_tgt_add(struct scst_target_group *tg, const char *name)
 	tg_tgt = kzalloc(sizeof *tg_tgt, GFP_KERNEL);
 	if (!tg_tgt)
 		goto out;
+	kobject_init(&tg_tgt->kobj, &scst_tg_tgt_ktype);
+	tg_tgt->name = kstrdup(name, GFP_KERNEL);
+	if (!tg_tgt->name)
+		goto out_put;
 
 	res = mutex_lock_interruptible(&scst_mutex);
 	if (res)
-		goto out_free;
+		goto out_put;
 	res = -EEXIST;
 	tgt = __lookup_tgt(name);
-	if (__lookup_dg_tgt(tg->dg, tgt))
+	if (__lookup_dg_tgt(tg->dg, name))
 		goto out_unlock;
 	tg_tgt->tgt = tgt;
-	res = scst_tg_tgt_sysfs_add(tg, tgt);
+	res = scst_tg_tgt_sysfs_add(tg, tg_tgt);
 	if (res)
 		goto out_unlock;
 	list_add_tail(&tg_tgt->entry, &tg->tgt_list);
@@ -196,8 +214,8 @@ out:
 	return res;
 out_unlock:
 	mutex_unlock(&scst_mutex);
-out_free:
-	kfree(tg_tgt);
+out_put:
+	kobject_put(&tg_tgt->kobj);
 	goto out;
 }
 
@@ -206,7 +224,7 @@ static void __scst_tg_tgt_remove(struct scst_target_group *tg,
 {
 	TRACE_ENTRY();
 	list_del(&tg_tgt->entry);
-	scst_tg_tgt_sysfs_del(tg, tg_tgt->tgt);
+	scst_tg_tgt_sysfs_del(tg, tg_tgt);
 	kfree(tg_tgt);
 	TRACE_EXIT();
 }
@@ -217,7 +235,6 @@ static void __scst_tg_tgt_remove(struct scst_target_group *tg,
 int scst_tg_tgt_remove_by_name(struct scst_target_group *tg, const char *name)
 {
 	struct scst_tg_tgt *tg_tgt;
-	struct scst_tgt *tgt;
 	int res;
 
 	TRACE_ENTRY();
@@ -227,10 +244,7 @@ int scst_tg_tgt_remove_by_name(struct scst_target_group *tg, const char *name)
 	if (res)
 		goto out;
 	res = -EINVAL;
-	tgt = __lookup_tgt(name);
-	if (!tgt)
-		goto out_unlock;
-	tg_tgt = __lookup_tg_tgt(tg, tgt);
+	tg_tgt = __lookup_dg_tgt(tg->dg, name);
 	if (!tg_tgt)
 		goto out_unlock;
 	__scst_tg_tgt_remove(tg, tg_tgt);
@@ -249,11 +263,17 @@ void scst_tg_tgt_remove_by_tgt(struct scst_tgt *tgt)
 	struct scst_target_group *tg;
 	struct scst_tg_tgt *tg_tgt;
 
-	list_for_each_entry(dg, &scst_dev_group_list, entry)
-		list_for_each_entry(tg, &dg->tg_list, entry)
-			list_for_each_entry(tg_tgt, &tg->tgt_list, entry)
-				if (tg_tgt->tgt == tgt)
+	BUG_ON(!tgt);
+	list_for_each_entry(dg, &scst_dev_group_list, entry) {
+		list_for_each_entry(tg, &dg->tg_list, entry) {
+			list_for_each_entry(tg_tgt, &tg->tgt_list, entry) {
+				if (tg_tgt->tgt == tgt) {
 					__scst_tg_tgt_remove(tg, tg_tgt);
+					break;
+				}
+			}
+		}
+	}
 }
 
 /*
@@ -655,6 +675,7 @@ int scst_tg_get_group_info(void **buf, uint32_t *length,
 	struct scst_tgt *tgt;
 	uint8_t *p;
 	uint32_t ret_data_len;
+	uint16_t rel_tgt_id;
 	int res;
 
 	BUG_ON(!buf);
@@ -727,10 +748,11 @@ int scst_tg_get_group_info(void **buf, uint32_t *length,
 		p++;
 		list_for_each_entry(tgtgt, &tg->tgt_list, entry) {
 			tgt = tgtgt->tgt;
+			rel_tgt_id = tgt ? tgt->rel_tgt_id : tgtgt->rel_tgt_id;
 			/* Target port descriptor. */
 			p += 2; /* reserved */
 			/* Relative target port identifier. */
-			put_unaligned(cpu_to_be16(tgt->rel_tgt_id),
+			put_unaligned(cpu_to_be16(rel_tgt_id),
 				      (__be16 *)p);
 			p += 2;
 		}

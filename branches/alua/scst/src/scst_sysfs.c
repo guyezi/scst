@@ -4916,20 +4916,87 @@ static const struct attribute *scst_dg_devs_attrs[] = {
  ** SCST sysfs device_groups/<dg>/target_groups/<tg>/<tgt> implementation.
  **/
 
-int scst_tg_tgt_sysfs_add(struct scst_target_group *tg, struct scst_tgt *tgt)
+static ssize_t scst_tg_tgt_rel_tgt_id_show(struct kobject *kobj,
+					   struct kobj_attribute *attr,
+					   char *buf)
+{
+	struct scst_tg_tgt *tg_tgt;
+
+	tg_tgt = container_of(kobj, struct scst_tg_tgt, kobj);
+	return scnprintf(buf, PAGE_SIZE, "%u\n" SCST_SYSFS_KEY_MARK "\n",
+			 tg_tgt->rel_tgt_id);
+}
+
+static ssize_t scst_tg_tgt_rel_tgt_id_store(struct kobject *kobj,
+					    struct kobj_attribute *attr,
+					    const char *buf, size_t count)
+{
+	struct scst_tg_tgt *tg_tgt;
+	unsigned long rel_tgt_id;
+	char ch[8];
+	int res;
+
+	tg_tgt = container_of(kobj, struct scst_tg_tgt, kobj);
+	snprintf(ch, sizeof(ch), "%.*s", min_t(int, count, sizeof(ch)-1), buf);
+	res = strict_strtoul(ch, 0, &rel_tgt_id);
+	if (res)
+		goto out;
+	res = -EINVAL;
+	if (rel_tgt_id == 0 || rel_tgt_id > 0xffff)
+		goto out;
+	tg_tgt->rel_tgt_id = rel_tgt_id;
+	res = count;
+out:
+	return res;
+}
+
+static struct kobj_attribute scst_tg_tgt_rel_tgt_id =
+	__ATTR(rel_tgt_id, S_IRUGO | S_IWUSR, scst_tg_tgt_rel_tgt_id_show,
+	       scst_tg_tgt_rel_tgt_id_store);
+
+static const struct attribute *scst_tg_tgt_attrs[] = {
+	&scst_tg_tgt_rel_tgt_id.attr,
+	NULL,
+};
+
+int scst_tg_tgt_sysfs_add(struct scst_target_group *tg,
+			  struct scst_tg_tgt *tg_tgt)
 {
 	int res;
 
 	TRACE_ENTRY();
-	res = sysfs_create_link(&tg->kobj, &tgt->tgt_kobj, tgt->tgt_name);
+	BUG_ON(!tg);
+	BUG_ON(!tg_tgt);
+	BUG_ON(!tg_tgt->name);
+	if (tg_tgt->tgt)
+		res = sysfs_create_link(&tg->kobj, &tg_tgt->tgt->tgt_kobj,
+					tg_tgt->name);
+	else {
+		res = kobject_add(&tg_tgt->kobj, &tg->kobj, "%s", tg_tgt->name);
+		if (res)
+			goto err;
+		res = sysfs_create_files(&tg_tgt->kobj, scst_tg_tgt_attrs);
+		if (res)
+			goto err;
+	}
+out:
 	TRACE_EXIT_RES(res);
 	return res;
+err:
+	scst_tg_tgt_sysfs_del(tg, tg_tgt);
+	goto out;
 }
 
-void scst_tg_tgt_sysfs_del(struct scst_target_group *tg, struct scst_tgt *tgt)
+void scst_tg_tgt_sysfs_del(struct scst_target_group *tg,
+			   struct scst_tg_tgt *tg_tgt)
 {
 	TRACE_ENTRY();
-	sysfs_remove_link(&tg->kobj, tgt->tgt_name);
+	if (tg_tgt->tgt)
+		sysfs_remove_link(&tg->kobj, tg_tgt->name);
+	else {
+		sysfs_remove_files(&tg_tgt->kobj, scst_tg_tgt_attrs);
+		kobject_del(&tg_tgt->kobj);
+	}
 	TRACE_EXIT();
 }
 

@@ -2576,10 +2576,18 @@ struct scst_target_group {
 
 /**
  * struct scst_tg_tgt - A node in scst_target_group.tgt_list.
+ *
+ * Such a node can either represent a local storage target (struct scst_tgt)
+ * or a storage target on another system running SCST. In the former case tgt
+ * != NULL and rel_tgt_id is ignored. In the latter case tgt == NULL and
+ * rel_tgt_id is relevant.
  */
 struct scst_tg_tgt {
 	struct list_head	entry;
+	struct kobject          kobj;
 	struct scst_tgt		*tgt;
+	char			*name;
+	uint16_t		rel_tgt_id;
 };
 
 
