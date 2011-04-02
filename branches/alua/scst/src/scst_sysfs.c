@@ -4942,6 +4942,8 @@ static struct { enum scst_tg_state s; const char* n; } scst_tg_state_names[] = {
 	{ SCST_TG_STATE_NONOPTIMIZED,	"nonoptimized"	},
 	{ SCST_TG_STATE_STANDBY,	"standby"	},
 	{ SCST_TG_STATE_UNAVAILABLE,	"unavailable"	},
+	{ SCST_TG_STATE_OFFLINE,	"offline"	},
+	{ SCST_TG_STATE_TRANSITIONING,	"transitioning"	},
 };
 
 static ssize_t scst_tg_state_show(struct kobject *kobj,
