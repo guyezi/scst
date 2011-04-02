@@ -4075,12 +4075,12 @@ struct scst_sysfs_work_item {
 	int (*sysfs_work_fn)(struct scst_sysfs_work_item *work);
 	struct completion sysfs_work_done;
 	char *buf;
+	struct scst_tgt *tgt;
 
 	union {
 		struct scst_dev_type *devt;
 		struct scst_tgt_template *tgtt;
 		struct {
-			struct scst_tgt *tgt;
 			struct scst_acg *acg;
 			union {
 				bool is_tgt_kobj;
@@ -4096,7 +4096,6 @@ struct scst_sysfs_work_item {
 		};
 		struct scst_session *sess;
 		struct {
-			struct scst_tgt *tgt;
 			unsigned long l;
 		};
 		struct {
