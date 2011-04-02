@@ -64,21 +64,6 @@ static struct scst_tg_tgt *__lookup_dg_tgt(struct scst_dev_group *dg,
 	return NULL;
 }
 
-/* Look up a target by target pointer in the given target group. */
-static struct scst_tg_tgt *__lookup_tg_tgt(struct scst_target_group *tg,
-					   struct scst_tgt *tgt)
-{
-	struct scst_tg_tgt *tg_tgt;
-
-	BUG_ON(!tg);
-	BUG_ON(!tgt);
-	list_for_each_entry(tg_tgt, &tg->tgt_list, entry)
-		if (tg_tgt->tgt == tgt)
-			return tg_tgt;
-
-	return NULL;
-}
-
 /* Look up a target group by name in the given device group. */
 static struct scst_target_group *
 __lookup_tg_by_name(struct scst_dev_group *dg, const char *name)
