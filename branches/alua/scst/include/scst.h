@@ -2584,6 +2584,7 @@ struct scst_target_group {
  */
 struct scst_tg_tgt {
 	struct list_head	entry;
+	struct scst_target_group *tg;
 	struct kobject          kobj;
 	struct scst_tgt		*tgt;
 	char			*name;
@@ -2871,6 +2872,7 @@ static inline void scst_sess_set_tgt_priv(struct scst_session *sess,
 	sess->tgt_priv = val;
 }
 
+uint16_t scst_lookup_tg_id(struct scst_device *dev, struct scst_tgt *tgt);
 int scst_tg_get_group_info(void **buf, uint32_t *response_length,
 			   struct scst_device *dev, uint8_t data_format);
 

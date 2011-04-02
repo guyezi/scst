@@ -175,6 +175,7 @@ int scst_tg_tgt_add(struct scst_target_group *tg, const char *name)
 	tg_tgt = kzalloc(sizeof *tg_tgt, GFP_KERNEL);
 	if (!tg_tgt)
 		goto out;
+	tg_tgt->tg = tg;
 	kobject_init(&tg_tgt->kobj, &scst_tg_tgt_ktype);
 	tg_tgt->name = kstrdup(name, GFP_KERNEL);
 	if (!tg_tgt->name)
@@ -597,6 +598,9 @@ out:
  * Given a pointer to a device_groups/<dg>/devices or
  * device_groups/<dg>/target_groups kobject, return the pointer to the
  * corresponding device group.
+ *
+ * Note: The caller must hold a reference on the kobject to avoid that the
+ * object disappears before the caller stops using the device group pointer.
  */
 struct scst_dev_group* scst_lookup_dg_by_kobj(struct kobject *kobj)
 {
@@ -641,8 +645,41 @@ void scst_tg_cleanup(void)
 }
 
 /*
- * Target group related SCSI commands.
+ * Functions for target group related SCSI command support.
  */
+
+/**
+ * scst_lookup_tg_id() - Look up a target port group identifier.
+ * @dev: SCST device.
+ * @tgt: SCST target.
+ *
+ * Returns a non-zero number if the lookup was successful and zero if not.
+ */
+uint16_t scst_lookup_tg_id(struct scst_device *dev, struct scst_tgt *tgt)
+{
+	struct scst_dev_group *dg;
+	struct scst_target_group *tg;
+	struct scst_tg_tgt *tg_tgt;
+	uint16_t tg_id = 0;
+
+	TRACE_ENTRY();
+	mutex_lock(&scst_mutex);
+	dg = __lookup_dg_by_dev(dev);
+	if (!dg)
+		goto out_unlock;
+	tg_tgt = __lookup_dg_tgt(dg, tgt->tgt_name);
+	if (!tg_tgt)
+		goto out_unlock;
+	tg = tg_tgt->tg;
+	BUG_ON(!tg);
+	tg_id = tg->group_id;
+out_unlock:
+	mutex_unlock(&scst_mutex);
+
+	TRACE_EXIT_RES(tg_id);
+	return tg_id;
+}
+EXPORT_SYMBOL(scst_lookup_tg_id);
 
 /**
  * scst_tg_get_group_info() - Build REPORT TARGET GROUPS response.

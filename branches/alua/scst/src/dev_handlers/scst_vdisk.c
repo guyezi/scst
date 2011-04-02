@@ -1457,6 +1457,7 @@ static void vdisk_exec_inquiry(struct scst_cmd *cmd)
 	uint8_t *address;
 	uint8_t *buf;
 	struct scst_vdisk_dev *virt_dev = cmd->dev->dh_priv;
+	uint16_t tg_id;
 
 	/* ToDo: Performance Boost:
 	 * 1. remove kzalloc, buf
@@ -1565,6 +1566,22 @@ static void vdisk_exec_inquiry(struct scst_cmd *cmd)
 			num += buf[num + 3];
 
 			num += 4;
+
+			tg_id = scst_lookup_tg_id(cmd->dev, cmd->tgt);
+			if (tg_id) {
+				/*
+				 * Target port group designator
+				 */
+				buf[num + 0] = 0x01; /* binary */
+				/* Target port group id */
+				buf[num + 1] = 0x10 | 0x05;
+
+				put_unaligned(cpu_to_be16(tg_id),
+					      (__be16 *)&buf[num + 4 + 2]);
+
+				buf[num + 3] = 4;
+				num += 4 + buf[num + 3];
+			}
 
 			/*
 			 * IEEE id
