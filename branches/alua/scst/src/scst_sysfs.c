@@ -4936,6 +4936,7 @@ static ssize_t scst_tg_tgt_rel_tgt_id_store(struct kobject *kobj,
 	char ch[8];
 	int res;
 
+	TRACE_ENTRY();
 	tg_tgt = container_of(kobj, struct scst_tg_tgt, kobj);
 	snprintf(ch, sizeof(ch), "%.*s", min_t(int, count, sizeof(ch)-1), buf);
 	res = strict_strtoul(ch, 0, &rel_tgt_id);
@@ -4947,6 +4948,7 @@ static ssize_t scst_tg_tgt_rel_tgt_id_store(struct kobject *kobj,
 	tg_tgt->rel_tgt_id = rel_tgt_id;
 	res = count;
 out:
+	TRACE_EXIT_RES(res);
 	return res;
 }
 
@@ -5003,6 +5005,46 @@ void scst_tg_tgt_sysfs_del(struct scst_target_group *tg,
 /**
  ** SCST sysfs device_groups/<dg>/target_groups/<tg> directory implementation.
  **/
+
+static ssize_t scst_tg_group_id_show(struct kobject *kobj,
+				     struct kobj_attribute *attr,
+				     char *buf)
+{
+	struct scst_target_group *tg;
+
+	tg = container_of(kobj, struct scst_target_group, kobj);
+	return scnprintf(buf, PAGE_SIZE, "%u\n" SCST_SYSFS_KEY_MARK "\n",
+			 tg->group_id);
+}
+
+static ssize_t scst_tg_group_id_store(struct kobject *kobj,
+				      struct kobj_attribute *attr,
+				      const char *buf, size_t count)
+{
+	struct scst_target_group *tg;
+	unsigned long group_id;
+	char ch[8];
+	int res;
+
+	TRACE_ENTRY();
+	tg = container_of(kobj, struct scst_target_group, kobj);
+	snprintf(ch, sizeof(ch), "%.*s", min_t(int, count, sizeof(ch)-1), buf);
+	res = strict_strtoul(ch, 0, &group_id);
+	if (res)
+		goto out;
+	res = -EINVAL;
+	if (group_id == 0 || group_id > 0xffff)
+		goto out;
+	tg->group_id = group_id;
+	res = count;
+out:
+	TRACE_EXIT_RES(res);
+	return res;
+}
+
+static struct kobj_attribute scst_tg_group_id =
+	__ATTR(group_id, S_IRUGO | S_IWUSR, scst_tg_group_id_show,
+	       scst_tg_group_id_store);
 
 static struct { enum scst_tg_state s; const char* n; } scst_tg_state_names[] = {
 	{ SCST_TG_STATE_OPTIMIZED,	"active"	},
@@ -5178,6 +5220,7 @@ static struct kobj_attribute scst_tg_mgmt =
 
 static const struct attribute *scst_tg_attrs[] = {
 	&scst_tg_mgmt.attr,
+	&scst_tg_group_id.attr,
 	&scst_tg_state.attr,
 	NULL,
 };
