@@ -413,6 +413,36 @@ enum {
 #define SCSI_TRANSPORTID_PROTOCOLID_ISCSI	5
 #define SCSI_TRANSPORTID_PROTOCOLID_SAS		6
 
+/**
+ * enum scst_tg_state - SCSI target port group asymmetric access state.
+ *
+ * See also the documentation of the REPORT TARGET PORT GROUPS command in SPC-4.
+ */
+enum scst_tg_state {
+	SCST_TG_STATE_OPTIMIZED		= 0x0,
+	SCST_TG_STATE_NONOPTIMIZED	= 0x1,
+	SCST_TG_STATE_STANDBY		= 0x2,
+	SCST_TG_STATE_UNAVAILABLE	= 0x3,
+	SCST_TG_STATE_LBA_DEPENDENT	= 0x4,
+	SCST_TG_STATE_OFFLINE		= 0xe,
+	SCST_TG_STATE_TRANSITIONING	= 0xf,
+};
+
+/**
+ * enum scst_tg_sup - Supported SCSI target port group states.
+ *
+ * See also the documentation of the REPORT TARGET PORT GROUPS command in SPC-4.
+ */
+enum scst_tg_sup {
+	SCST_TG_SUP_OPTIMIZED		= 0x01,
+	SCST_TG_SUP_NONOPTIMIZED	= 0x02,
+	SCST_TG_SUP_STANDBY		= 0x04,
+	SCST_TG_SUP_UNAVAILABLE		= 0x08,
+	SCST_TG_SUP_LBA_DEPENDENT	= 0x10,
+	SCST_TG_SUP_OFFLINE		= 0x40,
+	SCST_TG_SUP_TRANSITION		= 0x80,
+};
+
 /*************************************************************
  ** Misc SCSI constants
  *************************************************************/

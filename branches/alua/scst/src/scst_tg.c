@@ -713,7 +713,10 @@ int scst_tg_get_group_info(void **buf, uint32_t *length,
 	list_for_each_entry(tg, &dg->tg_list, entry) {
 		/* Target port group descriptor header. */
 		*p++ = tg->state;
-		*p++ = 0xCF; /* T_SUP; O_SUP; U_SUP; S_SUP; AN_SUP; AO_SUP */
+		*p++ = SCST_TG_SUP_OPTIMIZED
+			| SCST_TG_SUP_NONOPTIMIZED
+			| SCST_TG_SUP_STANDBY
+			| SCST_TG_SUP_UNAVAILABLE;
 		put_unaligned(cpu_to_be16(tg->group_id), (__be16 *)p);
 		p += 2;
 		p++;      /* reserved */

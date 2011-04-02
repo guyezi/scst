@@ -2559,21 +2559,6 @@ struct scst_dg_dev {
 };
 
 /**
- * enum scst_tg_state - SCSI target port group asymmetric access state.
- *
- * See also the documentation of the REPORT TARGET PORT GROUPS command in SPC-4.
- */
-enum scst_tg_state {
-	SCST_TG_STATE_OPTIMIZED		= 0x0,
-	SCST_TG_STATE_NONOPTIMIZED	= 0x1,
-	SCST_TG_STATE_STANDBY		= 0x2,
-	SCST_TG_STATE_UNAVAILABLE	= 0x3,
-	SCST_TG_STATE_LBA_DEPENDENT	= 0x4,
-	SCST_TG_STATE_OFFLINE		= 0xe,
-	SCST_TG_STATE_TRANSITIONING	= 0xf,
-};
-
-/**
  * struct scst_target_group - A group of SCSI targets (struct scst_tgt).
  *
  * Such a group is either a primary target port group or a secondary
