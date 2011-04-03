@@ -450,7 +450,8 @@ static inline int scst_dg_dev_sysfs_add(struct scst_dev_group *dg,
 {
 	return 0;
 }
-static inline void scst_dg_dev_sysfs_del(struct scst_dg_dev *dgdev)
+static inline void scst_dg_dev_sysfs_del(struct scst_dev_group *dg,
+					 struct scst_dg_dev *dgdev)
 {
 }
 static inline int scst_tg_sysfs_add(struct scst_dev_group *dg,
