@@ -5046,6 +5046,46 @@ static struct kobj_attribute scst_tg_group_id =
 	__ATTR(group_id, S_IRUGO | S_IWUSR, scst_tg_group_id_show,
 	       scst_tg_group_id_store);
 
+static ssize_t scst_tg_preferred_show(struct kobject *kobj,
+				      struct kobj_attribute *attr,
+				      char *buf)
+{
+	struct scst_target_group *tg;
+
+	tg = container_of(kobj, struct scst_target_group, kobj);
+	return scnprintf(buf, PAGE_SIZE, "%u\n%s",
+			 tg->preferred, SCST_SYSFS_KEY_MARK "\n");
+}
+
+static ssize_t scst_tg_preferred_store(struct kobject *kobj,
+				       struct kobj_attribute *attr,
+				       const char *buf, size_t count)
+{
+	struct scst_target_group *tg;
+	unsigned long preferred;
+	char ch[8];
+	int res;
+
+	TRACE_ENTRY();
+	tg = container_of(kobj, struct scst_target_group, kobj);
+	snprintf(ch, sizeof(ch), "%.*s", min_t(int, count, sizeof(ch)-1), buf);
+	res = strict_strtoul(ch, 0, &preferred);
+	if (res)
+		goto out;
+	res = -EINVAL;
+	if (preferred != 0 && preferred != 1)
+		goto out;
+	tg->preferred = preferred;
+	res = count;
+out:
+	TRACE_EXIT_RES(res);
+	return res;
+}
+
+static struct kobj_attribute scst_tg_preferred =
+	__ATTR(preferred, S_IRUGO | S_IWUSR, scst_tg_preferred_show,
+	       scst_tg_preferred_store);
+
 static struct { enum scst_tg_state s; const char *n; } scst_tg_state_names[] = {
 	{ SCST_TG_STATE_OPTIMIZED,	"active"	},
 	{ SCST_TG_STATE_NONOPTIMIZED,	"nonoptimized"	},
@@ -5221,6 +5261,7 @@ static struct kobj_attribute scst_tg_mgmt =
 static const struct attribute *scst_tg_attrs[] = {
 	&scst_tg_mgmt.attr,
 	&scst_tg_group_id.attr,
+	&scst_tg_preferred.attr,
 	&scst_tg_state.attr,
 	NULL,
 };

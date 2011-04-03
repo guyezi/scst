@@ -429,6 +429,15 @@ enum scst_tg_state {
 };
 
 /**
+ * Target port group preferred bit.
+ *
+ * See also the documentation of the REPORT TARGET PORT GROUPS command in SPC-4.
+ */
+enum {
+	SCST_TG_PREFERRED = 0x80,
+};
+
+/**
  * enum scst_tg_sup - Supported SCSI target port group states.
  *
  * See also the documentation of the REPORT TARGET PORT GROUPS command in SPC-4.

@@ -2569,6 +2569,7 @@ struct scst_target_group {
 	char			*name;
 	uint16_t		group_id;
 	enum scst_tg_state	state;
+	bool			preferred;
 	struct list_head	entry;
 	struct list_head	tgt_list;
 	struct kobject		kobj;
