@@ -432,10 +432,9 @@ int scst_sysfs_queue_wait_work(struct scst_sysfs_work_item *work)
 	list_add_tail(&work->sysfs_work_list_entry, &sysfs_work_list);
 
 	active_sysfs_works++;
+	kref_get(&work->sysfs_work_kref);
 
 	spin_unlock(&sysfs_work_lock);
-
-	kref_get(&work->sysfs_work_kref);
 
 	wake_up(&sysfs_work_waitQ);
 
