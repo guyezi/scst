@@ -249,19 +249,14 @@ void scst_tg_tgt_remove_by_tgt(struct scst_tgt *tgt)
 {
 	struct scst_dev_group *dg;
 	struct scst_target_group *tg;
-	struct scst_tg_tgt *tg_tgt;
+	struct scst_tg_tgt *t, *t2;
 
 	BUG_ON(!tgt);
-	list_for_each_entry(dg, &scst_dev_group_list, entry) {
-		list_for_each_entry(tg, &dg->tg_list, entry) {
-			list_for_each_entry(tg_tgt, &tg->tgt_list, entry) {
-				if (tg_tgt->tgt == tgt) {
-					__scst_tg_tgt_remove(tg, tg_tgt);
-					break;
-				}
-			}
-		}
-	}
+	list_for_each_entry(dg, &scst_dev_group_list, entry)
+		list_for_each_entry(tg, &dg->tg_list, entry)
+			list_for_each_entry_safe(t, t2, &tg->tgt_list, entry)
+				if (t->tgt == tgt)
+					__scst_tg_tgt_remove(tg, t);
 }
 
 /*
