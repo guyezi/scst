@@ -2843,7 +2843,6 @@ free_mem:
 static void srpt_unmap_sg_to_ib_sge(struct srpt_rdma_ch *ch,
 				    struct srpt_send_ioctx *ioctx)
 {
-	struct scst_cmd *scmnd;
 	struct scatterlist *sg;
 	scst_data_direction dir;
 
@@ -2858,10 +2857,9 @@ static void srpt_unmap_sg_to_ib_sge(struct srpt_rdma_ch *ch,
 	ioctx->rdma_ius = NULL;
 
 	if (ioctx->mapped_sg_count) {
-		scmnd = ioctx->scmnd;
-		EXTRACHECKS_BUG_ON(!scmnd);
-		EXTRACHECKS_WARN_ON(ioctx->scmnd != scmnd);
-		EXTRACHECKS_WARN_ON(ioctx != scst_cmd_get_tgt_priv(scmnd));
+		EXTRACHECKS_BUG_ON(!ioctx->scmnd);
+		EXTRACHECKS_WARN_ON(ioctx
+				    != scst_cmd_get_tgt_priv(ioctx->scmnd));
 		sg = ioctx->sg;
 		EXTRACHECKS_WARN_ON(!sg);
 		dir = ioctx->dir;
@@ -3195,8 +3193,8 @@ static void srpt_tsk_mgmt_done(struct scst_mgmt_cmd *mcmnd)
  *
  * See also SPC-3, section 7.5.4.5, TransportID for initiator ports using SRP.
  */
-static int srpt_get_initiator_port_transport_id(struct scst_session *scst_sess,
-						uint8_t **transport_id)
+static int srpt_get_initiator_port_transport_id(struct scst_tgt *tgt,
+	struct scst_session *scst_sess,	uint8_t **transport_id)
 {
 	struct srpt_rdma_ch *ch;
 	struct spc_rdma_transport_id {
