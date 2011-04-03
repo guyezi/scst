@@ -2388,7 +2388,8 @@ static void vdisk_exec_report_tpgs(struct scst_cmd *cmd)
 
 	dev = cmd->dev;
 	data_format = cmd->cdb[1] >> 5;
-	allocation_length = get_unaligned((__be32 *)(cmd->cdb + 6));
+	allocation_length =
+		be32_to_cpu(get_unaligned((__be32 *)(cmd->cdb + 6)));
 
 	res = scst_tg_get_group_info(&buf, &data_length, dev, data_format);
 	switch (res) {

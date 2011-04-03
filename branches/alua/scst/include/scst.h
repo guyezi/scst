@@ -4109,7 +4109,7 @@ struct scst_sysfs_work_item {
 			unsigned long l;
 		};
 		struct {
-			struct kobject* kobj;
+			struct kobject *kobj;
 		};
 	};
 	int work_res;

@@ -5046,7 +5046,7 @@ static struct kobj_attribute scst_tg_group_id =
 	__ATTR(group_id, S_IRUGO | S_IWUSR, scst_tg_group_id_show,
 	       scst_tg_group_id_store);
 
-static struct { enum scst_tg_state s; const char* n; } scst_tg_state_names[] = {
+static struct { enum scst_tg_state s; const char *n; } scst_tg_state_names[] = {
 	{ SCST_TG_STATE_OPTIMIZED,	"active"	},
 	{ SCST_TG_STATE_NONOPTIMIZED,	"nonoptimized"	},
 	{ SCST_TG_STATE_STANDBY,	"standby"	},

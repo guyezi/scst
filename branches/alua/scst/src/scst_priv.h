@@ -413,7 +413,7 @@ void scst_tg_init(void);
 void scst_tg_cleanup(void);
 int scst_dg_add(struct kobject *parent, const char *name);
 int scst_dg_remove(const char *name);
-struct scst_dev_group* scst_lookup_dg_by_kobj(struct kobject *kobj);
+struct scst_dev_group *scst_lookup_dg_by_kobj(struct kobject *kobj);
 int scst_dg_dev_add(struct scst_dev_group *dg, const char *name);
 int scst_dg_dev_remove_by_name(struct scst_dev_group *dg, const char *name);
 int scst_dg_dev_remove_by_dev(struct scst_device *dev);
@@ -445,7 +445,7 @@ static inline int scst_dg_sysfs_add(struct kobject *parent,
 static inline void scst_dg_sysfs_del(struct scst_dev_group *dg)
 {
 }
-static inline int scst_dg_dev_sysfs_add(struct scst_dev_group *dg
+static inline int scst_dg_dev_sysfs_add(struct scst_dev_group *dg,
 					struct scst_dg_dev *dgdev)
 {
 	return 0;
@@ -453,7 +453,7 @@ static inline int scst_dg_dev_sysfs_add(struct scst_dev_group *dg
 static inline void scst_dg_dev_sysfs_del(struct scst_dg_dev *dgdev)
 {
 }
-static inline int scst_tg_sysfs_add(struct scst_dev_group *dg
+static inline int scst_tg_sysfs_add(struct scst_dev_group *dg,
 					struct scst_target_group *tg)
 {
 	return 0;
