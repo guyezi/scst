@@ -477,7 +477,7 @@ out:
 static void login_start(struct connection *conn)
 {
 	struct iscsi_login_req_hdr *req = (struct iscsi_login_req_hdr *)&conn->req.bhs;
-	char *name, *alias, *session_type, *target_name;
+	char *name, *session_type, *target_name;
 
 	conn->cid = be16_to_cpu(req->cid);
 	conn->sid.id64 = req->sid.id64;
@@ -495,7 +495,6 @@ static void login_start(struct connection *conn)
 		return;
 	}
 
-	alias = text_key_find(conn, "InitiatorAlias");
 	session_type = text_key_find(conn, "SessionType");
 	target_name = text_key_find(conn, "TargetName");
 
@@ -525,6 +524,8 @@ static void login_start(struct connection *conn)
 			login_rsp_ini_err(conn, ISCSI_STATUS_TGT_NOT_FOUND);
 			return;
 		}
+
+		conn->target = target;
 
 		/* We may "leak" here if we have an iSCSI event on the wrong time */
 		if (!iscsi_enabled) {
@@ -581,13 +582,15 @@ static void login_start(struct connection *conn)
 		rc = login_check_reinstatement(conn);
 		if (rc < 0)
 			return;
-		else if (rc == ISCSI_SESS_REINSTATEMENT)
+		else if (rc == ISCSI_SESS_REINSTATEMENT) {
 			target->sessions_count++;
-		else if (rc != ISCSI_CONN_REINSTATEMENT) {
+			conn->sessions_count_incremented = 1;
+		} else if (rc != ISCSI_CONN_REINSTATEMENT) {
 			if ((target->target_params[key_max_sessions] == 0) ||
-			    (target->sessions_count < target->target_params[key_max_sessions]))
+			    (target->sessions_count < target->target_params[key_max_sessions])) {
 				target->sessions_count++;
-			else {
+				conn->sessions_count_incremented = 1;
+			} else {
 				log_warning("Initiator %s not allowed to connect to "
 					"target %s - max sessions limit "
 					"reached (%d)",	name, target_name,
