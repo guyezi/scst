@@ -115,6 +115,11 @@ static void sess_params_check(struct iscsi_kern_params_info *info)
 	int32_t *iparams = info->session_params;
 	const int max_len = ISCSI_CONN_IOV_MAX * PAGE_SIZE;
 
+	/*
+	 * This is only kernel sanity check. Actual data validity checks
+	 * performed in the user space.
+	 */
+
 	CHECK_PARAM(info, iparams, initial_r2t, 0, 1);
 	CHECK_PARAM(info, iparams, immediate_data, 0, 1);
 	CHECK_PARAM(info, iparams, max_connections, 1, 1);
@@ -196,6 +201,12 @@ static void tgt_params_check(struct iscsi_session *session,
 	struct iscsi_kern_params_info *info)
 {
 	int32_t *iparams = info->target_params;
+	unsigned int rsp_timeout, nop_in_timeout;
+
+	/*
+	 * This is only kernel sanity check. Actual data validity checks
+	 * performed in the user space.
+	 */
 
 	CHECK_PARAM(info, iparams, queued_cmnds, MIN_NR_QUEUED_CMNDS,
 		min_t(int, MAX_NR_QUEUED_CMNDS,
@@ -204,6 +215,26 @@ static void tgt_params_check(struct iscsi_session *session,
 		MAX_RSP_TIMEOUT);
 	CHECK_PARAM(info, iparams, nop_in_interval, MIN_NOP_IN_INTERVAL,
 		MAX_NOP_IN_INTERVAL);
+	CHECK_PARAM(info, iparams, nop_in_timeout, MIN_NOP_IN_TIMEOUT,
+		MAX_NOP_IN_TIMEOUT);
+
+	/*
+	 * We adjust too long timeout in req_add_to_write_timeout_list()
+	 * only for NOPs, so check and warn if this assumption isn't honored.
+	 */
+	if (!info->partial || (info->partial & 1 << key_rsp_timeout))
+		rsp_timeout = iparams[key_rsp_timeout];
+	else
+		rsp_timeout = session->tgt_params.rsp_timeout;
+	if (!info->partial || (info->partial & 1 << key_nop_in_timeout))
+		nop_in_timeout = iparams[key_nop_in_timeout];
+	else
+		nop_in_timeout = session->tgt_params.nop_in_timeout;
+	if (nop_in_timeout > rsp_timeout)
+		PRINT_WARNING("%s", "RspTimeout should be >= NopInTimeout, "
+			"otherwise data transfer failure could take up to "
+			"NopInTimeout long to detect");
+
 	return;
 }
 
@@ -222,16 +253,19 @@ static int iscsi_tgt_params_set(struct iscsi_session *session,
 		SET_PARAM(params, info, iparams, queued_cmnds);
 		SET_PARAM(params, info, iparams, rsp_timeout);
 		SET_PARAM(params, info, iparams, nop_in_interval);
+		SET_PARAM(params, info, iparams, nop_in_timeout);
 
 		PRINT_INFO("Target parameters set for session %llx: "
 			"QueuedCommands %d, Response timeout %d, Nop-In "
-			"interval %d", session->sid, params->queued_cmnds,
-			params->rsp_timeout, params->nop_in_interval);
+			"interval %d, Nop-In timeout %d", session->sid,
+			params->queued_cmnds, params->rsp_timeout,
+			params->nop_in_interval, params->nop_in_timeout);
 
 		list_for_each_entry(conn, &session->conn_list,
 					conn_list_entry) {
-			conn->rsp_timeout = session->tgt_params.rsp_timeout * HZ;
+			conn->data_rsp_timeout = session->tgt_params.rsp_timeout * HZ;
 			conn->nop_in_interval = session->tgt_params.nop_in_interval * HZ;
+			conn->nop_in_timeout = session->tgt_params.nop_in_timeout * HZ;
 			spin_lock_bh(&conn->conn_thr_pool->rd_lock);
 			if (!conn->closing && (conn->nop_in_interval > 0)) {
 				TRACE_DBG("Schedule Nop-In work for conn %p", conn);
@@ -244,6 +278,7 @@ static int iscsi_tgt_params_set(struct iscsi_session *session,
 		GET_PARAM(params, info, iparams, queued_cmnds);
 		GET_PARAM(params, info, iparams, rsp_timeout);
 		GET_PARAM(params, info, iparams, nop_in_interval);
+		GET_PARAM(params, info, iparams, nop_in_timeout);
 	}
 
 	return 0;

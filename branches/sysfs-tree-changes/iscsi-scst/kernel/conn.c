@@ -519,14 +519,14 @@ static void conn_rsp_timer_fn(unsigned long arg)
 		cmnd = list_entry(conn->write_timeout_list.next,
 				struct iscsi_cmnd, write_timeout_list_entry);
 
-		timeout_time = j + conn->rsp_timeout + ISCSI_ADD_SCHED_TIME;
+		timeout_time = j + iscsi_get_timeout(cmnd) + ISCSI_ADD_SCHED_TIME;
 
-		if (unlikely(time_after_eq(j, cmnd->write_start +
-						conn->rsp_timeout))) {
+		if (unlikely(time_after_eq(j, iscsi_get_timeout_time(cmnd)))) {
 			if (!conn->closing) {
-				PRINT_ERROR("Timeout sending data/waiting "
+				PRINT_ERROR("Timeout %ld sec sending data/waiting "
 					"for reply to/from initiator "
 					"%s (SID %llx), closing connection",
+					iscsi_get_timeout(cmnd)/HZ,
 					conn->session->initiator_name,
 					(long long unsigned int)
 						conn->session->sid);
@@ -610,7 +610,8 @@ void iscsi_check_tm_data_wait_timeouts(struct iscsi_conn *conn, bool force)
 	TRACE_ENTRY();
 
 	TRACE_DBG_FLAG(force ? TRACE_CONN_OC_DBG : TRACE_MGMT_DEBUG,
-		"j %ld (TIMEOUT %d, force %d)", j,
+		"conn %p, read_cmnd %p, read_state %d, j %ld (TIMEOUT %d, "
+		"force %d)", conn, conn->read_cmnd, conn->read_state, j,
 		ISCSI_TM_DATA_WAIT_TIMEOUT + ISCSI_ADD_SCHED_TIME, force);
 
 	iscsi_extracheck_is_rd_thread(conn);
@@ -626,17 +627,39 @@ again:
 			TRACE_DBG_FLAG(force ? TRACE_CONN_OC_DBG : TRACE_MGMT_DEBUG,
 				"Checking aborted cmnd %p (scst_state %d, "
 				"on_write_timeout_list %d, write_start %ld, "
-				"r2t_len_to_receive %d)", cmnd,
-				cmnd->scst_state, cmnd->on_write_timeout_list,
-				cmnd->write_start, cmnd->r2t_len_to_receive);
-			if ((cmnd->r2t_len_to_receive != 0) &&
+				"r2t_len_to_receive %d)", cmnd, cmnd->scst_state,
+				cmnd->on_write_timeout_list, cmnd->write_start,
+				cmnd->r2t_len_to_receive);
+			if (cmnd == conn->read_cmnd) {
+				TRACE_DBG_FLAG(force ? TRACE_CONN_OC_DBG : TRACE_MGMT_DEBUG,
+					"cmnd %p is read cmd", cmnd);
+				sBUG_ON(force);
+				if ((conn->read_state == RX_INIT_BHS) ||
+				    (conn->read_state == RX_BHS)) {
+					TRACE_MGMT_DBG("Unabort not yet received cmnd %p",
+						cmnd);
+					clear_bit(ISCSI_CMD_ABORTED, &cmnd->prelim_compl_flags);
+					continue;
+				} else if (cmnd->scst_state == ISCSI_CMD_STATE_RX_CMD) {
+					TRACE_MGMT_DBG("Aborted cmnd %p is RX_CMD, "
+						"keep waiting", cmnd);
+					goto cont;
+				}
+			}
+			if (((cmnd == conn->read_cmnd) || (cmnd->r2t_len_to_receive != 0)) &&
 			    (time_after_eq(j, cmnd->write_start + ISCSI_TM_DATA_WAIT_TIMEOUT) ||
 			     force)) {
+				if (cmnd == conn->read_cmnd) {
+					TRACE_MGMT_DBG("Clearing read_cmnd for conn %p", conn);
+					conn->read_cmnd = NULL;
+					conn->read_state = RX_INIT_BHS;
+				}
 				spin_unlock(&conn->write_list_lock);
 				spin_unlock_bh(&conn->conn_thr_pool->rd_lock);
 				iscsi_fail_data_waiting_cmnd(cmnd);
 				goto again;
 			}
+cont:
 			aborted_cmds_pending = true;
 		}
 	}
@@ -877,8 +900,9 @@ static int iscsi_conn_alloc(struct iscsi_session *session,
 		conn);
 #endif
 	conn->last_rcv_time = jiffies;
-	conn->rsp_timeout = session->tgt_params.rsp_timeout * HZ;
+	conn->data_rsp_timeout = session->tgt_params.rsp_timeout * HZ;
 	conn->nop_in_interval = session->tgt_params.nop_in_interval * HZ;
+	conn->nop_in_timeout = session->tgt_params.nop_in_timeout * HZ;
 	if (conn->nop_in_interval > 0) {
 		TRACE_DBG("Schedule Nop-In work for conn %p", conn);
 		schedule_delayed_work(&conn->nop_in_delayed_work,
