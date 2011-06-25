@@ -1705,8 +1705,8 @@ static int nop_out_start(struct iscsi_cmnd *cmnd)
 			cmnd->sg = sg = scst_alloc(size, GFP_KERNEL,
 						&cmnd->sg_cnt);
 			if (sg == NULL) {
-				TRACE(TRACE_OUT_OF_MEM, "Allocating buffer for"
-				      " %d Nop-Out payload failed", size);
+				TRACE(TRACE_OUT_OF_MEM, "Allocation of buffer "
+					"for %d Nop-Out payload failed", size);
 				err = -ISCSI_REASON_OUT_OF_RESOURCES;
 				goto out;
 			}
@@ -3650,8 +3650,8 @@ static int iscsi_report_aen(struct scst_aen *aen)
 	return res;
 }
 
-static int iscsi_get_initiator_port_transport_id(struct scst_session *scst_sess,
-	uint8_t **transport_id)
+static int iscsi_get_initiator_port_transport_id(struct scst_tgt *tgt,
+	struct scst_session *scst_sess, uint8_t **transport_id)
 {
 	struct iscsi_session *sess;
 	int res = 0;
