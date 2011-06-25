@@ -474,7 +474,7 @@ EXPORT_SYMBOL(scst_unregister_target_template);
 struct scst_tgt *scst_register_target(struct scst_tgt_template *vtt,
 	const char *target_name)
 {
-	struct scst_tgt *tgt;
+	struct scst_tgt *tgt, *t;
 	int rc = 0;
 
 	TRACE_ENTRY();
@@ -520,6 +520,14 @@ struct scst_tgt *scst_register_target(struct scst_tgt_template *vtt,
 			goto out_unlock;
 		}
 		tgt_num++;
+	}
+
+	list_for_each_entry(t, &vtt->tgt_list, tgt_list_entry) {
+		if (strcmp(t->tgt_name, tgt->tgt_name) == 0) {
+			PRINT_ERROR("target %s already exists", tgt->tgt_name);
+			rc = -EEXIST;
+			goto out_unlock;
+		}
 	}
 
 #ifdef CONFIG_SCST_PROC
@@ -1639,7 +1647,7 @@ int scst_add_threads(struct scst_cmd_threads *cmd_threads,
 			 * sess->acg can be NULL here, if called from
 			 * scst_check_reassign_sess()!
 			 */
-#ifdef RHEL_MAJOR
+#if defined(RHEL_MAJOR) && RHEL_MAJOR -0 <= 5
 			rc = set_cpus_allowed(thr->cmd_thread,
 				tgt_dev->acg_dev->acg->acg_cpu_mask);
 #else

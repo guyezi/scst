@@ -1382,8 +1382,8 @@ static void vdisk_exec_unmap(struct scst_cmd *cmd, struct scst_vdisk_thr *thr)
 			(unsigned long long)start, len);
 
 		if (virt_dev->blockio) {
-			gfp_t gfp = cmd->noio_mem_alloc ? GFP_NOIO : GFP_KERNEL;
 #if LINUX_VERSION_CODE > KERNEL_VERSION(2, 6, 27)
+			gfp_t gfp = cmd->noio_mem_alloc ? GFP_NOIO : GFP_KERNEL;
 #if LINUX_VERSION_CODE <= KERNEL_VERSION(2, 6, 31)
 			err = blkdev_issue_discard(inode->i_bdev, start, len,
 					gfp);
@@ -1436,13 +1436,6 @@ static void vdisk_exec_inquiry(struct scst_cmd *cmd)
 	uint8_t *address;
 	uint8_t *buf;
 	struct scst_vdisk_dev *virt_dev = cmd->dev->dh_priv;
-
-	/* ToDo: Performance Boost:
-	 * 1. remove kzalloc, buf
-	 * 2. do all checks before touching *address
-	 * 3. zero *address
-	 * 4. write directly to *address
-	 */
 
 	TRACE_ENTRY();
 
@@ -1637,11 +1630,11 @@ static void vdisk_exec_inquiry(struct scst_cmd *cmd)
 		if (virt_dev->removable)
 			buf[1] = 0x80;      /* removable */
 		buf[2] = 5; /* Device complies to SPC-3 */
-		buf[3] = 0x12;	/* HiSup + data in format specified in SPC */
+		buf[3] = 0x02;	/* Data in format specified in SPC */
 		if (cmd->tgtt->fake_aca)
 			buf[3] |= 0x20;
 		buf[4] = 31;/* n - 4 = 35 - 4 = 31 for full 36 byte data */
-		buf[6] = 1; /* MultiP 1 */
+		buf[6] = 0x10; /* MultiP 1 */
 		buf[7] = 2; /* CMDQUE 1, BQue 0 => commands queuing supported */
 
 		/*
