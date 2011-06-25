@@ -1322,12 +1322,71 @@ static struct device_attribute scst_rel_tgt_id =
 	__ATTR(rel_tgt_id, S_IRUGO | S_IWUSR, scst_rel_tgt_id_show,
 	       scst_rel_tgt_id_store);
 
+static ssize_t scst_tgt_comment_show(struct device *device,
+				     struct device_attribute *attr, char *buf)
+{
+	struct scst_tgt *tgt;
+	int res;
+
+	TRACE_ENTRY();
+
+	tgt = scst_dev_to_tgt(device);
+
+	res = tgt->tgt_comment ? sprintf(buf, "%s\n", tgt->tgt_comment) : 0;
+
+	TRACE_EXIT_RES(res);
+	return res;
+}
+
+static ssize_t scst_tgt_comment_store(struct device *device,
+		struct device_attribute *attr, const char *buf, size_t count)
+{
+	int res;
+	struct scst_tgt *tgt;
+	char *p;
+	int len;
+
+	TRACE_ENTRY();
+
+	tgt = scst_dev_to_tgt(device);
+
+	len = buf ? strnlen(buf, count) : 0;
+	if (len > 0 && buf[len - 1] == '\n')
+		len--;
+
+	p = NULL;
+	if (len == 0)
+		goto swap;
+
+	res = -ENOMEM;
+	p = kasprintf(GFP_KERNEL, "%.*s", len, buf);
+	if (!p) {
+		PRINT_ERROR("Unable to alloc tgt_comment string (len %d)",
+			len+1);
+		goto out;
+	}
+
+swap:
+	kfree(tgt->tgt_comment);
+	tgt->tgt_comment = p;
+	res = count;
+
+out:
+	TRACE_EXIT_RES(res);
+	return res;
+}
+
+static struct device_attribute scst_tgt_comment =
+	__ATTR(comment, S_IRUGO | S_IWUSR, scst_tgt_comment_show,
+	       scst_tgt_comment_store);
+
 #if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 34)
 static struct device_attribute *scst_tgt_attr[] = {
 #else
 static const struct device_attribute *scst_tgt_attr[] = {
 #endif
 	&scst_rel_tgt_id,
+	&scst_tgt_comment,
 	&scst_tgt_addr_method,
 	&scst_tgt_io_grouping_type,
 	&scst_tgt_cpu_mask,
