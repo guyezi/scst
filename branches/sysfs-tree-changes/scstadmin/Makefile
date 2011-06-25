@@ -1,6 +1,26 @@
 SCSTADMIN_DIR = scstadmin
 
-INITDIR := $(PREFIX)/etc/init.d
+INITDIR := $(shell if [ -f /etc/slackware-version ]; then	\
+                     echo $(PREFIX)/etc/rc.d;			\
+                   else						\
+                     echo $(PREFIX)/etc/init.d;			\
+                   fi)
+INSTALL_INITD_CMD := $(shell if [ -f /etc/gentoo-release ]; then	\
+			       echo rc-update add;			\
+			     elif [ -f /etc/slackware-version ]; then	\
+			       echo none;				\
+			     else					\
+			       echo /usr/lib/lsb/install_initd;		\
+			     fi)
+INSTALL_INITD_ARGS := $(shell [ -f /etc/gentoo-release ] && echo default)
+REMOVE_INITD_CMD := $(shell if [ -f /etc/gentoo-release ]; then		\
+			      echo rc-update del;			\
+			    elif [ -f /etc/slackware-version ]; then	\
+			      echo none;				\
+			    else					\
+			      echo /usr/lib/lsb/remove_initd;		\
+			    fi)
+DEFAULTDIR := $(PREFIX)/etc/default
 
 all:
 	cd $(SCSTADMIN_DIR) && $(MAKE) $@
@@ -9,20 +29,40 @@ install:
 	@if ! perl -MExtUtils::MakeMaker -e '' >/dev/null 2>&1; then \
 	echo Error: the Perl module ExtUtils::MakeMaker must be installed \
 	first; false; fi
-	@if [ ! -e /usr/lib/lsb/install_initd ]; then \
-	echo Error: the lsb-core package must be installed first; false; fi
+	@if [ ! -e /etc/slackware-version -a ! -e /etc/gentoo-release	      \
+	      -a ! -e /lib/lsb/init-functions ]; then			      \
+	echo "Error: the lsb-core (Debian, Ubuntu), redhat-lsb (RHEL, CentOS,"\
+	"Scientific Linux, Fedora) or insserv (SLES, openSUSE) package must"  \
+	"be installed first"; false; fi
 	cd $(SCSTADMIN_DIR) && $(MAKE) $@
-	-/usr/lib/lsb/install_initd scst
-	-/usr/lib/lsb/install_initd qla2x00t
-	mkdir -m 755 -p $(DESTDIR)$(INITDIR)
+	install -d $(DESTDIR)$(INITDIR)
 	install -m 755 init.d/scst $(DESTDIR)$(INITDIR)
-	install -m 755 init.d/qla2x00t $(DESTDIR)$(INITDIR)
+	if [ ! -e  $(DESTDIR)$(DEFAULTDIR)/scst ]; then		\
+	  install -m 755 default/scst $(DESTDIR)$(DEFAULTDIR);	\
+	fi
+	@if [ "$(INSTALL_INITD_CMD)" != "none" ]; then			    \
+	  echo;								    \
+	  echo 'If you want SCST to start automatically at boot time, run'  \
+	      'the following command:';					    \
+	  if [ ! -z "$(DESTDIR)" ]; then echo -n "chroot $(DESTDIR) "; fi;  \
+	  echo '$(INSTALL_INITD_CMD) scst $(INSTALL_INITD_ARGS)';	    \
+	  echo; \
+	fi
 
 uninstall:
-	-/usr/lib/lsb/remove_initd qla2x00t
-	-/usr/lib/lsb/remove_initd scst
-	-rm -f $(DESTDIR)$(PATH_INITD)/qla2x00t
-	-rm -f $(DESTDIR)$(PATH_INITD)/scst
+	if [ -e $(DESTDIR)$(DEFAULTDIR)/scst ]; then	\
+	  mv $(DESTDIR)$(DEFAULTDIR)/scst		\
+	    $(DESTDIR)$(DEFAULTDIR)/scst.`date +%F,%T`;	\
+	fi
+	if [ -e $(DESTDIR)$(INITDIR)/scst -a "$(REMOVE_INITD_CMD)" != "none" ];\
+	then							\
+	  if [ -z "$(DESTDIR)" ]; then				\
+	    $(REMOVE_INITD_CMD) scst;				\
+	  else							\
+	    chroot $(DESTDIR) $(REMOVE_INITD_CMD) scst;		\
+	  fi;							\
+	  rm -f $(DESTDIR)$(INITDIR)/scst;			\
+	fi
 	cd $(SCSTADMIN_DIR) && $(MAKE) $@
 
 perl-module:

@@ -37,7 +37,9 @@
 #include <asm/atomic.h>
 #include <linux/kthread.h>
 #include <linux/sched.h>
+#ifndef INSIDE_KERNEL_TREE
 #include <linux/version.h>
+#endif
 #include <asm/div64.h>
 #include <asm/unaligned.h>
 #include <linux/slab.h>
@@ -152,6 +154,9 @@ struct scst_vdisk_dev {
 	unsigned int cdrom_empty:1;
 	unsigned int removable:1;
 	unsigned int thin_provisioned:1;
+	unsigned int thin_provisioned_manually_set:1;
+	unsigned int dev_thin_provisioned:1;
+
 
 	int virt_id;
 	char name[16+1];	/* Name of the virtual device,
@@ -653,21 +658,22 @@ out:
 
 static void vdisk_check_tp_support(struct scst_vdisk_dev *virt_dev)
 {
-	struct inode *inode;
-	struct file *fd;
-	bool supported = false;
+	struct inode *inode = NULL;
+	struct file *fd = NULL;
 
 	TRACE_ENTRY();
 
-	if (virt_dev->rd_only || !virt_dev->thin_provisioned)
-		goto out;
+	virt_dev->dev_thin_provisioned = 0;
 
 	mutex_lock(&virt_dev->filename_mutex);
-	fd = filp_open(virt_dev->filename, O_LARGEFILE, 0600);
-	if (IS_ERR(fd)) {
-		PRINT_ERROR("filp_open(%s) returned error %ld",
-			virt_dev->filename, PTR_ERR(fd));
-		goto out_unlock;
+
+	if (!virt_dev->rd_only && virt_dev->filename) {
+		fd = filp_open(virt_dev->filename, O_LARGEFILE, 0600);
+		if (IS_ERR(fd)) {
+			PRINT_ERROR("filp_open(%s) returned error %ld",
+				virt_dev->filename, PTR_ERR(fd));
+			goto out_check;
+		}
 	}
 
 	inode = fd->f_dentry->d_inode;
@@ -679,32 +685,40 @@ static void vdisk_check_tp_support(struct scst_vdisk_dev *virt_dev)
 			goto out_close;
 		}
 #if LINUX_VERSION_CODE > KERNEL_VERSION(2, 6, 31)
-		supported = blk_queue_discard(bdev_get_queue(inode->i_bdev));
-#else
-		supported = false;
+		virt_dev->dev_thin_provisioned =
+			blk_queue_discard(bdev_get_queue(inode->i_bdev));
 #endif
-
 	} else {
 		/*
 		 * truncate_range() was chosen rather as a sample. In future,
 		 * when unmap of range of blocks in file become standard, we
 		 * will just switch to the new call.
 		 */
-		supported = (inode->i_op->truncate_range != NULL);
-	}
-
-	if (!supported) {
-		PRINT_WARNING("Device %s doesn't support thin "
-			"provisioning, disabling it.",
-			virt_dev->filename);
-		virt_dev->thin_provisioned = 0;
+		virt_dev->dev_thin_provisioned = (inode->i_op->truncate_range != NULL);
 	}
 
 out_close:
-	filp_close(fd, NULL);
-out_unlock:
+	if (fd != NULL)
+		filp_close(fd, NULL);
+
+out_check:
+	if (virt_dev->thin_provisioned_manually_set) {
+		if (virt_dev->thin_provisioned && !virt_dev->dev_thin_provisioned) {
+			PRINT_WARNING("Device %s doesn't support thin "
+				"provisioning, disabling it.",
+				virt_dev->filename);
+			virt_dev->thin_provisioned = 0;
+		}
+	} else if (virt_dev->blockio) {
+		virt_dev->thin_provisioned = virt_dev->dev_thin_provisioned;
+		if (virt_dev->thin_provisioned)
+			PRINT_INFO("Auto enable thin provisioning for device "
+				"%s", virt_dev->filename);
+
+	}
+
 	mutex_unlock(&virt_dev->filename_mutex);
-out:
+
 	TRACE_EXIT();
 	return;
 }
@@ -1430,6 +1444,51 @@ out:
 	return;
 }
 
+static void vdev_blockio_get_unmap_params(struct scst_vdisk_dev *virt_dev,
+	uint32_t *unmap_gran, uint32_t *unmap_alignment,
+	uint32_t *max_unmap_lba)
+{
+#if LINUX_VERSION_CODE > KERNEL_VERSION(2, 6, 32) || (defined(RHEL_MAJOR) && RHEL_MAJOR -0 >= 6)
+	struct file *fd;
+	struct request_queue *q;
+#endif
+
+	TRACE_ENTRY();
+
+	*unmap_gran = 1;
+	*unmap_alignment = 0;
+	*max_unmap_lba = 0xFFFFFFFF;
+
+#if LINUX_VERSION_CODE > KERNEL_VERSION(2, 6, 32) || (defined(RHEL_MAJOR) && RHEL_MAJOR -0 >= 6)
+	fd = filp_open(virt_dev->filename, O_LARGEFILE, 0600);
+	if (IS_ERR(fd)) {
+		PRINT_ERROR("filp_open(%s) returned error %ld",
+			virt_dev->filename, PTR_ERR(fd));
+		goto out;
+	}
+
+	q = bdev_get_queue(fd->f_dentry->d_inode->i_bdev);
+	if (q == NULL) {
+		PRINT_ERROR("No queue for device %s", virt_dev->filename);
+		goto out_close;
+	}
+
+	*unmap_gran = q->limits.discard_granularity >> virt_dev->block_shift;
+	*unmap_alignment = q->limits.discard_alignment >> virt_dev->block_shift;
+	*max_unmap_lba = q->limits.max_discard_sectors >> (virt_dev->block_shift - 9);
+
+	TRACE_DBG("unmap_gran %d, unmap_alignment %d, max_unmap_lba %u",
+		*unmap_gran, *unmap_alignment, *max_unmap_lba);
+
+out_close:
+	filp_close(fd, NULL);
+
+out:
+#endif
+	TRACE_EXIT();
+	return;
+}
+
 static void vdisk_exec_inquiry(struct scst_cmd *cmd)
 {
 	int32_t length, i, resp_len = 0;
@@ -1591,15 +1650,33 @@ static void vdisk_exec_inquiry(struct scst_cmd *cmd)
 					512*1024 / virt_dev->block_size)),
 				      (uint32_t *)&buf[12]);
 			if (virt_dev->thin_provisioned) {
-				/* MAXIMUM UNMAP LBA COUNT is UNLIMITED */
-				put_unaligned(__constant_cpu_to_be32(0xFFFFFFFF),
-					      (uint32_t *)&buf[20]);
 				/* MAXIMUM UNMAP BLOCK DESCRIPTOR COUNT is UNLIMITED */
 				put_unaligned(__constant_cpu_to_be32(0xFFFFFFFF),
 					      (uint32_t *)&buf[24]);
-				/* OPTIMAL UNMAP GRANULARITY is 1 */
-				put_unaligned(__constant_cpu_to_be32(1),
-					      (uint32_t *)&buf[28]);
+				if (virt_dev->blockio) {
+					/*
+					 * OPTIMAL UNMAP GRANULARITY, ALIGNMENT
+					 * and MAXIMUM UNMAP LBA COUNT */
+					uint32_t gran, align, max_lba;
+					vdev_blockio_get_unmap_params(virt_dev,
+						&gran, &align, &max_lba);
+					put_unaligned(cpu_to_be32(max_lba),
+					      (uint32_t *)&buf[20]);
+					put_unaligned(cpu_to_be32(gran),
+						(uint32_t *)&buf[28]);
+					if (align != 0) {
+						put_unaligned(cpu_to_be32(align),
+							(uint32_t *)&buf[32]);
+						buf[32] |= 0x80;
+					}
+				} else {
+					/* MAXIMUM UNMAP LBA COUNT is UNLIMITED */
+					put_unaligned(__constant_cpu_to_be32(0xFFFFFFFF),
+					      (uint32_t *)&buf[20]);
+					/* OPTIMAL UNMAP GRANULARITY is 1 */
+					put_unaligned(__constant_cpu_to_be32(1),
+						(uint32_t *)&buf[28]);
+				}
 			}
 			resp_len = buf[3] + 4;
 		} else if ((0xB2 == cmd->cdb[2]) &&
@@ -3510,6 +3587,7 @@ static int vdev_parse_add_dev_params(struct scst_vdisk_dev *virt_dev,
 			TRACE_DBG("REMOVABLE %d", virt_dev->removable);
 		} else if (!strcasecmp("thin_provisioned", p)) {
 			virt_dev->thin_provisioned = val;
+			virt_dev->thin_provisioned_manually_set = 1;
 			TRACE_DBG("THIN PROVISIONED %d",
 				virt_dev->thin_provisioned);
 		} else if (!strcasecmp("blocksize", p)) {
@@ -4142,7 +4220,7 @@ static ssize_t vdisk_sysfs_tp_show(struct device *device,
 	virt_dev = dev->dh_priv;
 
 	pos = sprintf(buf, "%d\n%s", virt_dev->thin_provisioned ? 1 : 0,
-		(virt_dev->thin_provisioned == DEF_THIN_PROVISIONED) ? "" :
+		(virt_dev->thin_provisioned == virt_dev->dev_thin_provisioned) ? "" :
 			SCST_SYSFS_KEY_MARK "");
 
 	TRACE_EXIT_RES(pos);

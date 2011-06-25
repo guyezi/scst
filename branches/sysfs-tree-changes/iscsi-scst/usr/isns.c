@@ -102,7 +102,7 @@ static int isns_get_ip(int fd)
 
 	err = getsockname(fd, &lss.sa, &slen);
 	if (err) {
-		log_error("getsockname error: %s!", get_error_str(err));
+		log_error("getsockname error: %s!", strerror(errno));
 		return err;
 	}
 
@@ -143,7 +143,7 @@ static int isns_connect(void)
 
 	fd = socket(ss.ss_family, SOCK_STREAM, IPPROTO_TCP);
 	if (fd < 0) {
-		log_error("unable to create (%s) %d!", get_error_str(errno),
+		log_error("unable to create (%s) %d!", strerror(errno),
 			  ss.ss_family);
 		return -errno;
 	}
@@ -154,13 +154,13 @@ static int isns_connect(void)
 	 */
 	err = connect(fd, (struct sockaddr *)&ss, sizeof(ss));
 	if (err < 0) {
-		log_error("unable to connect (%s) %d!", get_error_str(errno),
+		log_error("unable to connect (%s) %d!", strerror(errno),
 			  ss.ss_family);
 		close(fd);
 		return -errno;
 	}
 
-	log_error("%s %d: new connection %d", __func__, __LINE__, fd);
+	log_info("%s %d: new connection %d", __func__, __LINE__, fd);
 
 	if (!strlen(eid)) {
 		err = isns_get_ip(fd);
@@ -256,7 +256,7 @@ static int isns_scn_deregister(char *name)
 
 	err = write(isns_fd, buf, length + sizeof(struct isns_hdr));
 	if (err < 0)
-		log_error("%s %d: %s", __func__, __LINE__, get_error_str(errno));
+		log_error("%s %d: %s", __func__, __LINE__, strerror(errno));
 
 out:
 	return err;
@@ -334,7 +334,7 @@ static int isns_scn_register(void)
 
 	err = write(isns_fd, buf, length + sizeof(struct isns_hdr));
 	if (err < 0)
-		log_error("%s %d: %s", __func__, __LINE__, get_error_str(errno));
+		log_error("%s %d: %s", __func__, __LINE__, strerror(errno));
 
 out:
 	return err;
@@ -417,7 +417,7 @@ static int isns_attr_query(char *name)
 
 	err = write(isns_fd, buf, length + sizeof(struct isns_hdr));
 	if (err < 0)
-		log_error("%s %d: %s", __func__, __LINE__, get_error_str(errno));
+		log_error("%s %d: %s", __func__, __LINE__, strerror(errno));
 
 out:
 	return err;
@@ -471,7 +471,7 @@ static int isns_deregister(void)
 
 	err = write(isns_fd, buf, length + sizeof(struct isns_hdr));
 	if (err < 0)
-		log_error("%s %d: %s", __func__, __LINE__, get_error_str(errno));
+		log_error("%s %d: %s", __func__, __LINE__, strerror(errno));
 out:
 	return err;
 }
@@ -576,7 +576,7 @@ int isns_target_register(char *name)
 
 	err = write(isns_fd, buf, length + sizeof(struct isns_hdr));
 	if (err < 0)
-		log_error("%s %d: %s", __func__, __LINE__, get_error_str(errno));
+		log_error("%s %d: %s", __func__, __LINE__, strerror(errno));
 
 	if (scn_listen_port)
 		isns_scn_register();
@@ -658,7 +658,7 @@ int isns_target_deregister(char *name)
 
 	err = write(isns_fd, buf, length + sizeof(struct isns_hdr));
 	if (err < 0)
-		log_error("%s %d: %s", __func__, __LINE__, get_error_str(errno));
+		log_error("%s %d: %s", __func__, __LINE__, strerror(errno));
 
 out:
 	return err;
@@ -674,8 +674,8 @@ static int recv_hdr(int fd, struct isns_io *rx, struct isns_hdr *hdr)
 		if (err < 0) {
 			if (errno == EAGAIN || errno == EINTR)
 				return -EAGAIN;
-			log_error("header read error %d %d %d %d",
-				  fd, err, errno, rx->offset);
+			log_error("header read error %d %d %s %d",
+				  fd, err, strerror(errno), rx->offset);
 			return -1;
 		} else if (err == 0)
 			return -1;
@@ -726,8 +726,8 @@ static int recv_pdu(int fd, struct isns_io *rx, struct isns_hdr *hdr)
 		if (err < 0) {
 			if (errno == EAGAIN || errno == EINTR)
 				return -EAGAIN;
-			log_error("pdu read error %d %d %d %d",
-				  fd, err, errno, rx->offset);
+			log_error("pdu read error %d %d %s %d",
+				  fd, err, strerror(errno), rx->offset);
 			return -1;
 		} else if (err == 0)
 			return -1;
@@ -781,18 +781,18 @@ static char *print_scn_pdu(struct isns_hdr *hdr)
 		switch (ntohl(tlv->tag)) {
 		case ISNS_ATTR_ISCSI_NAME:
 			((char *)tlv->value)[vlen-1] = '\0';
-			log_error("scn name: %u, %s", vlen, (char *)tlv->value);
+			log_debug(3, "scn name: %u, %s", vlen, (char *)tlv->value);
 			if (!name)
 				name = (char *)tlv->value;
 			break;
 		case ISNS_ATTR_TIMESTAMP:
 			if (vlen < 8)
 				goto next;
-			/* log_error("%u : %u : %" PRIx64, ntohl(tlv->tag), vlen, */
+			/* log_debug(3, "%u : %u : %" PRIx64, ntohl(tlv->tag), vlen, */
 			/* *((uint64_t *)tlv->value)); */
 			break;
 		case ISNS_ATTR_ISCSI_SCN_BITMAP:
-			log_error("scn bitmap : %x", *((uint32_t *)tlv->value));
+			log_debug(3, "scn bitmap : %x", *((uint32_t *)tlv->value));
 			break;
 		}
 
@@ -876,7 +876,7 @@ found:
 			break;
 		case ISNS_ATTR_ISCSI_NODE_TYPE:
 			if (ntohl(*(tlv->value)) == ISNS_NODE_INITIATOR && name) {
-				log_error("%s %d: %s", __func__, __LINE__,
+				log_debug(3, "%s %d: %s", __func__, __LINE__,
 					  (char *)name);
 				ini = malloc(sizeof(*ini));
 				if (!ini)
@@ -946,7 +946,7 @@ int isns_handle(int is_timeout)
 	case ISNS_FUNC_SCN:
 		name = print_scn_pdu(hdr);
 		if (name) {
-			log_error("%s %d: %s", __func__, __LINE__, name);
+			log_debug(3, "%s %d: %s", __func__, __LINE__, name);
 			isns_attr_query(name);
 		}
 		break;
@@ -971,15 +971,15 @@ static int scn_accept_connection(void)
 	fd = accept(scn_listen_fd, &from.sa, &slen);
 	if (fd < 0) {
 		log_error("%s %d: accept error: %s", __func__, __LINE__,
-			  get_error_str(errno));
+			  strerror(errno));
 		return -errno;
 	}
-	log_error("Accept scn connection %d", fd);
+	log_info("Accept scn connection %d", fd);
 
 	err = setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, &opt, sizeof(opt));
 	if (err)
 		log_error("%s %d: %s\n", __func__, __LINE__,
-			  get_error_str(errno));
+			  strerror(errno));
 	/* not critical, so ignore. */
 
 	scn_fd = fd;
@@ -1013,7 +1013,7 @@ static int send_scn_rsp(char *name, uint16_t transaction)
 
 	err = write(scn_fd, buf, length + sizeof(struct isns_hdr));
 	if (err < 0)
-		log_error("%s %d: %s", __func__, __LINE__, get_error_str(errno));
+		log_error("%s %d: %s", __func__, __LINE__, strerror(errno));
 
 out:
 	return err;
@@ -1030,7 +1030,7 @@ int isns_scn_handle(int is_accept)
 	uint16_t sequence __attribute__((unused));
 	char *name = NULL;
 
-	log_error("%s %d: %d", __func__, __LINE__, is_accept);
+	log_debug(3, "%s %d: %d", __func__, __LINE__, is_accept);
 
 	if (is_accept)
 		return scn_accept_connection();
@@ -1077,7 +1077,7 @@ static int scn_init(void)
 
 	fd = socket(ss.ss_family, SOCK_STREAM, IPPROTO_TCP);
 	if (fd < 0) {
-		log_error("%s %d: %s\n", __func__, __LINE__, get_error_str(errno));
+		log_error("%s %d: %s\n", __func__, __LINE__, strerror(errno));
 		err = -errno;
 		goto out;
 	}
@@ -1087,21 +1087,21 @@ static int scn_init(void)
 		err = setsockopt(fd, IPPROTO_IPV6, IPV6_V6ONLY, &opt, sizeof(opt));
 		if (err) {
 			log_error("%s %d: %s\n", __func__, __LINE__,
-				  get_error_str(errno));
+				  strerror(errno));
 			goto out_close;
 		}
 	}
 
 	err = listen(fd, 5);
 	if (err) {
-		log_error("%s %d: %s\n", __func__, __LINE__, get_error_str(errno));
+		log_error("%s %d: %s\n", __func__, __LINE__, strerror(errno));
 		goto out_close;
 	}
 
 	slen = sizeof(lss);
 	err = getsockname(fd, (struct sockaddr *)&lss, &slen);
 	if (err) {
-		log_error("%s %d: %s\n", __func__, __LINE__, get_error_str(errno));
+		log_error("%s %d: %s\n", __func__, __LINE__, strerror(errno));
 		goto out_close;
 	}
 

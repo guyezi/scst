@@ -213,11 +213,9 @@ struct scst_cmd *scst_rx_cmd(struct scst_session *sess,
 	cmd->tgtt = sess->tgt->tgtt;
 
 	cmd->lun = scst_unpack_lun(lun, lun_len);
-	if (unlikely(cmd->lun == NO_SUCH_LUN)) {
-		PRINT_ERROR("Wrong LUN %d, finishing cmd", -1);
+	if (unlikely(cmd->lun == NO_SUCH_LUN))
 		scst_set_cmd_error(cmd,
 			   SCST_LOAD_SENSE(scst_sense_lun_not_supported));
-	}
 
 	TRACE_DBG("cmd %p, sess %p", cmd, sess);
 	scst_sess_get(sess);
@@ -348,9 +346,9 @@ void scst_cmd_init_done(struct scst_cmd *cmd,
 
 	TRACE_DBG("Preferred context: %d (cmd %p)", pref_context, cmd);
 	TRACE(TRACE_SCSI, "tag=%llu, lun=%lld, CDB len=%d, queue_type=%x "
-		"(cmd %p)", (long long unsigned int)cmd->tag,
+		"(cmd %p, sess %p)", (long long unsigned int)cmd->tag,
 		(long long unsigned int)cmd->lun, cmd->cdb_len,
-		cmd->queue_type, cmd);
+		cmd->queue_type, cmd, sess);
 	PRINT_BUFF_FLAG(TRACE_SCSI|TRACE_RCV_BOT, "Receiving CDB",
 		cmd->cdb, cmd->cdb_len);
 
@@ -4042,23 +4040,9 @@ int scst_init_thread(void *arg)
 
 	spin_lock_irq(&scst_init_lock);
 	while (!kthread_should_stop()) {
-		wait_queue_t wait;
-		init_waitqueue_entry(&wait, current);
-
-		if (!test_init_cmd_list()) {
-			add_wait_queue_exclusive(&scst_init_cmd_list_waitQ,
-						 &wait);
-			for (;;) {
-				set_current_state(TASK_INTERRUPTIBLE);
-				if (test_init_cmd_list())
-					break;
-				spin_unlock_irq(&scst_init_lock);
-				schedule();
-				spin_lock_irq(&scst_init_lock);
-			}
-			set_current_state(TASK_RUNNING);
-			remove_wait_queue(&scst_init_cmd_list_waitQ, &wait);
-		}
+		wait_event_locked(scst_init_cmd_list_waitQ,
+				  test_init_cmd_list(),
+				  lock_irq, scst_init_lock);
 		scst_do_job_init();
 	}
 	spin_unlock_irq(&scst_init_lock);
@@ -4334,24 +4318,9 @@ int scst_cmd_thread(void *arg)
 
 	spin_lock_irq(&p_cmd_threads->cmd_list_lock);
 	while (!kthread_should_stop()) {
-		wait_queue_t wait;
-		init_waitqueue_entry(&wait, current);
-
-		if (!test_cmd_threads(p_cmd_threads)) {
-			add_wait_queue_exclusive_head(
-				&p_cmd_threads->cmd_list_waitQ,
-				&wait);
-			for (;;) {
-				set_current_state(TASK_INTERRUPTIBLE);
-				if (test_cmd_threads(p_cmd_threads))
-					break;
-				spin_unlock_irq(&p_cmd_threads->cmd_list_lock);
-				schedule();
-				spin_lock_irq(&p_cmd_threads->cmd_list_lock);
-			}
-			set_current_state(TASK_RUNNING);
-			remove_wait_queue(&p_cmd_threads->cmd_list_waitQ, &wait);
-		}
+		wait_event_locked(p_cmd_threads->cmd_list_waitQ,
+				  test_cmd_threads(p_cmd_threads), lock_irq,
+				  p_cmd_threads->cmd_list_lock);
 
 		if (tm_dbg_is_release()) {
 			spin_unlock_irq(&p_cmd_threads->cmd_list_lock);
@@ -5680,10 +5649,10 @@ static void scst_mgmt_cmd_send_done(struct scst_mgmt_cmd *mcmd)
 
 	if (mcmd->fn < SCST_UNREG_SESS_TM)
 		TRACE(TRACE_MGMT, "TM fn %d finished, "
-		"status %x", mcmd->fn, mcmd->status);
+			"status %d", mcmd->fn, mcmd->status);
 	else
 		TRACE_MGMT_DBG("TM fn %d finished, "
-		"status %x", mcmd->fn, mcmd->status);
+			"status %d", mcmd->fn, mcmd->status);
 
 	if (mcmd->fn == SCST_PR_ABORT_ALL) {
 		mcmd->origin_pr_cmd->scst_cmd_done(mcmd->origin_pr_cmd,
@@ -5814,23 +5783,9 @@ int scst_tm_thread(void *arg)
 
 	spin_lock_irq(&scst_mcmd_lock);
 	while (!kthread_should_stop()) {
-		wait_queue_t wait;
-		init_waitqueue_entry(&wait, current);
-
-		if (!test_mgmt_cmd_list()) {
-			add_wait_queue_exclusive(&scst_mgmt_cmd_list_waitQ,
-						 &wait);
-			for (;;) {
-				set_current_state(TASK_INTERRUPTIBLE);
-				if (test_mgmt_cmd_list())
-					break;
-				spin_unlock_irq(&scst_mcmd_lock);
-				schedule();
-				spin_lock_irq(&scst_mcmd_lock);
-			}
-			set_current_state(TASK_RUNNING);
-			remove_wait_queue(&scst_mgmt_cmd_list_waitQ, &wait);
-		}
+		wait_event_locked(scst_mgmt_cmd_list_waitQ,
+				  test_mgmt_cmd_list(), lock_irq,
+				  scst_mcmd_lock);
 
 		while (!list_empty(&scst_active_mgmt_cmd_list)) {
 			int rc;
@@ -6642,22 +6597,8 @@ int scst_global_mgmt_thread(void *arg)
 
 	spin_lock_irq(&scst_mgmt_lock);
 	while (!kthread_should_stop()) {
-		wait_queue_t wait;
-		init_waitqueue_entry(&wait, current);
-
-		if (!test_mgmt_list()) {
-			add_wait_queue_exclusive(&scst_mgmt_waitQ, &wait);
-			for (;;) {
-				set_current_state(TASK_INTERRUPTIBLE);
-				if (test_mgmt_list())
-					break;
-				spin_unlock_irq(&scst_mgmt_lock);
-				schedule();
-				spin_lock_irq(&scst_mgmt_lock);
-			}
-			set_current_state(TASK_RUNNING);
-			remove_wait_queue(&scst_mgmt_waitQ, &wait);
-		}
+		wait_event_locked(scst_mgmt_waitQ, test_mgmt_list(), lock_irq,
+				  scst_mgmt_lock);
 
 		while (!list_empty(&scst_sess_init_list)) {
 			sess = list_entry(scst_sess_init_list.next,

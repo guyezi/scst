@@ -24,7 +24,9 @@
 #define __SCST_H
 
 #include <linux/types.h>
+#ifndef INSIDE_KERNEL_TREE
 #include <linux/version.h>
+#endif
 #include <linux/blkdev.h>
 #include <linux/interrupt.h>
 #include <linux/wait.h>
@@ -68,7 +70,7 @@ typedef _Bool bool;
 #include "scst_sgv.h"
 #endif
 
-#if LINUX_VERSION_CODE <= KERNEL_VERSION(2, 6, 20)
+#if LINUX_VERSION_CODE <= KERNEL_VERSION(2, 6, 20) && !defined(BACKPORT_LINUX_CPUMASK_H)
 #define nr_cpu_ids NR_CPUS
 #endif
 
@@ -3483,8 +3485,6 @@ void scst_aen_done(struct scst_aen *aen);
  * define the backported macro's because OFED has already defined these.
  */
 
-#ifndef __BACKPORT_LINUX_SCATTERLIST_H_TO_2_6_23__
-
 static inline bool sg_is_chain(struct scatterlist *sg)
 {
 	return false;
@@ -3495,15 +3495,19 @@ static inline struct scatterlist *sg_chain_ptr(struct scatterlist *sg)
 	return NULL;
 }
 
+#ifndef sg_page
 static inline struct page *sg_page(struct scatterlist *sg)
 {
 	return sg->page;
 }
+#endif
 
 static inline void *sg_virt(struct scatterlist *sg)
 {
 	return page_address(sg_page(sg)) + sg->offset;
 }
+
+#ifndef __BACKPORT_LINUX_SCATTERLIST_H_TO_2_6_23__
 
 static inline void sg_init_table(struct scatterlist *sgl, unsigned int nents)
 {
@@ -4090,15 +4094,42 @@ int scst_get_max_lun_commands(struct scst_session *sess, uint64_t lun);
  * allows exclusive wake ups of threads in LIFO order. We need it to let (yet)
  * unneeded threads sleep and not pollute CPU cache by their stacks.
  */
-static inline void add_wait_queue_exclusive_head(wait_queue_head_t *q,
-	wait_queue_t *wait)
+static inline void prepare_to_wait_exclusive_head(wait_queue_head_t *q,
+						  wait_queue_t *wait, int state)
 {
 	unsigned long flags;
 
 	wait->flags |= WQ_FLAG_EXCLUSIVE;
 	spin_lock_irqsave(&q->lock, flags);
-	__add_wait_queue(q, wait);
+	if (list_empty(&wait->task_list))
+		__add_wait_queue(q, wait);
+	set_current_state(state);
 	spin_unlock_irqrestore(&q->lock, flags);
+}
+
+/**
+ * wait_event_locked() - Wait until a condition becomes true.
+ * @wq: Wait queue to wait on if @condition is false.
+ * @condition: Condition to wait for. Can be any C expression.
+ * @lock_type: One of lock, lock_bh or lock_irq.
+ * @lock: A spinlock.
+ *
+ * Caller must hold lock of type @lock_type on @lock.
+ */
+#define wait_event_locked(wq, condition, lock_type, lock)		\
+if (!(condition)) {							\
+	DEFINE_WAIT(__wait);						\
+									\
+	do {								\
+		prepare_to_wait_exclusive_head(&(wq), &__wait,		\
+					       TASK_INTERRUPTIBLE);	\
+		if (condition)						\
+			break;						\
+		spin_un ## lock_type(&(lock));				\
+		schedule();						\
+		spin_ ## lock_type(&(lock));				\
+	} while (!(condition));						\
+	finish_wait(&(wq), &__wait);					\
 }
 
 #ifndef CONFIG_SCST_PROC
