@@ -1671,6 +1671,8 @@ static ssize_t scst_dev_sysfs_check_threads_data(
 {
 	int res = 0;
 
+	TRACE_ENTRY();
+
 	*stop = false;
 
 	if (dev->threads_num < 0) {
@@ -1687,6 +1689,7 @@ static ssize_t scst_dev_sysfs_check_threads_data(
 	}
 
 out:
+	TRACE_EXIT_RES(res);
 	return res;
 }
 
