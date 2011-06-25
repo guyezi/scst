@@ -2489,53 +2489,6 @@ static ssize_t scst_sess_sysfs_commands_show(struct kobject *kobj,
 static struct kobj_attribute session_commands_attr =
 	__ATTR(commands, S_IRUGO, scst_sess_sysfs_commands_show, NULL);
 
-static int scst_sysfs_sess_get_active_commands(struct scst_session *sess)
-{
-	int res;
-	int active_cmds = 0, t;
-
-	TRACE_ENTRY();
-
-	res = mutex_lock_interruptible(&scst_mutex);
-	if (res != 0)
-		goto out;
-
-	for (t = SESS_TGT_DEV_LIST_HASH_SIZE-1; t >= 0; t--) {
-		struct list_head *head = &sess->sess_tgt_dev_list[t];
-		struct scst_tgt_dev *tgt_dev;
-		list_for_each_entry(tgt_dev, head, sess_tgt_dev_list_entry) {
-			active_cmds += atomic_read(&tgt_dev->tgt_dev_cmd_count);
-		}
-	}
-
-	mutex_unlock(&scst_mutex);
-
-	res = active_cmds;
-
-out:
-	TRACE_EXIT_RES(res);
-	return res;
-}
-
-static ssize_t scst_sess_sysfs_active_commands_show(struct kobject *kobj,
-			    struct kobj_attribute *attr, char *buf)
-{
-	int res;
-	struct scst_session *sess;
-
-	sess = scst_kobj_to_sess(kobj);
-
-	res = scst_sysfs_sess_get_active_commands(sess);
-	if (res >= 0)
-		res = sprintf(buf, "%i\n", res);
-
-	return res;
-}
-
-static struct kobj_attribute session_active_commands_attr =
-	__ATTR(active_commands, S_IRUGO, scst_sess_sysfs_active_commands_show,
-		NULL);
-
 static ssize_t scst_sess_sysfs_initiator_name_show(struct kobject *kobj,
 			    struct kobj_attribute *attr, char *buf)
 {
@@ -2603,7 +2556,6 @@ SCST_SESS_SYSFS_STAT_ATTR(cmd_count, none_cmd_count, SCST_DATA_NONE, 0);
 
 struct attribute *scst_session_attrs[] = {
 	&session_commands_attr.attr,
-	&session_active_commands_attr.attr,
 	&session_initiator_name_attr.attr,
 	&session_unknown_cmd_count_attr.attr,
 	&session_write_cmd_count_attr.attr,
