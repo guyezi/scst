@@ -46,8 +46,8 @@ include/iscsi_scst_itf_ver.h: include/iscsi_scst.h
 	echo "\"`sha1sum include/iscsi_scst.h|awk '{printf $$1}'`\"" >>include/iscsi_scst_itf_ver.h
 
 install: all
-	@install -vD usr/iscsi-scstd $(DESTDIR)$(SBINDIR)/iscsi-scstd
-	@install -vD usr/iscsi-scst-adm $(DESTDIR)$(SBINDIR)/iscsi-scst-adm
+	@install -vD -m 755 usr/iscsi-scstd $(DESTDIR)$(SBINDIR)/iscsi-scstd
+	@install -vD -m 755 usr/iscsi-scst-adm $(DESTDIR)$(SBINDIR)/iscsi-scst-adm
 	if [ -f /etc/debian_version ]; then \
 		install -vD -m 755 etc/initd/initd.debian $(DESTDIR)$(INITDIR)/iscsi-scst; \
 	elif [ -f /etc/redhat-release ]; then \
@@ -83,13 +83,19 @@ else
 endif
 
 clean:
-	$(MAKE) -C usr clean
-	$(MAKE) -C $(KDIR) SUBDIRS=$(KMOD) clean
+	$(MAKE) -C usr $@
+	$(MAKE) -C $(KDIR) SUBDIRS=$(KMOD) $@
 	rm -f kernel/Modules.symvers kernel/Module.symvers \
 		kernel/Module.markers kernel/modules.order \
 		include/iscsi_scst_itf_ver.h
 
-extraclean: clean
+extraclean:
+	$(MAKE) -C usr $@
+	$(MAKE) -C $(KDIR) SUBDIRS=$(KMOD) clean
+	rm -f kernel/Modules.symvers kernel/Module.symvers \
+		kernel/Module.markers kernel/modules.order \
+		include/iscsi_scst_itf_ver.h \
+		kernel/*.orig kernel/*.rej
 
 debug2release:
 	sed -i.aa s/"^EXTRA_CFLAGS += \-DCONFIG_SCST_EXTRACHECKS"/"#EXTRA_CFLAGS += \-DCONFIG_SCST_EXTRACHECKS"/ $(KMOD)/Makefile

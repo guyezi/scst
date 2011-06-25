@@ -2025,20 +2025,7 @@ out_done:
 	goto out;
 }
 
-/**
- * scst_check_local_events() - check if there are any local SCSI events
- *
- * Description:
- *    Checks if the command can be executed or there are local events,
- *    like reservations, pending UAs, etc. Returns < 0 if command must be
- *    aborted, > 0 if there is an event and command should be immediately
- *    completed, or 0 otherwise.
- *
- * !! Dev handlers implementing exec() callback must call this function there
- * !! just before the actual command's execution!
- *
- *    On call no locks, no IRQ or IRQ-disabled context allowed.
- */
+/* No locks, no IRQ or IRQ-disabled context allowed */
 static int scst_persistent_reserve_in_local(struct scst_cmd *cmd)
 {
 	int rc;
@@ -2305,7 +2292,20 @@ out_done:
 	return res;
 }
 
-/* No locks, no IRQ or IRQ-disabled context allowed */
+/**
+ * scst_check_local_events() - check if there are any local SCSI events
+ *
+ * Description:
+ *    Checks if the command can be executed or there are local events,
+ *    like reservations, pending UAs, etc. Returns < 0 if command must be
+ *    aborted, > 0 if there is an event and command should be immediately
+ *    completed, or 0 otherwise.
+ *
+ * !! Dev handlers implementing exec() callback must call this function there
+ * !! just before the actual command's execution!
+ *
+ *    On call no locks, no IRQ or IRQ-disabled context allowed.
+ */
 int scst_check_local_events(struct scst_cmd *cmd)
 {
 	int res, rc;
@@ -3845,8 +3845,15 @@ static int __scst_init_cmd(struct scst_cmd *cmd)
 		if (unlikely(failure))
 			goto out_busy;
 
-		if (unlikely(scst_pre_parse(cmd) != 0))
-			goto out;
+		/*
+		 * SCST_IMPLICIT_HQ for unknown commands not implemented for
+		 * case when set_sn_on_restart_cmd not set, because custom parse
+		 * can reorder commands due to multithreaded processing. To
+		 * implement it we need to implement all unknown commands as
+		 * ORDERED in the beginning and post parse reprocess of
+		 * queue_type to change it if needed. ToDo.
+		 */
+		scst_pre_parse(cmd);
 
 		if (!cmd->set_sn_on_restart_cmd)
 			scst_cmd_set_sn(cmd);
