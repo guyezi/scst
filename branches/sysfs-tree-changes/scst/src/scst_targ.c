@@ -828,6 +828,7 @@ set_res:
 	case SCST_CMD_STATE_RDY_TO_XFER:
 	case SCST_CMD_STATE_TGT_PRE_EXEC:
 	case SCST_CMD_STATE_SEND_FOR_EXEC:
+	case SCST_CMD_STATE_START_EXEC:
 	case SCST_CMD_STATE_LOCAL_EXEC:
 	case SCST_CMD_STATE_REAL_EXEC:
 	case SCST_CMD_STATE_PRE_DEV_DONE:
@@ -1292,7 +1293,7 @@ static int scst_rdy_to_xfer(struct scst_cmd *cmd)
 			      "rdy_to_xfer() requested thread "
 			      "context, rescheduling", tgtt->name);
 			res = SCST_CMD_STATE_RES_NEED_THREAD;
-			break;
+			goto out;
 
 		default:
 			goto out_error_rc;
@@ -1950,7 +1951,7 @@ static int scst_reserve_local(struct scst_cmd *cmd)
 	 *    it, also there's no point to do any extra protection actions.
 	 */
 
-	rc = scst_check_local_events(cmd);
+	rc = scst_pre_check_local_events(cmd);
 	if (unlikely(rc != 0))
 		goto out_done;
 
@@ -2011,7 +2012,7 @@ static int scst_release_local(struct scst_cmd *cmd)
 	 * other protection is needed here.
 	 */
 
-	rc = scst_check_local_events(cmd);
+	rc = scst_pre_check_local_events(cmd);
 	if (unlikely(rc != 0))
 		goto out_done;
 
@@ -2344,8 +2345,11 @@ out_done:
  *    aborted, > 0 if there is an event and command should be immediately
  *    completed, or 0 otherwise.
  *
- * !! Dev handlers implementing exec() callback must call this function there
- * !! just before the actual command's execution!
+ * !! 1.Dev handlers implementing exec() callback must call this function there
+ * !!   just before the actual command's execution!
+ * !!
+ * !! 2. If this function can be called more than once on the processing path
+ * !!    scst_pre_check_local_events() should be used for the first call!
  *
  * On call no locks, no IRQ or IRQ-disabled context allowed.
  */
@@ -2374,14 +2378,16 @@ int scst_check_local_events(struct scst_cmd *cmd)
 		}
 	}
 
-	if (dev->pr_is_set) {
-		if (unlikely(!scst_pr_is_cmd_allowed(cmd))) {
-			scst_set_cmd_error_status(cmd,
-				SAM_STAT_RESERVATION_CONFLICT);
-			goto out_complete;
-		}
-	} else
-		scst_dec_pr_readers_count(cmd, false);
+	if (likely(!cmd->check_local_events_once_done)) {
+		if (dev->pr_is_set) {
+			if (unlikely(!scst_pr_is_cmd_allowed(cmd))) {
+				scst_set_cmd_error_status(cmd,
+					SAM_STAT_RESERVATION_CONFLICT);
+				goto out_complete;
+			}
+		} else
+			scst_dec_pr_readers_count(cmd, false);
+	}
 
 	/*
 	 * Let's check for ABORTED after scst_pr_is_cmd_allowed(), because
@@ -2629,9 +2635,11 @@ static inline int scst_real_exec(struct scst_cmd *cmd)
 	res = scst_do_real_exec(cmd);
 	if (likely(res == SCST_EXEC_COMPLETED)) {
 		scst_post_exec_sn(cmd, true);
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 39)
 		if (cmd->dev->scsi_dev != NULL)
 			generic_unplug_device(
 				cmd->dev->scsi_dev->request_queue);
+#endif
 	} else
 		sBUG();
 
@@ -2734,10 +2742,11 @@ static int scst_exec(struct scst_cmd **active_cmd)
 {
 	struct scst_cmd *cmd = *active_cmd;
 	struct scst_cmd *ref_cmd;
-	struct scst_device *dev = cmd->dev;
-	int res = SCST_CMD_STATE_RES_CONT_NEXT, count;
+	int res = SCST_CMD_STATE_RES_CONT_NEXT, count = 0;
 
 	TRACE_ENTRY();
+
+	cmd->state = SCST_CMD_STATE_START_EXEC;
 
 	if (unlikely(scst_check_blocked_dev(cmd)))
 		goto out;
@@ -2746,7 +2755,6 @@ static int scst_exec(struct scst_cmd **active_cmd)
 	ref_cmd = cmd;
 	__scst_cmd_get(ref_cmd);
 
-	count = 0;
 	while (1) {
 		int rc;
 
@@ -2782,12 +2790,15 @@ done:
 		if (cmd == NULL)
 			break;
 
+		cmd->state = SCST_CMD_STATE_START_EXEC;
+
 		if (unlikely(scst_check_blocked_dev(cmd)))
 			break;
 
 		__scst_cmd_put(ref_cmd);
 		ref_cmd = cmd;
 		__scst_cmd_get(ref_cmd);
+
 	}
 
 	*active_cmd = cmd;
@@ -2795,14 +2806,17 @@ done:
 	if (count == 0)
 		goto out_put;
 
-	if (dev->scsi_dev != NULL)
-		generic_unplug_device(dev->scsi_dev->request_queue);
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 39)
+	if (ref_cmd->dev->scsi_dev != NULL)
+		generic_unplug_device(ref_cmd->dev->scsi_dev->request_queue);
+#endif
 
 out_put:
 	__scst_cmd_put(ref_cmd);
 	/* !! At this point sess, dev and tgt_dev can be already freed !! */
 
 out:
+	EXTRACHECKS_BUG_ON(res == SCST_CMD_STATE_RES_NEED_THREAD);
 	TRACE_EXIT_RES(res);
 	return res;
 }
@@ -2939,7 +2953,7 @@ static int scst_check_sense(struct scst_cmd *cmd)
 
 					cmd->state = SCST_CMD_STATE_REAL_EXEC;
 					cmd->retry = 1;
-					scst_inc_pr_readers_count(cmd, false);
+					scst_reset_requeued_cmd(cmd);
 					res = 1;
 					goto out;
 				}
@@ -3299,6 +3313,7 @@ static int scst_dev_done(struct scst_cmd *cmd)
 	case SCST_CMD_STATE_RDY_TO_XFER:
 	case SCST_CMD_STATE_TGT_PRE_EXEC:
 	case SCST_CMD_STATE_SEND_FOR_EXEC:
+	case SCST_CMD_STATE_START_EXEC:
 	case SCST_CMD_STATE_LOCAL_EXEC:
 	case SCST_CMD_STATE_REAL_EXEC:
 	case SCST_CMD_STATE_PRE_DEV_DONE:
@@ -3317,7 +3332,7 @@ static int scst_dev_done(struct scst_cmd *cmd)
 		      "thread context, rescheduling",
 		      dev->handler->name);
 		res = SCST_CMD_STATE_RES_NEED_THREAD;
-		break;
+		goto out;
 #ifdef CONFIG_SCST_EXTRACHECKS
 	default:
 		if (state >= 0) {
@@ -3351,6 +3366,7 @@ static int scst_dev_done(struct scst_cmd *cmd)
 			switch (state) {
 			case SCST_CMD_STATE_TGT_PRE_EXEC:
 			case SCST_CMD_STATE_SEND_FOR_EXEC:
+			case SCST_CMD_STATE_START_EXEC:
 			case SCST_CMD_STATE_LOCAL_EXEC:
 			case SCST_CMD_STATE_REAL_EXEC:
 				TRACE_DBG("Atomic context and redirect, "
@@ -3544,7 +3560,7 @@ static int scst_xmit_response(struct scst_cmd *cmd)
 			      "requested thread context, rescheduling",
 			      tgtt->name);
 			res = SCST_CMD_STATE_RES_NEED_THREAD;
-			break;
+			goto out;
 
 		default:
 			goto out_error;
@@ -4118,6 +4134,16 @@ void scst_process_active_cmd(struct scst_cmd *cmd, bool atomic)
 				break;
 			}
 			res = scst_send_for_exec(&cmd);
+			EXTRACHECKS_BUG_ON(res == SCST_CMD_STATE_RES_NEED_THREAD);
+			/*
+			 * !! At this point cmd, sess & tgt_dev can already be
+			 * freed !!
+			 */
+			break;
+
+		case SCST_CMD_STATE_START_EXEC:
+			res = scst_exec(&cmd);
+			EXTRACHECKS_BUG_ON(res == SCST_CMD_STATE_RES_NEED_THREAD);
 			/*
 			 * !! At this point cmd, sess & tgt_dev can already be
 			 * freed !!
@@ -4126,6 +4152,7 @@ void scst_process_active_cmd(struct scst_cmd *cmd, bool atomic)
 
 		case SCST_CMD_STATE_LOCAL_EXEC:
 			res = scst_local_exec(cmd);
+			EXTRACHECKS_BUG_ON(res == SCST_CMD_STATE_RES_NEED_THREAD);
 			/*
 			 * !! At this point cmd, sess & tgt_dev can already be
 			 * freed !!
@@ -4134,6 +4161,7 @@ void scst_process_active_cmd(struct scst_cmd *cmd, bool atomic)
 
 		case SCST_CMD_STATE_REAL_EXEC:
 			res = scst_real_exec(cmd);
+			EXTRACHECKS_BUG_ON(res == SCST_CMD_STATE_RES_NEED_THREAD);
 			/*
 			 * !! At this point cmd, sess & tgt_dev can already be
 			 * freed !!
@@ -4194,6 +4222,7 @@ void scst_process_active_cmd(struct scst_cmd *cmd, bool atomic)
 		case SCST_CMD_STATE_RDY_TO_XFER:
 		case SCST_CMD_STATE_TGT_PRE_EXEC:
 		case SCST_CMD_STATE_SEND_FOR_EXEC:
+		case SCST_CMD_STATE_START_EXEC:
 		case SCST_CMD_STATE_LOCAL_EXEC:
 		case SCST_CMD_STATE_REAL_EXEC:
 		case SCST_CMD_STATE_DEV_DONE:
