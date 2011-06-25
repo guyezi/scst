@@ -73,7 +73,7 @@ static struct scst_trace_log vdisk_local_trace_tbl[] = {
 #define SCST_FIO_VENDOR			"SCST_FIO"
 #define SCST_BIO_VENDOR			"SCST_BIO"
 /* 4 byte ASCII Product Revision Level - left aligned */
-#define SCST_FIO_REV			" 210"
+#define SCST_FIO_REV			" 300"
 
 #define MAX_USN_LEN			(20+1) /* For '\0' */
 
@@ -1472,8 +1472,6 @@ static void vdisk_exec_inquiry(struct scst_cmd *cmd)
 	}
 
 	buf[0] = cmd->dev->type;      /* type dev */
-	if (virt_dev->removable)
-		buf[1] = 0x80;      /* removable */
 	/* Vital Product */
 	if (cmd->cdb[1] & EVPD) {
 		if (0 == cmd->cdb[2]) {
@@ -1637,6 +1635,8 @@ static void vdisk_exec_inquiry(struct scst_cmd *cmd)
 			goto out_put;
 		}
 
+		if (virt_dev->removable)
+			buf[1] = 0x80;      /* removable */
 		buf[2] = 5; /* Device complies to SPC-3 */
 		buf[3] = 0x12;	/* HiSup + data in format specified in SPC */
 		if (cmd->tgtt->fake_aca)
