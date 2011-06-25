@@ -24,7 +24,7 @@
 #define ISCSI_VERSION			0
 
 #ifndef __packed
-#define __packed __attribute__ ((packed))
+#error The macro __packed has not been defined.
 #endif
 
 /* iSCSI command PDU header. See also section 10.3 in RFC 3720. */

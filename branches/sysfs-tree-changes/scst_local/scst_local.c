@@ -34,11 +34,9 @@
 
 /* SCST includes ... */
 #ifdef INSIDE_KERNEL_TREE
-#include <scst/scst_const.h>
 #include <scst/scst.h>
 #include <scst/scst_debug.h>
 #else
-#include <scst_const.h>
 #include <scst.h>
 #include <scst_debug.h>
 #endif
@@ -1133,13 +1131,14 @@ static int scst_local_queuecommand_lck(struct scsi_cmnd *SCpnt,
 	return 0;
 }
 
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 37) && \
-    !defined(CONFIG_SCST_LOCAL_FORCE_DIRECT_PROCESSING)
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 37)
+#if !defined(CONFIG_SCST_LOCAL_FORCE_DIRECT_PROCESSING)
 /*
  * See comment in scst_local_queuecommand_lck() near
  * CONFIG_SCST_LOCAL_FORCE_DIRECT_PROCESSING
  */
 static DEF_SCSI_QCMD(scst_local_queuecommand)
+#endif
 #endif
 
 static int scst_local_targ_pre_exec(struct scst_cmd *scst_cmd)
@@ -1517,12 +1516,11 @@ static int scst_local_driver_probe(struct device *dev)
 		ret = -ENODEV;
 		scsi_host_put(hpnt);
 		goto out;
-	}
 #ifdef CONFIG_SCST_PROC
-	else {
+	} else {
 		scsi_scan_host(hpnt);
-	}
 #endif
+	}
 
 out:
 	TRACE_EXIT_RES(ret);
