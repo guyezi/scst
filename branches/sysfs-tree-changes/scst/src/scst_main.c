@@ -1685,6 +1685,7 @@ out_wait:
 				"initialized", cmd_threads);
 			msleep(50);
 		}
+		smp_rmb();
 	}
 
 	if (res != 0)

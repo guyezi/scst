@@ -108,7 +108,6 @@ enum {
 	SRP_LOGIN_RSP_MULTICHAN_MAINTAINED = 0x2,
 
 	SRPT_DEF_SG_TABLESIZE = 128,
-	SRPT_DEF_SG_PER_WQE = 16,
 
 	MIN_SRPT_SQ_SIZE = 16,
 	DEF_SRPT_SQ_SIZE = 4096,
@@ -129,12 +128,21 @@ enum {
 	DEFAULT_MAX_RDMA_SIZE = 65536,
 };
 
-static inline u64 encode_wr_id(u8 opcode, u32 idx)
+enum srpt_opcode {
+	SRPT_RECV,
+	SRPT_SEND,
+	SRPT_RDMA_MID,
+	SRPT_RDMA_ABORT,
+	SRPT_RDMA_READ_LAST,
+	SRPT_RDMA_WRITE_LAST,
+};
+
+static inline u64 encode_wr_id(enum srpt_opcode opcode, u32 idx)
 {
 	return ((u64)opcode << 32) | idx;
 }
 
-static inline u8 opcode_from_wr_id(u64 wr_id)
+static inline enum srpt_opcode opcode_from_wr_id(u64 wr_id)
 {
 	return wr_id >> 32;
 }
@@ -208,7 +216,7 @@ struct srpt_tsk_mgmt {
 
 /**
  * struct srpt_send_ioctx - SRPT send I/O context.
- * @ioctx:     See above.
+ * @ioctx:       See above.
  * @ch:          Channel pointer.
  * @rdma_ius:    Array with information about the RDMA mapping.
  * @rbufs:       Pointer to SRP data buffer array.
@@ -216,6 +224,8 @@ struct srpt_tsk_mgmt {
  * @sg:          Pointer to sg-list associated with this I/O context.
  * @spinlock:    Protects 'state'.
  * @state:       I/O context state.
+ * @rdma_aborted: If initiating a multipart RDMA transfer failed, whether
+ *               the already initiated transfers have finished.
  * @scmnd:       SCST command data structure.
  * @dir:
  * @free_list:   Node in srpt_rdma_ch.free_list.
@@ -238,6 +248,7 @@ struct srpt_send_ioctx {
 	struct list_head	free_list;
 	spinlock_t		spinlock;
 	enum srpt_command_state	state;
+	bool			rdma_aborted;
 	struct scst_cmd		*scmnd;
 	scst_data_direction	dir;
 	int			sg_cnt;
@@ -276,6 +287,7 @@ enum rdma_ch_state {
  * @qp:            IB queue pair used for communicating over this channel.
  * @cq:            IB completion queue for this channel.
  * @rq_size:       IB receive queue size.
+ * @max_sge:       Maximum length of RDMA scatter list.
  * @sq_wr_avail:   number of work requests available in the send queue.
  * @sport:         pointer to the information of the HCA port used by this
  *                 channel.
@@ -306,6 +318,7 @@ struct srpt_rdma_ch {
 	struct ib_qp		*qp;
 	struct ib_cq		*cq;
 	int			rq_size;
+	int			max_sge;
 	int			sq_wr_avail;
 	struct srpt_port	*sport;
 	u8			i_port_id[16];
