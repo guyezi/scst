@@ -648,6 +648,8 @@ again:
 
 	del_timer_sync(&tgt->retry_timer);
 
+	scst_tg_tgt_remove_by_tgt(tgt);
+
 #ifdef CONFIG_SCST_PROC
 	scst_cleanup_proc_target_entries(tgt);
 #else
@@ -1001,6 +1003,8 @@ static void scst_unregister_device(struct scsi_device *scsidp)
 
 	list_del(&dev->dev_list_entry);
 
+	scst_dg_dev_remove_by_dev(dev);
+
 	scst_assign_dev_handler(dev, &scst_null_devtype);
 
 	list_for_each_entry_safe(acg_dev, aa, &dev->dev_acg_dev_list,
@@ -1243,6 +1247,8 @@ void scst_unregister_virtual_device(int id)
 	list_del(&dev->dev_list_entry);
 
 	scst_pr_clear_dev(dev);
+
+	scst_dg_dev_remove_by_dev(dev);
 
 	scst_assign_dev_handler(dev, &scst_null_devtype);
 
@@ -2300,6 +2306,8 @@ static int __init init_scst(void)
 	if (res)
 		goto out_destroy_aen_mempool;
 
+	scst_tg_init();
+
 	if (scst_max_cmd_mem == 0) {
 		struct sysinfo si;
 		si_meminfo(&si);
@@ -2389,6 +2397,7 @@ out_free_acg:
 
 out_destroy_sgv_pool:
 	scst_sgv_pools_deinit();
+	scst_tg_cleanup();
 
 out_sysfs_cleanup:
 	scst_sysfs_cleanup();
@@ -2463,6 +2472,8 @@ static void __exit exit_scst(void)
 #endif
 
 	scst_sgv_pools_deinit();
+
+	scst_tg_cleanup();
 
 	scst_sysfs_cleanup();
 
