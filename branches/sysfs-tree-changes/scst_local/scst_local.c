@@ -1398,7 +1398,7 @@ static uint16_t scst_local_get_phys_transport_version(struct scst_tgt *scst_tgt)
 }
 
 #ifndef CONFIG_SCST_PROC
-static const char *add_target_parameters[] = {
+static const char * const add_target_parameters[] = {
 	"session_name", NULL
 };
 #endif

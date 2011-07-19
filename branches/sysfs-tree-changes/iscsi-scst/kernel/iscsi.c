@@ -3819,11 +3819,11 @@ static uint16_t iscsi_get_scsi_transport_version(struct scst_tgt *scst_tgt)
 }
 
 #ifndef CONFIG_SCST_PROC
-static const char *tgtt_attributes[] = {
+static const char * const tgtt_attributes[] = {
 	"IncomingUser", "OutgoingUser", NULL
 };
 
-static const char *tgt_attributes[] = {
+static const char * const tgt_attributes[] = {
 	"IncomingUser", "OutgoingUser", "allowed_portal", NULL
 };
 #endif

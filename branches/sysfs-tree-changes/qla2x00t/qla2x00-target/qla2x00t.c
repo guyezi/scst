@@ -188,7 +188,7 @@ static ssize_t q2t_del_vtarget(const char *target_name);
 static unsigned long q2t_trace_flag = Q2T_DEFAULT_LOG_FLAGS;
 #endif
 
-static const char *add_target_parameters[] = {
+static const char * const add_target_parameters[] = {
 	"node_name", "parent_host", NULL
 };
 
