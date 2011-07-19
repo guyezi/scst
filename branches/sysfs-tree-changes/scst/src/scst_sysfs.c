@@ -62,6 +62,10 @@ enum mgmt_path_type {
 	ACG_PATH,
 	ACG_LUNS_PATH,
 	ACG_INITIATOR_GROUPS_PATH,
+	DGS_PATH,
+	DGS_DEVS_PATH,
+	TGS_PATH,
+	TGS_TG_PATH,
 };
 
 static struct bus_type scst_target_bus;
@@ -3964,17 +3968,6 @@ void scst_dg_dev_sysfs_del(struct scst_dev_group *dg, struct scst_dg_dev *dgdev)
  ** SCST sysfs device_groups/<dg>/devices directory implementation.
  **/
 
-static ssize_t scst_dg_devs_mgmt_show(struct kobject *kobj,
-				 struct kobj_attribute *attr,
-				 char *buf)
-{
-	static const char help[] =
-		"Usage: echo \"add device\" >mgmt\n"
-		"       echo \"del device\" >mgmt\n";
-
-	return scnprintf(buf, PAGE_SIZE, help);
-}
-
 static int scst_dg_devs_mgmt_store_work_fn(char *cmd, struct scst_dev_group *dg)
 {
 	char *p, *pp, *dev_name;
@@ -4007,34 +4000,7 @@ out:
 	return res;
 }
 
-static ssize_t scst_dg_devs_mgmt_store(struct kobject *kobj,
-				      struct kobj_attribute *attr,
-				      const char *buf, size_t count)
-{
-	char *cmd;
-	int res;
-
-	TRACE_ENTRY();
-
-	res = -ENOMEM;
-	cmd = kasprintf(GFP_KERNEL, "%.*s", (int)count, buf);
-	if (!cmd)
-		goto out;
-	res = scst_dg_devs_mgmt_store_work_fn(cmd,
-					      scst_lookup_dg_by_kobj(kobj));
-out:
-	if (res == 0)
-		res = count;
-	TRACE_EXIT_RES(res);
-	return res;
-}
-
-static struct kobj_attribute scst_dg_devs_mgmt =
-	__ATTR(mgmt, S_IRUGO | S_IWUSR, scst_dg_devs_mgmt_show,
-	       scst_dg_devs_mgmt_store);
-
 static const struct attribute *scst_dg_devs_attrs[] = {
-	&scst_dg_devs_mgmt.attr,
 	NULL,
 };
 
@@ -4289,17 +4255,6 @@ static struct kobj_attribute scst_tg_state =
 	__ATTR(state, S_IRUGO | S_IWUSR, scst_tg_state_show,
 	       scst_tg_state_store);
 
-static ssize_t scst_tg_mgmt_show(struct kobject *kobj,
-				 struct kobj_attribute *attr,
-				 char *buf)
-{
-	static const char help[] =
-		"Usage: echo \"add target\" >mgmt\n"
-		"       echo \"del target\" >mgmt\n";
-
-	return scnprintf(buf, PAGE_SIZE, help);
-}
-
 static int scst_tg_mgmt_store_work_fn(char *cmd, struct scst_target_group *tg)
 {
 	char *p, *pp, *target_name;
@@ -4330,34 +4285,7 @@ out:
 	return res;
 }
 
-static ssize_t scst_tg_mgmt_store(struct kobject *kobj,
-				  struct kobj_attribute *attr,
-				  const char *buf, size_t count)
-{
-	char *cmd;
-	int res;
-
-	TRACE_ENTRY();
-
-	res = -ENOMEM;
-	cmd = kasprintf(GFP_KERNEL, "%.*s", (int)count, buf);
-	if (!cmd)
-		goto out;
-
-	res = scst_tg_mgmt_store_work_fn(cmd, container_of(kobj, struct scst_target_group, kobj));
-out:
-	if (res == 0)
-		res = count;
-	TRACE_EXIT_RES(res);
-	return res;
-}
-
-static struct kobj_attribute scst_tg_mgmt =
-	__ATTR(mgmt, S_IRUGO | S_IWUSR, scst_tg_mgmt_show,
-	       scst_tg_mgmt_store);
-
 static const struct attribute *scst_tg_attrs[] = {
-	&scst_tg_mgmt.attr,
 	&scst_tg_group_id.attr,
 	&scst_tg_preferred.attr,
 	&scst_tg_state.attr,
@@ -4395,16 +4323,6 @@ void scst_tg_sysfs_del(struct scst_target_group *tg)
  ** SCST sysfs device_groups/<dg>/target_groups directory implementation.
  **/
 
-static ssize_t scst_dg_tgs_mgmt_show(struct kobject *kobj,
-				    struct kobj_attribute *attr, char *buf)
-{
-	static const char help[] =
-		"Usage: echo \"add group_name\" >mgmt\n"
-		"       echo \"del group_name\" >mgmt\n";
-
-	return scnprintf(buf, PAGE_SIZE, help);
-}
-
 static int scst_dg_tgs_mgmt_store_work_fn(char *cmd, struct scst_dev_group *dg)
 {
 	char *p, *pp, *dev_name;
@@ -4437,35 +4355,7 @@ out:
 	return res;
 }
 
-static ssize_t scst_dg_tgs_mgmt_store(struct kobject *kobj,
-				      struct kobj_attribute *attr,
-				      const char *buf, size_t count)
-{
-	char *cmd;
-	int res;
-
-	TRACE_ENTRY();
-
-	res = -ENOMEM;
-	cmd = kasprintf(GFP_KERNEL, "%.*s", (int)count, buf);
-	if (!cmd)
-		goto out;
-
-	res = scst_dg_tgs_mgmt_store_work_fn(cmd, scst_lookup_dg_by_kobj(kobj));
-
-out:
-	if (res == 0)
-		res = count;
-	TRACE_EXIT_RES(res);
-	return res;
-}
-
-static struct kobj_attribute scst_dg_tgs_mgmt =
-	__ATTR(mgmt, S_IRUGO | S_IWUSR, scst_dg_tgs_mgmt_show,
-	       scst_dg_tgs_mgmt_store);
-
 static const struct attribute *scst_dg_tgs_attrs[] = {
-	&scst_dg_tgs_mgmt.attr,
 	NULL,
 };
 
@@ -4519,29 +4409,15 @@ void scst_dg_sysfs_del(struct scst_dev_group *dg)
 	kobject_del(&dg->kobj);
 }
 
-static ssize_t scst_device_groups_mgmt_show(struct kobject *kobj,
-					    struct kobj_attribute *attr,
-					    char *buf)
-{
-	static const char help[] =
-		"Usage: echo \"add group_name\" >mgmt\n"
-		"       echo \"del group_name\" >mgmt\n";
-
-	return scnprintf(buf, PAGE_SIZE, help);
-}
-
-static ssize_t scst_device_groups_mgmt_store(struct kobject *kobj,
-					     struct kobj_attribute *attr,
-					     const char *buf, size_t count)
+static ssize_t scst_device_groups_mgmt_store_work_fn(char *cmd)
 {
 	int res;
-	char *p, *pp, *input, *group_name;
+	char *p, *pp, *group_name;
 
 	TRACE_ENTRY();
 
-	input = kasprintf(GFP_KERNEL, "%.*s", (int)count, buf);
-	pp = input;
-	p = strchr(input, '\n');
+	pp = cmd;
+	p = strchr(cmd, '\n');
 	if (p)
 		*p = '\0';
 
@@ -4559,19 +4435,11 @@ static ssize_t scst_device_groups_mgmt_store(struct kobject *kobj,
 		res = scst_dg_remove(group_name);
 	}
 out:
-	kfree(input);
-	if (res == 0)
-		res = count;
 	TRACE_EXIT_RES(res);
 	return res;
 }
 
-static struct kobj_attribute scst_device_groups_mgmt =
-	__ATTR(mgmt, S_IRUGO | S_IWUSR, scst_device_groups_mgmt_show,
-	       scst_device_groups_mgmt_store);
-
 static const struct attribute *scst_device_groups_attrs[] = {
-	&scst_device_groups_mgmt.attr,
 	NULL,
 };
 
@@ -4601,6 +4469,14 @@ static ssize_t scst_mgmt_show(struct device *device,
 "in target_driver/<tgtt>/<target>/ini_groups/<acg>/luns <luns_cmd>\n"
 /* scst_acg_ini_mgmt */
 "in target_driver/<tgtt>/<target>/ini_groups/<acg>/initiators <acg_ini_cmd>\n"
+/* scst_dg_mgmt */
+"in device_groups [add|del] <device_group>\n"
+/* scst_dg_dev_mgmt */
+"in device_groups/<dg>/devices [add|del] <device>\n"
+/* scst_tg_mgmt */
+"in device_groups/<dg>/target_groups [add|del] <target_group>\n"
+/* scst_tg_mgmt */
+"in device_groups/<dg>/target_groups/<tg> [add|del] <target>\n"
 "\n"
 "dev_cmd syntax:\n"
 "\n"
@@ -4678,7 +4554,9 @@ static enum mgmt_path_type __parse_path(char *path,
 					struct scst_device **dev,
 					struct scst_tgt_template **tgtt,
 					struct scst_tgt **tgt,
-					struct scst_acg **acg)
+					struct scst_acg **acg,
+					struct scst_dev_group **dg,
+					struct scst_target_group **tg)
 {
 	char *comp[7];
 	int i;
@@ -4690,13 +4568,15 @@ static enum mgmt_path_type __parse_path(char *path,
 	lockdep_assert_held(&scst_mutex);
 #endif
 
-	BUG_ON(!path || !devt || !tgtt || !tgt || !acg);
+	BUG_ON(!path || !devt || !tgtt || !tgt || !acg || !dg || !tg);
 
 	*devt = NULL;
 	*dev = NULL;
 	*tgtt = NULL;
 	*tgt = NULL;
 	*acg = NULL;
+	*dg = NULL;
+	*tg = NULL;
 
 	if (path[0] == '/')
 		path++;
@@ -4714,21 +4594,27 @@ static enum mgmt_path_type __parse_path(char *path,
 		TRACE_DBG("comp[%d] = %s", i, comp[i]);
 	}
 
-	if (!comp[0] || !comp[1])
+	if (!comp[0])
 		goto err;
 	if (strcmp(comp[0], "device") == 0) {
+		if (!comp[1])
+			goto err;
 		*dev = __scst_lookup_dev(comp[1]);
 		if (!*dev)
 			goto err;
 		res = DEVICE_PATH;
 		goto out;
 	} else if (strcmp(comp[0], "device_driver") == 0 && !comp[2]) {
+		if (!comp[1])
+			goto err;
 		*devt = __scst_lookup_devt(comp[1]);
 		if (!*devt)
 			goto err;
 		res = DEVICE_TYPE_PATH;
 		goto out;
 	} else if (strcmp(comp[0], "target_driver") == 0) {
+		if (!comp[1])
+			goto err;
 		*tgtt = __scst_lookup_tgtt(comp[1]);
 		if (!*tgtt)
 			goto err;
@@ -4767,6 +4653,30 @@ static enum mgmt_path_type __parse_path(char *path,
 			res = ACG_INITIATOR_GROUPS_PATH;
 			goto out;
 		}
+	} else if (strcmp(comp[0], "device_groups") == 0) {
+		if (!comp[1]) {
+			res = DGS_PATH;
+			goto out;
+		}
+		*dg = __scst_lookup_dg_by_name(comp[1]);
+		if (!*dg || !comp[2])
+			goto err;
+		if (strcmp(comp[2], "devices") == 0) {
+			if (!comp[3]) {
+				res = DGS_DEVS_PATH;
+				goto out;
+			}
+		} else if (strcmp(comp[2], "target_groups") == 0) {
+			if (!comp[3]) {
+				res = TGS_PATH;
+				goto out;
+			}
+			*tg = __scst_lookup_tg_by_name(*dg, comp[3]);
+			if (!*tg || comp[4])
+				goto err;
+			res = TGS_TG_PATH;
+		}
+		goto err;
 	}
 out:
 	TRACE_EXIT_RES(res);
@@ -4785,6 +4695,8 @@ static ssize_t scst_mgmt_store(struct device *device,
 	struct scst_tgt_template *tgtt;
 	struct scst_tgt *tgt;
 	struct scst_acg *acg;
+	struct scst_dev_group *dg;
+	struct scst_target_group *tg;
 
 	TRACE_ENTRY();
 
@@ -4821,7 +4733,8 @@ static ssize_t scst_mgmt_store(struct device *device,
 	if (res)
 		goto out_resume;
 
-	mgmt_path_type = __parse_path(path, &devt, &dev, &tgtt, &tgt, &acg);
+	mgmt_path_type = __parse_path(path, &devt, &dev, &tgtt, &tgt, &acg,
+				      &dg, &tg);
 	mutex_unlock(&scst_mutex);
 
 	res = -EINVAL;
@@ -4857,6 +4770,18 @@ static ssize_t scst_mgmt_store(struct device *device,
 		break;
 	case ACG_INITIATOR_GROUPS_PATH:
 		res = scst_process_acg_ini_mgmt_store(cmd, acg->tgt, acg);
+		break;
+	case DGS_PATH:
+		res = scst_device_groups_mgmt_store_work_fn(cmd);
+		break;
+	case DGS_DEVS_PATH:
+		res = scst_dg_devs_mgmt_store_work_fn(cmd, dg);
+		break;
+	case TGS_PATH:
+		res = scst_dg_tgs_mgmt_store_work_fn(cmd, dg);
+		break;
+	case TGS_TG_PATH:
+		res = scst_tg_mgmt_store_work_fn(cmd, tg);
 		break;
 	case PATH_NOT_RECOGNIZED:
 		break;

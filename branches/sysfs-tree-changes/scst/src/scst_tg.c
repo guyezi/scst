@@ -30,6 +30,10 @@ static struct scst_device *__lookup_dev(const char *name)
 {
 	struct scst_device *dev;
 
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 29)
+	lockdep_assert_held(&scst_mutex);
+#endif
+
 	list_for_each_entry(dev, &scst_dev_list, dev_list_entry)
 		if (strcmp(dev->virt_name, name) == 0)
 			return dev;
@@ -42,6 +46,10 @@ static struct scst_tgt *__lookup_tgt(const char *name)
 {
 	struct scst_tgt_template *t;
 	struct scst_tgt *tgt;
+
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 29)
+	lockdep_assert_held(&scst_mutex);
+#endif
 
 	list_for_each_entry(t, &scst_template_list, scst_template_list_entry)
 		list_for_each_entry(tgt, &t->tgt_list, tgt_list_entry)
@@ -58,6 +66,10 @@ static struct scst_tg_tgt *__lookup_dg_tgt(struct scst_dev_group *dg,
 	struct scst_target_group *tg;
 	struct scst_tg_tgt *tg_tgt;
 
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 29)
+	lockdep_assert_held(&scst_mutex);
+#endif
+
 	BUG_ON(!dg);
 	BUG_ON(!tgt_name);
 	list_for_each_entry(tg, &dg->tg_list, entry)
@@ -69,10 +81,14 @@ static struct scst_tg_tgt *__lookup_dg_tgt(struct scst_dev_group *dg,
 }
 
 /* Look up a target group by name in the given device group. */
-static struct scst_target_group *
-__lookup_tg_by_name(struct scst_dev_group *dg, const char *name)
+struct scst_target_group *__scst_lookup_tg_by_name(struct scst_dev_group *dg,
+						   const char *name)
 {
 	struct scst_target_group *tg;
+
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 29)
+	lockdep_assert_held(&scst_mutex);
+#endif
 
 	list_for_each_entry(tg, &dg->tg_list, entry)
 		if (strcmp(tg->name, name) == 0)
@@ -87,6 +103,10 @@ static struct scst_dg_dev *__lookup_dg_dev_by_dev(struct scst_dev_group *dg,
 {
 	struct scst_dg_dev *dgd;
 
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 29)
+	lockdep_assert_held(&scst_mutex);
+#endif
+
 	list_for_each_entry(dgd, &dg->dev_list, entry)
 		if (dgd->dev == dev)
 			return dgd;
@@ -99,6 +119,10 @@ static struct scst_dg_dev *__lookup_dg_dev_by_name(struct scst_dev_group *dg,
 						   const char *name)
 {
 	struct scst_dg_dev *dgd;
+
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 29)
+	lockdep_assert_held(&scst_mutex);
+#endif
 
 	list_for_each_entry(dgd, &dg->dev_list, entry)
 		if (strcmp(dgd->dev->virt_name, name) == 0)
@@ -113,6 +137,10 @@ static struct scst_dg_dev *__global_lookup_dg_dev_by_name(const char *name)
 	struct scst_dev_group *dg;
 	struct scst_dg_dev *dgd;
 
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 29)
+	lockdep_assert_held(&scst_mutex);
+#endif
+
 	list_for_each_entry(dg, &scst_dev_group_list, entry) {
 		dgd = __lookup_dg_dev_by_name(dg, name);
 		if (dgd)
@@ -122,9 +150,13 @@ static struct scst_dg_dev *__global_lookup_dg_dev_by_name(const char *name)
 }
 
 /* Look up a device group by name. */
-static struct scst_dev_group *__lookup_dg_by_name(const char *name)
+struct scst_dev_group *__scst_lookup_dg_by_name(const char *name)
 {
 	struct scst_dev_group *dg;
+
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 29)
+	lockdep_assert_held(&scst_mutex);
+#endif
 
 	list_for_each_entry(dg, &scst_dev_group_list, entry)
 		if (strcmp(dg->name, name) == 0)
@@ -137,6 +169,10 @@ static struct scst_dev_group *__lookup_dg_by_name(const char *name)
 static struct scst_dev_group *__lookup_dg_by_dev(struct scst_device *dev)
 {
 	struct scst_dev_group *dg;
+
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 29)
+	lockdep_assert_held(&scst_mutex);
+#endif
 
 	list_for_each_entry(dg, &scst_dev_group_list, entry)
 		if (__lookup_dg_dev_by_dev(dg, dev))
@@ -318,7 +354,7 @@ int scst_tg_add(struct scst_dev_group *dg, const char *name)
 	if (res)
 		goto out_put;
 	res = -EEXIST;
-	if (__lookup_tg_by_name(dg, name))
+	if (__scst_lookup_tg_by_name(dg, name))
 		goto out_unlock;
 	res = scst_tg_sysfs_add(dg, tg);
 	if (res)
@@ -368,7 +404,7 @@ int scst_tg_remove_by_name(struct scst_dev_group *dg, const char *name)
 	if (res)
 		goto out;
 	res = -EINVAL;
-	tg = __lookup_tg_by_name(dg, name);
+	tg = __scst_lookup_tg_by_name(dg, name);
 	if (!tg)
 		goto out_unlock;
 	__scst_tg_remove(dg, tg);
@@ -553,7 +589,7 @@ int scst_dg_add(struct kobject *parent, const char *name)
 	if (res)
 		goto out_put;
 	res = -EEXIST;
-	if (__lookup_dg_by_name(name))
+	if (__scst_lookup_dg_by_name(name))
 		goto out_unlock;
 	res = -ENOMEM;
 	INIT_LIST_HEAD(&dg->dev_list);
@@ -603,7 +639,7 @@ int scst_dg_remove(const char *name)
 	if (res)
 		goto out;
 	res = -EINVAL;
-	dg = __lookup_dg_by_name(name);
+	dg = __scst_lookup_dg_by_name(name);
 	if (!dg)
 		goto out_unlock;
 	__scst_dg_remove(dg);
