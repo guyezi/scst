@@ -971,7 +971,7 @@ static void vdisk_detach_tgt(struct scst_tgt_dev *tgt_dev)
 
 static int vdisk_do_job(struct scst_cmd *cmd)
 {
-	int rc, res;
+	int res;
 	uint64_t lba_start = 0;
 	loff_t data_len = 0;
 	uint8_t *cdb = cmd->cdb;
@@ -996,10 +996,6 @@ static int vdisk_do_job(struct scst_cmd *cmd)
 	default:
 		break;
 	}
-
-	rc = scst_check_local_events(cmd);
-	if (unlikely(rc != 0))
-		goto out_done;
 
 	cmd->status = 0;
 	cmd->msg_status = 0;
@@ -1228,8 +1224,6 @@ static int vdisk_do_job(struct scst_cmd *cmd)
 
 out_compl:
 	cmd->completed = 1;
-
-out_done:
 	cmd->scst_cmd_done(cmd, SCST_CMD_STATE_DEFAULT, SCST_CONTEXT_SAME);
 
 out_thr:
@@ -4265,7 +4259,7 @@ static ssize_t vdisk_sysfs_rd_only_show(struct device *device,
 
 	pos = sprintf(buf, "%d\n%s", virt_dev->rd_only ? 1 : 0,
 		(virt_dev->rd_only == DEF_RD_ONLY) ? "" :
-			SCST_SYSFS_KEY_MARK "");
+			SCST_SYSFS_KEY_MARK "\n");
 
 	TRACE_EXIT_RES(pos);
 	return pos;
@@ -4285,7 +4279,7 @@ static ssize_t vdisk_sysfs_wt_show(struct device *device,
 
 	pos = sprintf(buf, "%d\n%s", virt_dev->wt_flag ? 1 : 0,
 		(virt_dev->wt_flag == DEF_WRITE_THROUGH) ? "" :
-			SCST_SYSFS_KEY_MARK "");
+			SCST_SYSFS_KEY_MARK "\n");
 
 	TRACE_EXIT_RES(pos);
 	return pos;
@@ -4304,8 +4298,10 @@ static ssize_t vdisk_sysfs_tp_show(struct device *device,
 	virt_dev = dev->dh_priv;
 
 	pos = sprintf(buf, "%d\n%s", virt_dev->thin_provisioned ? 1 : 0,
-		(virt_dev->thin_provisioned == virt_dev->dev_thin_provisioned) ? "" :
-			SCST_SYSFS_KEY_MARK "");
+		      virt_dev->thin_provisioned_manually_set &&
+		      (virt_dev->thin_provisioned !=
+		       virt_dev->dev_thin_provisioned) ?
+		      SCST_SYSFS_KEY_MARK "\n" : "");
 
 	TRACE_EXIT_RES(pos);
 	return pos;
@@ -4325,7 +4321,7 @@ static ssize_t vdisk_sysfs_nv_cache_show(struct device *device,
 
 	pos = sprintf(buf, "%d\n%s", virt_dev->nv_cache ? 1 : 0,
 		(virt_dev->nv_cache == DEF_NV_CACHE) ? "" :
-			SCST_SYSFS_KEY_MARK "");
+			SCST_SYSFS_KEY_MARK "\n");
 
 	TRACE_EXIT_RES(pos);
 	return pos;
@@ -4345,7 +4341,7 @@ static ssize_t vdisk_sysfs_o_direct_show(struct device *device,
 
 	pos = sprintf(buf, "%d\n%s", virt_dev->o_direct_flag ? 1 : 0,
 		(virt_dev->o_direct_flag == DEF_O_DIRECT) ? "" :
-			SCST_SYSFS_KEY_MARK "");
+			SCST_SYSFS_KEY_MARK "\n");
 
 	TRACE_EXIT_RES(pos);
 	return pos;

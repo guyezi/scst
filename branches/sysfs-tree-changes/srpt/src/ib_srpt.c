@@ -1091,27 +1091,29 @@ static int srpt_init_ch_qp(struct srpt_rdma_ch *ch, struct ib_qp *qp)
  * @qp: queue pair to change the state of.
  *
  * Returns zero upon success and a negative value upon failure.
- *
- * Note: currently a struct ib_qp_attr takes 136 bytes on a 64-bit system.
- * If this structure ever becomes larger, it might be necessary to allocate
- * it dynamically instead of on the stack.
  */
 static int srpt_ch_qp_rtr(struct srpt_rdma_ch *ch, struct ib_qp *qp)
 {
-	struct ib_qp_attr qp_attr;
+	struct ib_qp_attr *attr;
 	int attr_mask;
 	int ret;
 
-	qp_attr.qp_state = IB_QPS_RTR;
-	ret = ib_cm_init_qp_attr(ch->cm_id, &qp_attr, &attr_mask);
+	attr = kzalloc(sizeof *attr, GFP_KERNEL);
+	if (!attr)
+		return -ENOMEM;
+
+	attr->qp_state = IB_QPS_RTR;
+	ret = ib_cm_init_qp_attr(ch->cm_id, attr, &attr_mask);
 	if (ret)
 		goto out;
 
-	qp_attr.max_dest_rd_atomic = 4;
+	attr->max_dest_rd_atomic = 4;
+	TRACE_DBG("qp timeout = %d", attr->timeout);
 
-	ret = ib_modify_qp(qp, &qp_attr, attr_mask);
+	ret = ib_modify_qp(qp, attr, attr_mask);
 
 out:
+	kfree(attr);
 	return ret;
 }
 
@@ -1121,27 +1123,53 @@ out:
  * @qp: queue pair to change the state of.
  *
  * Returns zero upon success and a negative value upon failure.
- *
- * Note: currently a struct ib_qp_attr takes 136 bytes on a 64-bit system.
- * If this structure ever becomes larger, it might be necessary to allocate
- * it dynamically instead of on the stack.
  */
 static int srpt_ch_qp_rts(struct srpt_rdma_ch *ch, struct ib_qp *qp)
 {
-	struct ib_qp_attr qp_attr;
+	struct ib_qp_attr *attr;
 	int attr_mask;
 	int ret;
+	uint64_t T_tr_ns;
+	uint32_t max_compl_time_ms;
 
-	qp_attr.qp_state = IB_QPS_RTS;
-	ret = ib_cm_init_qp_attr(ch->cm_id, &qp_attr, &attr_mask);
+	attr = kzalloc(sizeof *attr, GFP_KERNEL);
+	if (!attr)
+		return -ENOMEM;
+
+	attr->qp_state = IB_QPS_RTS;
+	ret = ib_cm_init_qp_attr(ch->cm_id, attr, &attr_mask);
 	if (ret)
 		goto out;
 
-	qp_attr.max_rd_atomic = 4;
+	attr->max_rd_atomic = 4;
 
-	ret = ib_modify_qp(qp, &qp_attr, attr_mask);
+	/*
+	 * From IBTA C9-140: Transport Timer timeout interval
+	 * T_tr = 4.096 us * 2**(local ACK timeout) where the local ACK timeout
+	 * is a five-bit value, with zero meaning that the timer is disabled.
+	 */
+	WARN_ON(attr->timeout < 0 || attr->timeout >= (1 << 5));
+	if (attr->timeout) {
+		T_tr_ns = 1ULL << (12 + attr->timeout);
+		max_compl_time_ms = attr->retry_cnt * 4 * T_tr_ns / 1000000;
+		TRACE_DBG("Session %s: QP local ack timeout = %d or T_tr ="
+			  " %u ms; retry_cnt = %d; max compl. time = %d ms",
+			  ch->sess_name,
+			  attr->timeout, (unsigned)(T_tr_ns / (1000 * 1000)),
+			  attr->retry_cnt, max_compl_time_ms);
+
+		if (max_compl_time_ms >= RDMA_COMPL_TIMEOUT_S * 1000) {
+			PRINT_ERROR("Maximum RDMA completion time (%d ms)"
+				    " exceeds ib_srpt timeout (%d ms)",
+				    max_compl_time_ms,
+				    1000 * RDMA_COMPL_TIMEOUT_S);
+		}
+	}
+
+	ret = ib_modify_qp(qp, attr, attr_mask);
 
 out:
+	kfree(attr);
 	return ret;
 }
 
@@ -1150,10 +1178,17 @@ out:
  */
 static int srpt_ch_qp_err(struct srpt_rdma_ch *ch)
 {
-	struct ib_qp_attr qp_attr;
+	struct ib_qp_attr *attr;
+	int ret;
 
-	qp_attr.qp_state = IB_QPS_ERR;
-	return ib_modify_qp(ch->qp, &qp_attr, IB_QP_STATE);
+	attr = kzalloc(sizeof *attr, GFP_KERNEL);
+	if (!attr)
+		return -ENOMEM;
+
+	attr->qp_state = IB_QPS_ERR;
+	ret = ib_modify_qp(ch->qp, attr, IB_QP_STATE);
+	kfree(attr);
+	return ret;
 }
 
 /**
@@ -3032,7 +3067,7 @@ out_unmap:
  * srpt_pending_cmd_timeout() - SCST command HCA processing timeout callback.
  *
  * Called by the SCST core if no IB completion notification has been received
- * within max_hw_pending_time seconds.
+ * within RDMA_COMPL_TIMEOUT_S seconds.
  */
 static void srpt_pending_cmd_timeout(struct scst_cmd *scmnd)
 {
@@ -3528,7 +3563,7 @@ static struct scst_tgt_template srpt_template = {
 	.name				 = DRV_NAME,
 	.owner				 = THIS_MODULE,
 	.sg_tablesize			 = SRPT_DEF_SG_TABLESIZE,
-	.max_hw_pending_time		 = 60/*seconds*/,
+	.max_hw_pending_time		 = RDMA_COMPL_TIMEOUT_S,
 #if !defined(CONFIG_SCST_PROC)
 	.enable_target			 = srpt_enable_target,
 	.is_target_enabled		 = srpt_is_target_enabled,
