@@ -1,4 +1,5 @@
 #!/usr/bin/perl
+
 $Version  = 'SCST Configurator v2.0.0';
 
 # Configures SCST
@@ -391,7 +392,7 @@ sub getArgs {
 	$_NOPROMPT_ = TRUE if (defined($_NOPROMPT_));
 
 	$force = TRUE if (defined($force));
-	$nonkey = TRUE; # TRUE if (defined($nonkey));
+	$nonkey = TRUE if (defined($nonkey));
 
 	my $query_mode = defined($listHandler) || defined($listDevice) || defined($listDriver) ||
 	  defined($listTarget) || defined($listGroup) || defined($listSessions) || defined($listScstAttr) ||
@@ -1141,6 +1142,7 @@ sub writeConfiguration {
 			$attribute_buff_nk .= "\n" if ($attribute_buff_nk);
 
 			if ($attribute_buff_nk) {
+				$attribute_buff .= "\t\t# Non-key attributes\n";
 				$attribute_buff .= $attribute_buff_nk;
 			}
 
@@ -1160,6 +1162,7 @@ sub writeConfiguration {
 		$handler_buff .= $device_buff;
 
 		if ($handler_buff_nk) {
+			$handler_buff .= "\t# Non-key attributes\n";
 			$handler_buff .= $handler_buff_nk;
 		}
 
@@ -1271,6 +1274,7 @@ sub writeConfiguration {
 					    if ($nonkey);
 
 					if ($l_attribute_buff_nk) {
+						$l_attribute_buff .= "\t\t\t\t# Non-key attributes\n";
 						$l_attribute_buff .= $l_attribute_buff_nk;
 					}
 
@@ -1302,6 +1306,7 @@ sub writeConfiguration {
 					    if ($nonkey);
 
 					if ($i_attribute_buff_nk) {
+						$i_attribute_buff .= "\t\t\t\t# Non-key attributes\n";
 						$i_attribute_buff .= $i_attribute_buff_nk;
 					}
 
@@ -1331,6 +1336,7 @@ sub writeConfiguration {
 
 				if ($g_attribute_buff_nk) {
 					$g_attribute_buff .= "\n" if ($g_attribute_buff);
+					$g_attribute_buff .= "\t\t\t# Non-key attributes\n";
 					$g_attribute_buff .= $g_attribute_buff_nk;
 				}
 
@@ -1349,6 +1355,7 @@ sub writeConfiguration {
 			}
 
 			if ($attribute_buff_nk) {
+				$attribute_buff .= "\t\t# Non-key attributes\n";
 				$attribute_buff .= $attribute_buff_nk;
 			}
 
@@ -1367,6 +1374,7 @@ sub writeConfiguration {
 		}
 
 		if ($drv_attr_buff_nk) {
+			$drv_attr_buff .= "\t# Non-key attributes\n";
 			$drv_attr_buff .= $drv_attr_buff_nk;
 		}
 
@@ -4521,3 +4529,9 @@ sub commitSuicide {
 	print "\n\nAborting immediately.\n";
 	exit 1;
 }
+
+# Local Variables:
+# mode: perl
+# perl-indent-level: 8
+# indent-tabs-mode: t
+# End:
