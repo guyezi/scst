@@ -1815,11 +1815,42 @@ static struct device_attribute scst_dev_sysfs_type_attr =
 	__ATTR(type, S_IRUGO, scst_dev_sysfs_type_show, NULL);
 
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 34)
-static const struct device_attribute *scst_devt_dev_attrs[] = {
+static const struct device_attribute *scst_virt_dev_attrs[] = {
 #else
-static struct device_attribute *scst_devt_dev_attrs[] = {
+static struct device_attribute *scst_virt_dev_attrs[] = {
 #endif
 	&scst_dev_sysfs_type_attr,
+	NULL
+};
+
+static ssize_t scst_dev_scsi_device_show(struct device *device,
+				      struct device_attribute *attr, char *buf)
+{
+	struct scst_device *dev;
+	struct scsi_device *scsidp;
+	int res;
+
+	dev = scst_dev_to_dev(device);
+	res = -ENOENT;
+	scsidp = dev->scsi_dev;
+	if (!scsidp)
+		goto out;
+	res = scnprintf(buf, PAGE_SIZE, "%d:%d:%d:%d\n",
+			scsidp->host->host_no, scsidp->channel, scsidp->id,
+			scsidp->lun);
+out:
+	return res;
+}
+
+static struct device_attribute scst_dev_scsi_device_attr =
+	__ATTR(scsi_device, S_IRUGO, scst_dev_scsi_device_show, NULL);
+
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 34)
+static const struct device_attribute *scst_pt_dev_attrs[] = {
+#else
+static struct device_attribute *scst_pt_dev_attrs[] = {
+#endif
+	&scst_dev_scsi_device_attr,
 	NULL
 };
 
@@ -1901,9 +1932,9 @@ int scst_dev_sysfs_init(struct scst_device *dev)
 }
 
 /**
- * scst_devt_dev_sysfs_create() - Create a virtual device's sysfs attributes.
+ * scst_dev_sysfs_create() - Create sysfs attributes for an SCST device.
  */
-int scst_devt_dev_sysfs_create(struct scst_device *dev)
+int scst_dev_sysfs_create(struct scst_device *dev)
 {
 	int res = 0;
 
@@ -1919,21 +1950,35 @@ int scst_devt_dev_sysfs_create(struct scst_device *dev)
 	if (res)
 		goto out_err;
 
-	res = -ENOMEM;
-	dev->dev_exp_kobj = kobject_create_and_add("exported",
+	if (dev->virt_id) {
+		/* Virtual SCST device. */
+		WARN_ON(dev->scsi_dev);
+		res = -ENOMEM;
+		dev->dev_exp_kobj = kobject_create_and_add("exported",
 						scst_sysfs_get_dev_kobj(dev));
-	if (!dev->dev_exp_kobj) {
-		PRINT_ERROR("Can't create exported link for device %s",
-			    dev->virt_name);
-		goto out_err;
-	}
+		if (!dev->dev_exp_kobj) {
+			PRINT_ERROR("Can't create exported link for device %s",
+				    dev->virt_name);
+			goto out_err;
+		}
 
-	res = device_create_files(scst_sysfs_get_dev_dev(dev),
-				  scst_devt_dev_attrs);
-	if (res != 0) {
-		PRINT_ERROR("Registering attributes for dev %s failed",
-			    dev->virt_name);
-		goto out_err;
+		res = device_create_files(scst_sysfs_get_dev_dev(dev),
+					  scst_virt_dev_attrs);
+		if (res != 0) {
+			PRINT_ERROR("Registering attributes for dev %s failed",
+				    dev->virt_name);
+			goto out_err;
+		}
+	} else {
+		/* Pass-through SCSI device. */
+		WARN_ON(!dev->scsi_dev);
+		res = device_create_files(scst_sysfs_get_dev_dev(dev),
+					  scst_pt_dev_attrs);
+		if (res != 0) {
+			PRINT_ERROR("Registering attributes for dev %s failed",
+				    dev->virt_name);
+			goto out_err;
+		}
 	}
 
 	if (dev->handler->threads_num >= 0) {
@@ -1956,71 +2001,15 @@ int scst_devt_dev_sysfs_create(struct scst_device *dev)
 		}
 	}
 
-out:
-	TRACE_EXIT_RES(res);
-	return res;
-
-out_err:
-	scst_dev_sysfs_del(dev);
-	goto out;
-}
-
-static ssize_t scst_dev_scsi_device_show(struct device *device,
-				      struct device_attribute *attr, char *buf)
-{
-	struct scst_device *dev;
-	struct scsi_device *scsidp;
-	int res;
-
-	dev = scst_dev_to_dev(device);
-	res = -ENOENT;
-	scsidp = dev->scsi_dev;
-	if (!scsidp)
-		goto out;
-	res = scnprintf(buf, PAGE_SIZE, "%d:%d:%d:%d\n",
-			scsidp->host->host_no, scsidp->channel, scsidp->id,
-			scsidp->lun);
-out:
-	return res;
-}
-
-static struct device_attribute scst_dev_scsi_device_attr =
-	__ATTR(scsi_device, S_IRUGO, scst_dev_scsi_device_show, NULL);
-
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 34)
-static const struct device_attribute *scst_dev_attrs[] = {
-#else
-static struct device_attribute *scst_dev_attrs[] = {
-#endif
-	&scst_dev_scsi_device_attr,
-	NULL
-};
-
-/**
- * scst_dev_sysfs_create() - Create pass-through device sysfs attributes.
- */
-int scst_dev_sysfs_create(struct scst_device *dev)
-{
-	int res;
-
-	TRACE_ENTRY();
-
-	res = device_create_files(scst_sysfs_get_dev_dev(dev), scst_dev_attrs);
-	if (res != 0) {
-		PRINT_ERROR("Registering attributes for dev %s failed",
-			    dev->virt_name);
-		goto out_del;
-	}
-
 #if defined(CONFIG_SCST_DEBUG) || defined(CONFIG_SCST_TRACING)
-	if (!dev->scsi_dev) {
+	if (dev->virt_id) {
 		res = device_create_file(scst_sysfs_get_dev_dev(dev),
 					 &dev_dump_prs_attr);
 		if (res != 0) {
 			PRINT_ERROR("Can't create attr %s for dev %s",
 				    dev_dump_prs_attr.attr.name,
 				    dev->virt_name);
-			goto out_del;
+			goto out_err;
 		}
 	}
 #endif
@@ -2029,7 +2018,7 @@ out:
 	TRACE_EXIT_RES(res);
 	return res;
 
-out_del:
+out_err:
 	scst_dev_sysfs_del(dev);
 	goto out;
 }
@@ -2047,14 +2036,14 @@ void scst_dev_sysfs_del(struct scst_device *dev)
 #if defined(CONFIG_SCST_DEBUG) || defined(CONFIG_SCST_TRACING)
 	device_remove_file(scst_sysfs_get_dev_dev(dev), &dev_dump_prs_attr);
 #endif
-	device_remove_files(scst_sysfs_get_dev_dev(dev), scst_dev_attrs);
+	device_remove_files(scst_sysfs_get_dev_dev(dev), scst_pt_dev_attrs);
 
 	/* Virtual device attributes. */
 	if (dev->handler->dev_attrs)
 		device_remove_files(scst_sysfs_get_dev_dev(dev),
 				    dev->handler->dev_attrs);
 	device_remove_files(scst_sysfs_get_dev_dev(dev), dev_thread_attr);
-	device_remove_files(scst_sysfs_get_dev_dev(dev), scst_devt_dev_attrs);
+	device_remove_files(scst_sysfs_get_dev_dev(dev), scst_virt_dev_attrs);
 
 	kobject_del(dev->dev_exp_kobj);
 	kobject_put(dev->dev_exp_kobj);

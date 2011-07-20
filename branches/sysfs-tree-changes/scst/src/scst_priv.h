@@ -481,7 +481,7 @@ static inline int scst_sysfs_init(void)
 }
 static inline void scst_sysfs_cleanup(void) { }
 
-static inline int scst_devt_dev_sysfs_create(struct scst_device *dev)
+static inline int scst_dev_sysfs_create(struct scst_device *dev)
 {
 	return 0;
 }
@@ -542,7 +542,6 @@ int scst_devt_sysfs_init(struct scst_dev_type *devt);
 int scst_devt_sysfs_create(struct scst_dev_type *devt);
 void scst_devt_sysfs_del(struct scst_dev_type *devt);
 void scst_devt_sysfs_put(struct scst_dev_type *devt);
-int scst_devt_dev_sysfs_create(struct scst_device *dev);
 int scst_dev_sysfs_init(struct scst_device *dev);
 int scst_dev_sysfs_create(struct scst_device *dev);
 void scst_dev_sysfs_del(struct scst_device *dev);
