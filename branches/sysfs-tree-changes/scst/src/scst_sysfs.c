@@ -1590,17 +1590,35 @@ void scst_tgt_sysfs_put(struct scst_tgt *tgt)
 static ssize_t scst_dev_sysfs_type_show(struct device *device,
 				struct device_attribute *attr, char *buf)
 {
-	int pos;
-	struct scst_device *dev;
+	struct scst_device *dev = scst_dev_to_dev(device);
 
-	dev = scst_dev_to_dev(device);
+	return scnprintf(buf, PAGE_SIZE, "%d\n", dev->type);
+}
 
-	pos = sprintf(buf, "%d - %s\n", dev->type,
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 34)
+static const struct device_attribute scst_dev_sysfs_type_attr =
+#else
+static struct device_attribute scst_dev_sysfs_type_attr =
+#endif
+	__ATTR(type, S_IRUGO, scst_dev_sysfs_type_show, NULL);
+
+static ssize_t scst_dev_sysfs_type_description_show(struct device *device,
+				struct device_attribute *attr, char *buf)
+{
+	struct scst_device *dev = scst_dev_to_dev(device);
+
+	return scnprintf(buf, PAGE_SIZE, "%s\n",
 		(unsigned)dev->type >= ARRAY_SIZE(scst_dev_handler_types) ?
 		      "unknown" : scst_dev_handler_types[dev->type]);
-
-	return pos;
 }
+
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 34)
+static const struct device_attribute scst_dev_sysfs_type_description_attr =
+#else
+static struct device_attribute scst_dev_sysfs_type_description_attr =
+#endif
+	__ATTR(type_description, S_IRUGO, scst_dev_sysfs_type_description_show,
+	       NULL);
 
 #if defined(CONFIG_SCST_DEBUG) || defined(CONFIG_SCST_TRACING)
 
@@ -1808,18 +1826,12 @@ static const struct device_attribute *dev_thread_attr[] = {
 };
 
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 34)
-static const struct device_attribute scst_dev_sysfs_type_attr =
-#else
-static struct device_attribute scst_dev_sysfs_type_attr =
-#endif
-	__ATTR(type, S_IRUGO, scst_dev_sysfs_type_show, NULL);
-
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 34)
 static const struct device_attribute *scst_virt_dev_attrs[] = {
 #else
 static struct device_attribute *scst_virt_dev_attrs[] = {
 #endif
 	&scst_dev_sysfs_type_attr,
+	&scst_dev_sysfs_type_description_attr,
 	NULL
 };
 
@@ -3541,16 +3553,9 @@ static struct driver_attribute devt_trace_attr =
 
 static ssize_t scst_devt_type_show(struct device_driver *drv, char *buf)
 {
-	int pos;
-	struct scst_dev_type *devt;
+	struct scst_dev_type *devt = scst_drv_to_devt(drv);
 
-	devt = scst_drv_to_devt(drv);
-
-	pos = sprintf(buf, "%d - %s\n", devt->type,
-		(unsigned)devt->type >= ARRAY_SIZE(scst_dev_handler_types) ?
-			"unknown" : scst_dev_handler_types[devt->type]);
-
-	return pos;
+	return scnprintf(buf, PAGE_SIZE, "%d\n", devt->type);
 }
 
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 34)
@@ -3560,12 +3565,31 @@ static struct driver_attribute scst_devt_type_attr =
 #endif
 	__ATTR(type, S_IRUGO, scst_devt_type_show, NULL);
 
+static ssize_t scst_devt_type_description_show(struct device_driver *drv,
+					       char *buf)
+{
+	struct scst_dev_type *devt = scst_drv_to_devt(drv);
+
+	return scnprintf(buf, PAGE_SIZE, "%s\n",
+		(unsigned)devt->type >= ARRAY_SIZE(scst_dev_handler_types) ?
+			"unknown" : scst_dev_handler_types[devt->type]);
+}
+
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 34)
+static const struct driver_attribute scst_devt_type_description_attr =
+#else
+static struct driver_attribute scst_devt_type_description_attr =
+#endif
+	__ATTR(type_description, S_IRUGO, scst_devt_type_description_show,
+	       NULL);
+
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 34)
 static const struct driver_attribute *scst_devt_default_attrs[] = {
 #else
 static struct driver_attribute *scst_devt_default_attrs[] = {
 #endif
 	&scst_devt_type_attr,
+	&scst_devt_type_description_attr,
 	NULL
 };
 
