@@ -1596,7 +1596,7 @@ static ssize_t scst_dev_sysfs_type_show(struct device *device,
 	dev = scst_dev_to_dev(device);
 
 	pos = sprintf(buf, "%d - %s\n", dev->type,
-		(unsigned)dev->type > ARRAY_SIZE(scst_dev_handler_types) ?
+		(unsigned)dev->type >= ARRAY_SIZE(scst_dev_handler_types) ?
 		      "unknown" : scst_dev_handler_types[dev->type]);
 
 	return pos;
@@ -3547,7 +3547,7 @@ static ssize_t scst_devt_type_show(struct device_driver *drv, char *buf)
 	devt = scst_drv_to_devt(drv);
 
 	pos = sprintf(buf, "%d - %s\n", devt->type,
-		(unsigned)devt->type > ARRAY_SIZE(scst_dev_handler_types) ?
+		(unsigned)devt->type >= ARRAY_SIZE(scst_dev_handler_types) ?
 			"unknown" : scst_dev_handler_types[devt->type]);
 
 	return pos;
