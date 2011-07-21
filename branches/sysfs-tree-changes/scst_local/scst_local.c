@@ -85,7 +85,9 @@ static unsigned long scst_local_trace_flag = SCST_LOCAL_DEFAULT_LOG_FLAGS;
 #endif
 
 #define SCST_LOCAL_VERSION "1.0.0"
+#ifdef CONFIG_SCST_PROC
 static const char *scst_local_version_date = "20100910";
+#endif
 
 /* Some statistics */
 static atomic_t num_aborts = ATOMIC_INIT(0);
@@ -340,36 +342,37 @@ static const char *scst_local_info(struct Scsi_Host *shp)
 
 static ssize_t scst_local_version_show(struct device_driver *drv, char *buf)
 {
-	sprintf(buf, "%s/%s\n", SCST_LOCAL_VERSION, scst_local_version_date);
-
-#ifdef CONFIG_SCST_EXTRACHECKS
-	strcat(buf, "EXTRACHECKS\n");
-#endif
-
-#ifdef CONFIG_SCST_TRACING
-	strcat(buf, "TRACING\n");
-#endif
-
-#ifdef CONFIG_SCST_DEBUG
-	strcat(buf, "DEBUG\n");
-#endif
-
-	TRACE_EXIT();
-	return strlen(buf);
+	return scnprintf(buf, PAGE_SIZE, "%s\n", SCST_LOCAL_VERSION);
 }
 
 static struct driver_attribute scst_local_version_attr =
 	__ATTR(version, S_IRUGO, scst_local_version_show, NULL);
 
-static ssize_t scst_local_stats_show(struct device_driver *drv, char *buf)
+static ssize_t scst_local_aborts_show(struct device_driver *drv, char *buf)
 {
-	return sprintf(buf, "Aborts: %d, Device Resets: %d, Target Resets: %d",
-		atomic_read(&num_aborts), atomic_read(&num_dev_resets),
-		atomic_read(&num_target_resets));
+	return scnprintf(buf, PAGE_SIZE, "%d\n", atomic_read(&num_aborts));
 }
 
-static struct driver_attribute scst_local_stats_attr =
-	__ATTR(stats, S_IRUGO, scst_local_stats_show, NULL);
+static struct driver_attribute scst_local_aborts_attr =
+	__ATTR(aborts, S_IRUGO, scst_local_aborts_show, NULL);
+
+static ssize_t scst_local_dev_resets_show(struct device_driver *drv, char *buf)
+{
+	return scnprintf(buf, PAGE_SIZE, "%d\n", atomic_read(&num_dev_resets));
+}
+
+static struct driver_attribute scst_local_dev_resets_attr =
+	__ATTR(dev_resets, S_IRUGO, scst_local_dev_resets_show, NULL);
+
+static ssize_t scst_local_target_resets_show(struct device_driver *drv,
+					     char *buf)
+{
+	return scnprintf(buf, PAGE_SIZE, "%d\n",
+			 atomic_read(&num_target_resets));
+}
+
+static struct driver_attribute scst_local_target_resets_attr =
+	__ATTR(target_resets, S_IRUGO, scst_local_target_resets_show, NULL);
 
 #if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 34)
 static struct driver_attribute *scst_local_tgtt_attrs[] = {
@@ -377,7 +380,9 @@ static struct driver_attribute *scst_local_tgtt_attrs[] = {
 static const struct driver_attribute *scst_local_tgtt_attrs[] = {
 #endif
 	&scst_local_version_attr,
-	&scst_local_stats_attr,
+	&scst_local_aborts_attr,
+	&scst_local_dev_resets_attr,
+	&scst_local_target_resets_attr,
 	NULL,
 };
 
