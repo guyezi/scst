@@ -5000,56 +5000,7 @@ out:
 static ssize_t scst_version_show(struct device *device,
 				 struct device_attribute *attr, char *buf)
 {
-	TRACE_ENTRY();
-
-	sprintf(buf, "%s\n", SCST_VERSION_STRING);
-
-#ifdef CONFIG_SCST_STRICT_SERIALIZING
-	strcat(buf, "STRICT_SERIALIZING\n");
-#endif
-
-#ifdef CONFIG_SCST_EXTRACHECKS
-	strcat(buf, "EXTRACHECKS\n");
-#endif
-
-#ifdef CONFIG_SCST_TRACING
-	strcat(buf, "TRACING\n");
-#endif
-
-#ifdef CONFIG_SCST_DEBUG
-	strcat(buf, "DEBUG\n");
-#endif
-
-#ifdef CONFIG_SCST_DEBUG_TM
-	strcat(buf, "DEBUG_TM\n");
-#endif
-
-#ifdef CONFIG_SCST_DEBUG_RETRY
-	strcat(buf, "DEBUG_RETRY\n");
-#endif
-
-#ifdef CONFIG_SCST_DEBUG_OOM
-	strcat(buf, "DEBUG_OOM\n");
-#endif
-
-#ifdef CONFIG_SCST_DEBUG_SN
-	strcat(buf, "DEBUG_SN\n");
-#endif
-
-#ifdef CONFIG_SCST_USE_EXPECTED_VALUES
-	strcat(buf, "USE_EXPECTED_VALUES\n");
-#endif
-
-#ifdef CONFIG_SCST_TEST_IO_IN_SIRQ
-	strcat(buf, "TEST_IO_IN_SIRQ\n");
-#endif
-
-#ifdef CONFIG_SCST_STRICT_SECURITY
-	strcat(buf, "STRICT_SECURITY\n");
-#endif
-
-	TRACE_EXIT();
-	return strlen(buf);
+	return scnprintf(buf, PAGE_SIZE, "%s\n", SCST_VERSION_STRING);
 }
 
 
