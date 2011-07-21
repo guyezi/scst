@@ -456,14 +456,6 @@ out:
 	return res;
 }
 
-static void add_key_mark(char *res_str, int res_str_len, int new_line)
-{
-	int offs = strlen(res_str);
-	snprintf(&res_str[offs], res_str_len - offs, "%s%s\n",
-		new_line ? "\n" : "", SCST_SYSFS_KEY_MARK);
-	return;
-}
-
 static int handle_e_get_attr_value(int fd, const struct iscsi_kern_event *event)
 {
 	int res = 0, rc, idx;
@@ -520,9 +512,6 @@ static int handle_e_get_attr_value(int fd, const struct iscsi_kern_event *event)
 
 		params_val_to_str(target_keys, idx, target->target_params[idx],
 			res_str, sizeof(res_str));
-
-		if (target->target_params[idx] != target_keys[idx].local_def)
-			add_key_mark(res_str, sizeof(res_str), 1);
 	} else if (!((idx = params_index_by_name(pp, session_keys)) < 0)) {
 		if (target == NULL) {
 			log_error("Target expected for attr %s", pp);
@@ -532,9 +521,6 @@ static int handle_e_get_attr_value(int fd, const struct iscsi_kern_event *event)
 
 		params_val_to_str(session_keys, idx, target->session_params[idx],
 			res_str, sizeof(res_str));
-
-		if (target->session_params[idx] != session_keys[idx].local_def)
-			add_key_mark(res_str, sizeof(res_str), 1);
 	} else if (!((idx = params_index_by_name_numwild(pp, user_keys)) < 0)) {
 		struct iscsi_attr *user;
 
@@ -547,7 +533,6 @@ static int handle_e_get_attr_value(int fd, const struct iscsi_kern_event *event)
 
 		snprintf(res_str, sizeof(res_str), "%s %s\n", ISCSI_USER_NAME(user),
 			ISCSI_USER_PASS(user));
-		add_key_mark(res_str, sizeof(res_str), 0);
 	} else if (strncasecmp_numwild(ISCSI_ALLOWED_PORTAL_ATTR_NAME, pp) == 0) {
 		struct iscsi_attr *portal;
 
@@ -565,7 +550,6 @@ static int handle_e_get_attr_value(int fd, const struct iscsi_kern_event *event)
 		}
 
 		snprintf(res_str, sizeof(res_str), "%s\n", portal->attr_key);
-		add_key_mark(res_str, sizeof(res_str), 0);
 	} else if (strcasecmp(ISCSI_ENABLED_ATTR_NAME, pp) == 0) {
 		if (target != NULL) {
 			log_error("Not NULL target %s for global attribute %s",
@@ -581,8 +565,6 @@ static int handle_e_get_attr_value(int fd, const struct iscsi_kern_event *event)
 			goto out_free;
 		}
 		snprintf(res_str, sizeof(res_str), "%d\n", target->per_portal_acl);
-		if (target->per_portal_acl)
-			add_key_mark(res_str, sizeof(res_str), 0);
 	} else if (strcasecmp(ISCSI_TARGET_REDIRECTION_ATTR_NAME, pp) == 0) {
 		if (target == NULL) {
 			log_error("Target expected for attr %s", pp);
@@ -599,7 +581,6 @@ static int handle_e_get_attr_value(int fd, const struct iscsi_kern_event *event)
 			else
 				snprintf(res_str, sizeof(res_str), "%s %s\n",
 					target->redirect.addr, type);
-			add_key_mark(res_str, sizeof(res_str), 0);
 		} else
 			*res_str = '\0';
 	} else if (strcasecmp(ISCSI_ISNS_SERVER_ATTR_NAME, pp) == 0) {
@@ -613,7 +594,6 @@ static int handle_e_get_attr_value(int fd, const struct iscsi_kern_event *event)
 		if (isns_server != NULL) {
 			snprintf(res_str, sizeof(res_str), "%s %s\n", isns_server,
 				isns_access_control ? ISCSI_ISNS_SYSFS_ACCESS_CONTROL_ENABLED : "");
-			add_key_mark(res_str, sizeof(res_str), 0);
 		} else
 			snprintf(res_str, sizeof(res_str), "%s\n", "");
 	} else {

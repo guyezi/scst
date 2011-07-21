@@ -881,9 +881,6 @@ static ssize_t __scst_acg_addr_method_show(struct scst_acg *acg, char *buf)
 		break;
 	}
 
-	if (acg->addr_method != acg->tgt->tgtt->preferred_addr_method)
-		res += sprintf(&buf[res], "%s\n", SCST_SYSFS_KEY_MARK);
-
 	return res;
 }
 
@@ -951,17 +948,14 @@ static ssize_t __scst_acg_io_grouping_type_show(struct scst_acg *acg, char *buf)
 		res = sprintf(buf, "%s\n", SCST_IO_GROUPING_AUTO_STR);
 		break;
 	case SCST_IO_GROUPING_THIS_GROUP_ONLY:
-		res = sprintf(buf, "%s\n%s\n",
-			SCST_IO_GROUPING_THIS_GROUP_ONLY_STR,
-			SCST_SYSFS_KEY_MARK);
+		res = sprintf(buf, "%s\n",
+			SCST_IO_GROUPING_THIS_GROUP_ONLY_STR);
 		break;
 	case SCST_IO_GROUPING_NEVER:
-		res = sprintf(buf, "%s\n%s\n", SCST_IO_GROUPING_NEVER_STR,
-			SCST_SYSFS_KEY_MARK);
+		res = sprintf(buf, "%s\n", SCST_IO_GROUPING_NEVER_STR);
 		break;
 	default:
-		res = sprintf(buf, "%d\n%s\n", acg->acg_io_grouping_type,
-			SCST_SYSFS_KEY_MARK);
+		res = sprintf(buf, "%d\n", acg->acg_io_grouping_type);
 		break;
 	}
 
@@ -1086,9 +1080,6 @@ static ssize_t __scst_acg_cpu_mask_show(struct scst_acg *acg, char *buf)
 	res = cpumask_scnprintf(buf, PAGE_SIZE, &acg->acg_cpu_mask);
 #endif
 	res += scnprintf(buf + res, PAGE_SIZE - res, "\n");
-	if (!cpus_equal(acg->acg_cpu_mask, default_cpu_mask))
-		res += scnprintf(buf + res, PAGE_SIZE - res, "%s",
-				 SCST_SYSFS_KEY_MARK "\n");
 
 	return res;
 }
@@ -1244,8 +1235,7 @@ static ssize_t scst_rel_tgt_id_show(struct device *device,
 
 	tgt = scst_dev_to_tgt(device);
 
-	res = sprintf(buf, "%d\n%s", tgt->rel_tgt_id,
-		(tgt->rel_tgt_id != 0) ? SCST_SYSFS_KEY_MARK "\n" : "");
+	res = sprintf(buf, "%d\n", tgt->rel_tgt_id);
 
 	TRACE_EXIT_RES(res);
 	return res;
@@ -1723,9 +1713,7 @@ static ssize_t scst_dev_sysfs_threads_num_show(struct device *device,
 
 	dev = scst_dev_to_dev(device);
 
-	pos = sprintf(buf, "%d\n%s", dev->threads_num,
-		(dev->threads_num != dev->handler->threads_num) ?
-			SCST_SYSFS_KEY_MARK "\n" : "");
+	pos = sprintf(buf, "%d\n", dev->threads_num);
 
 	TRACE_EXIT_RES(pos);
 	return pos;
@@ -1773,14 +1761,10 @@ static ssize_t scst_dev_sysfs_threads_pool_type_show(struct device *device,
 
 	switch (dev->threads_pool_type) {
 	case SCST_THREADS_POOL_PER_INITIATOR:
-		pos = sprintf(buf, "%s\n%s", SCST_THREADS_POOL_PER_INITIATOR_STR,
-			(dev->threads_pool_type != dev->handler->threads_pool_type) ?
-				SCST_SYSFS_KEY_MARK "\n" : "");
+		pos = sprintf(buf, "%s\n", SCST_THREADS_POOL_PER_INITIATOR_STR);
 		break;
 	case SCST_THREADS_POOL_SHARED:
-		pos = sprintf(buf, "%s\n%s", SCST_THREADS_POOL_SHARED_STR,
-			(dev->threads_pool_type != dev->handler->threads_pool_type) ?
-				SCST_SYSFS_KEY_MARK "\n" : "");
+		pos = sprintf(buf, "%s\n", SCST_THREADS_POOL_SHARED_STR);
 		break;
 	default:
 		pos = sprintf(buf, "Unknown\n");
@@ -2658,10 +2642,7 @@ static ssize_t scst_lun_rd_only_show(struct kobject *kobj,
 
 	acg_dev = scst_kobj_to_acg_dev(kobj);
 
-	if (acg_dev->rd_only || acg_dev->dev->rd_only)
-		return sprintf(buf, "%d\n%s\n", 1, SCST_SYSFS_KEY_MARK);
-	else
-		return sprintf(buf, "%d\n", 0);
+	return sprintf(buf, "%d\n", acg_dev->rd_only || acg_dev->dev->rd_only);
 }
 
 static struct kobj_attribute lun_options_attr =
@@ -4028,8 +4009,7 @@ static ssize_t scst_tg_tgt_rel_tgt_id_show(struct kobject *kobj,
 	struct scst_tg_tgt *tg_tgt;
 
 	tg_tgt = container_of(kobj, struct scst_tg_tgt, kobj);
-	return scnprintf(buf, PAGE_SIZE, "%u\n" SCST_SYSFS_KEY_MARK "\n",
-			 tg_tgt->rel_tgt_id);
+	return scnprintf(buf, PAGE_SIZE, "%u\n", tg_tgt->rel_tgt_id);
 }
 
 static ssize_t scst_tg_tgt_rel_tgt_id_store(struct kobject *kobj,
@@ -4119,8 +4099,7 @@ static ssize_t scst_tg_group_id_show(struct kobject *kobj,
 	struct scst_target_group *tg;
 
 	tg = container_of(kobj, struct scst_target_group, kobj);
-	return scnprintf(buf, PAGE_SIZE, "%u\n" SCST_SYSFS_KEY_MARK "\n",
-			 tg->group_id);
+	return scnprintf(buf, PAGE_SIZE, "%u\n", tg->group_id);
 }
 
 static ssize_t scst_tg_group_id_store(struct kobject *kobj,
@@ -4159,8 +4138,7 @@ static ssize_t scst_tg_preferred_show(struct kobject *kobj,
 	struct scst_target_group *tg;
 
 	tg = container_of(kobj, struct scst_target_group, kobj);
-	return scnprintf(buf, PAGE_SIZE, "%u\n%s",
-			 tg->preferred, SCST_SYSFS_KEY_MARK "\n");
+	return scnprintf(buf, PAGE_SIZE, "%u\n", tg->preferred);
 }
 
 static ssize_t scst_tg_preferred_store(struct kobject *kobj,
@@ -4213,7 +4191,7 @@ static ssize_t scst_tg_state_show(struct kobject *kobj,
 		if (scst_tg_state_names[i].s == tg->state)
 			break;
 
-	return scnprintf(buf, PAGE_SIZE, "%s\n" SCST_SYSFS_KEY_MARK "\n",
+	return scnprintf(buf, PAGE_SIZE, "%s\n",
 			 i >= 0 ? scst_tg_state_names[i].n : "???");
 }
 
@@ -4817,9 +4795,7 @@ static ssize_t scst_threads_show(struct device *device,
 
 	TRACE_ENTRY();
 
-	count = sprintf(buf, "%d\n%s", scst_main_cmd_threads.nr_threads,
-		(scst_main_cmd_threads.nr_threads != scst_threads) ?
-			SCST_SYSFS_KEY_MARK "\n" : "");
+	count = sprintf(buf, "%d\n", scst_main_cmd_threads.nr_threads);
 
 	TRACE_EXIT();
 	return count;
@@ -4893,8 +4869,7 @@ static ssize_t scst_setup_id_show(struct device *device,
 
 	TRACE_ENTRY();
 
-	count = sprintf(buf, "0x%x\n%s\n", scst_setup_id,
-		(scst_setup_id == 0) ? "" : SCST_SYSFS_KEY_MARK);
+	count = sprintf(buf, "0x%x\n", scst_setup_id);
 
 	TRACE_EXIT();
 	return count;

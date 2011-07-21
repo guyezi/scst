@@ -514,8 +514,6 @@ enum scst_tg_sup {
 
 #define TID_COMMON_SIZE				24
 
-#define SCST_SYSFS_KEY_MARK			"[key]"
-
 #define SCST_MIN_REL_TGT_ID			1
 #define SCST_MAX_REL_TGT_ID			65535
 

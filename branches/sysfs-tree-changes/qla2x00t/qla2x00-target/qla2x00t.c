@@ -6211,8 +6211,7 @@ static ssize_t q2t_show_expl_conf_enabled(struct device *dev,
 	tgt = (struct q2t_tgt *)scst_tgt_get_tgt_priv(scst_tgt);
 	ha = tgt->ha;
 
-	size = scnprintf(buffer, PAGE_SIZE, "%d\n%s", ha->enable_explicit_conf,
-		ha->enable_explicit_conf ? SCST_SYSFS_KEY_MARK "\n" : "");
+	size = scnprintf(buffer, PAGE_SIZE, "%d\n", ha->enable_explicit_conf);
 
 	return size;
 }
@@ -6330,8 +6329,6 @@ static ssize_t q2t_node_name_show(struct device *dev,
 		goto out;
 
 	res = sprintf(buf, "%s\n", wwn);
-	if ((ha->parent != NULL) || ha->node_name_set)
-		res += sprintf(&buf[res], "%s\n", SCST_SYSFS_KEY_MARK);
 
 	kfree(wwn);
 
@@ -6409,7 +6406,7 @@ static ssize_t q2t_vp_parent_host_show(struct device *dev,
 	if (res != 0)
 		goto out;
 
-	res = sprintf(buf, "%s\n%s\n", wwn, SCST_SYSFS_KEY_MARK);
+	res = sprintf(buf, "%s\n", wwn);
 
 	kfree(wwn);
 

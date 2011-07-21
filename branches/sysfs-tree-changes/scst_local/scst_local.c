@@ -407,8 +407,7 @@ static ssize_t scst_local_scsi_transport_version_show(struct device *dev,
 		goto out_up;
 
 	if (tgt->scsi_transport_version != 0)
-		res = sprintf(buf, "0x%x\n%s", tgt->scsi_transport_version,
-			SCST_SYSFS_KEY_MARK "\n");
+		res = sprintf(buf, "0x%x\n", tgt->scsi_transport_version);
 	else
 		res = sprintf(buf, "0x%x\n", 0x0BE0); /* SAS */
 
@@ -472,9 +471,7 @@ static ssize_t scst_local_phys_transport_version_show(struct device *dev,
 	if (!tgt)
 		goto out_up;
 
-	res = sprintf(buf, "0x%x\n%s", tgt->phys_transport_version,
-			(tgt->phys_transport_version != 0) ?
-				SCST_SYSFS_KEY_MARK "\n" : "");
+	res = sprintf(buf, "0x%x\n", tgt->phys_transport_version);
 
 out_up:
 	up_read(&scst_local_exit_rwsem);
