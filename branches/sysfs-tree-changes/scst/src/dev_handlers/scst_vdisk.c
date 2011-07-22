@@ -64,8 +64,6 @@ static struct scst_trace_log vdisk_local_trace_tbl[] = {
 };
 #define trace_log_tbl			vdisk_local_trace_tbl
 
-#define VDISK_TRACE_TBL_HELP	", order"
-
 #endif
 
 #include "scst_dev_handler.h"
@@ -425,12 +423,11 @@ static struct scst_dev_type vdisk_file_devtype = {
 	.add_device_parameters = vdisk_fileio_add_device_parameters,
 #endif
 #if defined(CONFIG_SCST_DEBUG) || defined(CONFIG_SCST_TRACING)
-	.default_trace_flags =	SCST_DEFAULT_DEV_LOG_FLAGS,
-	.trace_flags =		&trace_flag,
-	.trace_tbl =		vdisk_local_trace_tbl,
-#ifndef CONFIG_SCST_PROC
-	.trace_tbl_help =	VDISK_TRACE_TBL_HELP,
-#endif
+	.trace_data = {
+		.default_trace_flags =	SCST_DEFAULT_DEV_LOG_FLAGS,
+		.trace_flags =		&trace_flag,
+		.trace_tbl =		vdisk_local_trace_tbl,
+	},
 #endif
 };
 
@@ -466,12 +463,11 @@ static struct scst_dev_type vdisk_blk_devtype = {
 	.add_device_parameters = vdisk_blockio_add_device_parameters,
 #endif
 #if defined(CONFIG_SCST_DEBUG) || defined(CONFIG_SCST_TRACING)
-	.default_trace_flags =	SCST_DEFAULT_DEV_LOG_FLAGS,
-	.trace_flags =		&trace_flag,
-	.trace_tbl =		vdisk_local_trace_tbl,
-#ifndef CONFIG_SCST_PROC
-	.trace_tbl_help =	VDISK_TRACE_TBL_HELP,
-#endif
+	.trace_data = {
+		.default_trace_flags =	SCST_DEFAULT_DEV_LOG_FLAGS,
+		.trace_flags =		&trace_flag,
+		.trace_tbl =		vdisk_local_trace_tbl,
+	},
 #endif
 };
 
@@ -504,12 +500,11 @@ static struct scst_dev_type vdisk_null_devtype = {
 	.add_device_parameters = vdisk_nullio_add_device_parameters,
 #endif
 #if defined(CONFIG_SCST_DEBUG) || defined(CONFIG_SCST_TRACING)
-	.default_trace_flags =	SCST_DEFAULT_DEV_LOG_FLAGS,
-	.trace_flags =		&trace_flag,
-	.trace_tbl =		vdisk_local_trace_tbl,
-#ifndef CONFIG_SCST_PROC
-	.trace_tbl_help =	VDISK_TRACE_TBL_HELP,
-#endif
+	.trace_data = {
+		.default_trace_flags =	SCST_DEFAULT_DEV_LOG_FLAGS,
+		.trace_flags =		&trace_flag,
+		.trace_tbl =		vdisk_local_trace_tbl,
+	},
 #endif
 };
 
@@ -538,12 +533,11 @@ static struct scst_dev_type vcdrom_devtype = {
 	.add_device_parameters = NULL,
 #endif
 #if defined(CONFIG_SCST_DEBUG) || defined(CONFIG_SCST_TRACING)
-	.default_trace_flags =	SCST_DEFAULT_DEV_LOG_FLAGS,
-	.trace_flags =		&trace_flag,
-	.trace_tbl =		vdisk_local_trace_tbl,
-#ifndef CONFIG_SCST_PROC
-	.trace_tbl_help =	VDISK_TRACE_TBL_HELP,
-#endif
+	.trace_data = {
+		.default_trace_flags =	SCST_DEFAULT_DEV_LOG_FLAGS,
+		.trace_flags =		&trace_flag,
+		.trace_tbl =		vdisk_local_trace_tbl,
+	},
 #endif
 };
 

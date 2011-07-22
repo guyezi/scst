@@ -72,8 +72,10 @@ static struct scst_dev_type disk_devtype = {
 #endif
 	.dev_done =		disk_done,
 #if defined(CONFIG_SCST_DEBUG) || defined(CONFIG_SCST_TRACING)
-	.default_trace_flags = SCST_DEFAULT_DEV_LOG_FLAGS,
-	.trace_flags = &trace_flag,
+	.trace_data = {
+		.default_trace_flags = SCST_DEFAULT_DEV_LOG_FLAGS,
+		.trace_flags = &trace_flag,
+	},
 #endif
 };
 
@@ -91,8 +93,10 @@ static struct scst_dev_type disk_devtype_perf = {
 	.on_sg_tablesize_low = disk_on_sg_tablesize_low,
 #endif
 #if defined(CONFIG_SCST_DEBUG) || defined(CONFIG_SCST_TRACING)
-	.default_trace_flags =	SCST_DEFAULT_DEV_LOG_FLAGS,
-	.trace_flags =		&trace_flag,
+	.trace_data = {
+		.default_trace_flags =	SCST_DEFAULT_DEV_LOG_FLAGS,
+		.trace_flags =		&trace_flag,
+	},
 #endif
 };
 

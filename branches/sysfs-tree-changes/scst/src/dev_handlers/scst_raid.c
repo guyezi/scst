@@ -51,8 +51,10 @@ static struct scst_dev_type raid_devtype = {
 	.parse =		raid_parse,
 /*	.dev_done =		raid_done,*/
 #if defined(CONFIG_SCST_DEBUG) || defined(CONFIG_SCST_TRACING)
-	.default_trace_flags =	SCST_DEFAULT_DEV_LOG_FLAGS,
-	.trace_flags =		&trace_flag,
+	.trace_data = {
+		.default_trace_flags =	SCST_DEFAULT_DEV_LOG_FLAGS,
+		.trace_flags =		&trace_flag,
+	},
 #endif
 };
 

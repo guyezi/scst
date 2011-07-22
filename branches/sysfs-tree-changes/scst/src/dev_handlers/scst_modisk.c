@@ -62,8 +62,10 @@ static struct scst_dev_type modisk_devtype = {
 	.parse =		modisk_parse,
 	.dev_done =		modisk_done,
 #if defined(CONFIG_SCST_DEBUG) || defined(CONFIG_SCST_TRACING)
-	.default_trace_flags =	SCST_DEFAULT_DEV_LOG_FLAGS,
-	.trace_flags =		&trace_flag,
+	.trace_data = {
+		.default_trace_flags =	SCST_DEFAULT_DEV_LOG_FLAGS,
+		.trace_flags =		&trace_flag,
+	},
 #endif
 };
 
@@ -78,8 +80,10 @@ static struct scst_dev_type modisk_devtype_perf = {
 	.dev_done =		modisk_done,
 	.exec =			modisk_perf_exec,
 #if defined(CONFIG_SCST_DEBUG) || defined(CONFIG_SCST_TRACING)
-	.default_trace_flags =	SCST_DEFAULT_DEV_LOG_FLAGS,
-	.trace_flags =		&trace_flag,
+	.trace_data = {
+		.default_trace_flags =	SCST_DEFAULT_DEV_LOG_FLAGS,
+		.trace_flags =		&trace_flag,
+	},
 #endif
 };
 

@@ -16,6 +16,9 @@
  *  GNU General Public License for more details.
  */
 
+#ifndef _SCST_MEM_H_
+#define _SCST_MEM_H_
+
 #include <linux/scatterlist.h>
 #include <linux/workqueue.h>
 
@@ -127,7 +130,10 @@ struct sgv_pool {
 
 	struct list_head sgv_pools_list_entry;
 
-	struct kobject sgv_kobj;
+#if defined(CONFIG_SCST_DEBUG) || defined(CONFIG_SCST_TRACING)
+	struct dentry *debugfs_dir;
+	struct scst_debugfs_file *stats_file;
+#endif
 };
 
 static inline struct scatterlist *sgv_pool_sg(struct sgv_pool_obj *obj)
@@ -145,3 +151,25 @@ int sgv_procinfo_show(struct seq_file *seq, void *v);
 void scst_sgv_pool_use_norm(struct scst_tgt_dev *tgt_dev);
 void scst_sgv_pool_use_norm_clust(struct scst_tgt_dev *tgt_dev);
 void scst_sgv_pool_use_dma(struct scst_tgt_dev *tgt_dev);
+
+#if defined(CONFIG_SCST_DEBUG) || defined(CONFIG_SCST_TRACING)
+
+int scst_sgv_debugfs_create(struct dentry *parent);
+void scst_sgv_debugfs_remove(void);
+
+#else /*defined(CONFIG_SCST_DEBUG) || defined(CONFIG_SCST_TRACING)*/
+
+static inline int scst_sgv_debugfs_create(struct dentry *parent)
+{
+	return 0;
+}
+
+static inline void scst_sgv_debugfs_remove(void)
+{
+	scst_devt_remove_debugfs_files(devt);
+	scst_devt_remove_debugfs_dir(devt);
+}
+
+#endif /*defined(CONFIG_SCST_DEBUG) || defined(CONFIG_SCST_TRACING)*/
+
+#endif /*_SCST_MEM_H_*/

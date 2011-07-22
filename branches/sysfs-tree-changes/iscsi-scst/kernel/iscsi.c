@@ -3810,7 +3810,6 @@ static struct scst_trace_log iscsi_local_trace_tbl[] = {
 	{ 0,			NULL }
 };
 
-#define ISCSI_TRACE_TBL_HELP	", d_write, conn, conn_dbg, iov, pdu, net_page"
 #endif
 
 static uint16_t iscsi_get_scsi_transport_version(struct scst_tgt *scst_tgt)
@@ -3848,13 +3847,14 @@ struct scst_tgt_template iscsi_template = {
 	.tgt_optional_attributes = tgt_attributes,
 #endif
 #if defined(CONFIG_SCST_DEBUG) || defined(CONFIG_SCST_TRACING)
-	.default_trace_flags = ISCSI_DEFAULT_LOG_FLAGS,
-	.trace_flags = &trace_flag,
+	.trace_data = {
+		.default_trace_flags = ISCSI_DEFAULT_LOG_FLAGS,
+		.trace_flags = &trace_flag,
 #if !defined(CONFIG_SCST_PROC) && \
 	(defined(CONFIG_SCST_DEBUG) || defined(CONFIG_SCST_TRACING))
-	.trace_tbl = iscsi_local_trace_tbl,
-	.trace_tbl_help = ISCSI_TRACE_TBL_HELP,
+		.trace_tbl = iscsi_local_trace_tbl,
 #endif
+	},
 #endif
 	.detect = iscsi_target_detect,
 	.release = iscsi_target_release,

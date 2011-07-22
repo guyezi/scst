@@ -8,6 +8,10 @@ scst-y        += scst_proc.o
 scst-y        += scst_mem.o
 scst-y        += scst_tg.o
 scst-y        += scst_debug.o
+scst-$(CONFIG_DEBUG_FS)		+= scst_debugfs.o
+scst-$(CONFIG_SCST_DEBUG)	+= scst_tracing.o scst_mem_stats.o
+scst-$(CONFIG_SCST_TRACING)	+= scst_tracing.o scst_mem_stats.o
+scst-$(CONFIG_SCST_MEASURE_LATENCY)	+= scst_lat_stats.o
 
 obj-$(CONFIG_SCST)   += scst.o dev_handlers/ iscsi-scst/ qla2xxx-target/ srpt/ \
 			scst_local/

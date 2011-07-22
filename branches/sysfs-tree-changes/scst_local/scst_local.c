@@ -1439,8 +1439,10 @@ static struct scst_tgt_template scst_local_targ_tmpl = {
 	.get_scsi_transport_version = scst_local_get_scsi_transport_version,
 	.get_phys_transport_version = scst_local_get_phys_transport_version,
 #if defined(CONFIG_SCST_DEBUG) || defined(CONFIG_SCST_TRACING)
-	.default_trace_flags = SCST_LOCAL_DEFAULT_LOG_FLAGS,
-	.trace_flags = &trace_flag,
+	.trace_data = {
+		.default_trace_flags = SCST_LOCAL_DEFAULT_LOG_FLAGS,
+		.trace_flags = &trace_flag,
+	},
 #endif
 };
 

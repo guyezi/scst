@@ -161,7 +161,7 @@ config SCST_EXTRACHECKS
 
 config SCST_TRACING
 	bool "Tracing support"
-	depends on SCST
+	depends on SCST && DEBUG_FS
 	default y
 	help
 	  Enable SCSI middle level tracing support. Tracing can be controlled
@@ -173,7 +173,7 @@ config SCST_TRACING
 
 config SCST_DEBUG
 	bool "Debugging support"
-	depends on SCST
+	depends on SCST && DEBUG_FS
 	select DEBUG_BUGVERBOSE
 	help
 	  Enables support for debugging SCST. This may be helpful for SCST
@@ -238,7 +238,7 @@ config SCST_TM_DBG_GO_OFFLINE
 
 config SCST_MEASURE_LATENCY
 	bool "Commands processing latency measurement facility"
-	depends on SCST
+	depends on SCST && DEBUG_FS
 	help
 	  This option enables commands processing latency measurement
 	  facility in SCST. It will provide in the sysfs interface

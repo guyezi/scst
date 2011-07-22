@@ -244,8 +244,10 @@ static struct scst_dev_type dev_user_devtype = {
 	.read_proc =    dev_user_read_proc,
 #endif
 #if defined(CONFIG_SCST_DEBUG) || defined(CONFIG_SCST_TRACING)
-	.default_trace_flags = SCST_DEFAULT_DEV_LOG_FLAGS,
-	.trace_flags = &trace_flag,
+	.trace_data = {
+		.default_trace_flags = SCST_DEFAULT_DEV_LOG_FLAGS,
+		.trace_flags = &trace_flag,
+	},
 #endif
 };
 

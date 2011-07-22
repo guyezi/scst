@@ -41,15 +41,16 @@
 #include <linux/ctype.h>
 #include <linux/slab.h>
 #include <linux/kthread.h>
-
 #ifdef INSIDE_KERNEL_TREE
 #include <scst/scst.h>
 #else
 #include "scst.h"
 #endif
-#include "scst_priv.h"
+#include "scst_debugfs.h"
+#include "scst_lat_stats.h"
 #include "scst_mem.h"
-#include "scst_pres.h"
+#include "scst_priv.h"
+#include "scst_tracing.h"
 
 enum mgmt_path_type {
 	PATH_NOT_RECOGNIZED,
@@ -90,242 +91,6 @@ static const char *const scst_dev_handler_types[] = {
 	"Simplified direct-access device (e.g., magnetic disk)",
 	"Optical card reader/writer device"
 };
-
-#if defined(CONFIG_SCST_DEBUG) || defined(CONFIG_SCST_TRACING)
-
-static DEFINE_MUTEX(scst_log_mutex);
-
-static struct scst_trace_log scst_trace_tbl[] = {
-	{ TRACE_OUT_OF_MEM,	"out_of_mem"	},
-	{ TRACE_MINOR,		"minor"		},
-	{ TRACE_SG_OP,		"sg"		},
-	{ TRACE_MEMORY,		"mem"		},
-	{ TRACE_BUFF,		"buff"		},
-#ifndef GENERATING_UPSTREAM_PATCH
-	{ TRACE_ENTRYEXIT,	"entryexit"	},
-#endif
-	{ TRACE_PID,		"pid"		},
-	{ TRACE_LINE,		"line"		},
-	{ TRACE_FUNCTION,	"function"	},
-	{ TRACE_DEBUG,		"debug"		},
-	{ TRACE_SPECIAL,	"special"	},
-	{ TRACE_SCSI,		"scsi"		},
-	{ TRACE_MGMT,		"mgmt"		},
-	{ TRACE_MGMT_DEBUG,	"mgmt_dbg"	},
-	{ TRACE_FLOW_CONTROL,	"flow_control"	},
-	{ TRACE_PRES,		"pr"		},
-	{ 0,			NULL		}
-};
-
-static struct scst_trace_log scst_local_trace_tbl[] = {
-	{ TRACE_RTRY,			"retry"			},
-	{ TRACE_SCSI_SERIALIZING,	"scsi_serializing"	},
-	{ TRACE_DATA_SEND,              "data_send"		},
-	{ TRACE_DATA_RECEIVED,          "data_received"		},
-	{ 0,				NULL			}
-};
-
-static void scst_read_trace_tbl(const struct scst_trace_log *tbl, char *buf,
-	unsigned long log_level, int *pos)
-{
-	const struct scst_trace_log *t = tbl;
-
-	if (t == NULL)
-		goto out;
-
-	while (t->token) {
-		if (log_level & t->val) {
-			*pos += sprintf(&buf[*pos], "%s%s",
-					(*pos == 0) ? "" : " | ",
-					t->token);
-		}
-		t++;
-	}
-out:
-	return;
-}
-
-static ssize_t scst_trace_level_show(const struct scst_trace_log *local_tbl,
-	unsigned long log_level, char *buf, const char *help)
-{
-	int pos = 0;
-
-	scst_read_trace_tbl(scst_trace_tbl, buf, log_level, &pos);
-	scst_read_trace_tbl(local_tbl, buf, log_level, &pos);
-
-	pos += sprintf(&buf[pos], "\n\n\nUsage:\n"
-		"	echo \"all|none|default\" >trace_level\n"
-		"	echo \"value DEC|0xHEX|0OCT\" >trace_level\n"
-		"	echo \"add|del TOKEN\" >trace_level\n"
-		"\nwhere TOKEN is one of [debug, function, line, pid,\n"
-#ifndef GENERATING_UPSTREAM_PATCH
-		"		       entryexit, buff, mem, sg, out_of_mem,\n"
-#else
-		"		       buff, mem, sg, out_of_mem,\n"
-#endif
-		"		       special, scsi, mgmt, minor,\n"
-		"		       mgmt_dbg, scsi_serializing,\n"
-		"		       retry, recv_bot, send_bot, recv_top, pr,\n"
-		"		       send_top%s]\n", help != NULL ? help : "");
-
-	return pos;
-}
-
-static int scst_write_trace(const char *buf, size_t length,
-	unsigned long *log_level, unsigned long default_level,
-	const char *name, const struct scst_trace_log *tbl)
-{
-	int res = length;
-	int action;
-	unsigned long level = 0, oldlevel;
-	char *buffer, *p, *e;
-	const struct scst_trace_log *t;
-	enum {
-		SCST_TRACE_ACTION_ALL	  = 1,
-		SCST_TRACE_ACTION_NONE	  = 2,
-		SCST_TRACE_ACTION_DEFAULT = 3,
-		SCST_TRACE_ACTION_ADD	  = 4,
-		SCST_TRACE_ACTION_DEL	  = 5,
-		SCST_TRACE_ACTION_VALUE	  = 6,
-	};
-
-	TRACE_ENTRY();
-
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 29)
-	lockdep_assert_held(&scst_log_mutex);
-#endif
-
-	if ((buf == NULL) || (length == 0)) {
-		res = -EINVAL;
-		goto out;
-	}
-
-	buffer = kasprintf(GFP_KERNEL, "%.*s", (int)length, buf);
-	if (buffer == NULL) {
-		PRINT_ERROR("Unable to alloc intermediate buffer (size %zd)",
-			length+1);
-		res = -ENOMEM;
-		goto out;
-	}
-
-	TRACE_DBG("buffer %s", buffer);
-
-	p = buffer;
-	if (!strncasecmp("all", p, 3)) {
-		action = SCST_TRACE_ACTION_ALL;
-	} else if (!strncasecmp("none", p, 4) || !strncasecmp("null", p, 4)) {
-		action = SCST_TRACE_ACTION_NONE;
-	} else if (!strncasecmp("default", p, 7)) {
-		action = SCST_TRACE_ACTION_DEFAULT;
-	} else if (!strncasecmp("add", p, 3)) {
-		p += 3;
-		action = SCST_TRACE_ACTION_ADD;
-	} else if (!strncasecmp("del", p, 3)) {
-		p += 3;
-		action = SCST_TRACE_ACTION_DEL;
-	} else if (!strncasecmp("value", p, 5)) {
-		p += 5;
-		action = SCST_TRACE_ACTION_VALUE;
-	} else {
-		if (p[strlen(p) - 1] == '\n')
-			p[strlen(p) - 1] = '\0';
-		PRINT_ERROR("Unknown action \"%s\"", p);
-		res = -EINVAL;
-		goto out_free;
-	}
-
-	switch (action) {
-	case SCST_TRACE_ACTION_ADD:
-	case SCST_TRACE_ACTION_DEL:
-	case SCST_TRACE_ACTION_VALUE:
-		if (!isspace(*p)) {
-			PRINT_ERROR("%s", "Syntax error");
-			res = -EINVAL;
-			goto out_free;
-		}
-	}
-
-	switch (action) {
-	case SCST_TRACE_ACTION_ALL:
-		level = TRACE_ALL;
-		break;
-	case SCST_TRACE_ACTION_DEFAULT:
-		level = default_level;
-		break;
-	case SCST_TRACE_ACTION_NONE:
-		level = TRACE_NULL;
-		break;
-	case SCST_TRACE_ACTION_ADD:
-	case SCST_TRACE_ACTION_DEL:
-		while (isspace(*p) && *p != '\0')
-			p++;
-		e = p;
-		while (!isspace(*e) && *e != '\0')
-			e++;
-		*e = 0;
-		if (tbl) {
-			t = tbl;
-			while (t->token) {
-				if (!strcasecmp(p, t->token)) {
-					level = t->val;
-					break;
-				}
-				t++;
-			}
-		}
-		if (level == 0) {
-			t = scst_trace_tbl;
-			while (t->token) {
-				if (!strcasecmp(p, t->token)) {
-					level = t->val;
-					break;
-				}
-				t++;
-			}
-		}
-		if (level == 0) {
-			PRINT_ERROR("Unknown token \"%s\"", p);
-			res = -EINVAL;
-			goto out_free;
-		}
-		break;
-	case SCST_TRACE_ACTION_VALUE:
-		while (isspace(*p) && *p != '\0')
-			p++;
-		res = strict_strtoul(p, 0, &level);
-		if (res != 0) {
-			PRINT_ERROR("Invalid trace value \"%s\"", p);
-			res = -EINVAL;
-			goto out_free;
-		}
-		break;
-	}
-
-	oldlevel = *log_level;
-
-	switch (action) {
-	case SCST_TRACE_ACTION_ADD:
-		*log_level |= level;
-		break;
-	case SCST_TRACE_ACTION_DEL:
-		*log_level &= ~level;
-		break;
-	default:
-		*log_level = level;
-		break;
-	}
-
-	PRINT_INFO("Changed trace level for \"%s\": old 0x%08lx, new 0x%08lx",
-		name, oldlevel, *log_level);
-
-out_free:
-	kfree(buffer);
-out:
-	TRACE_EXIT_RES(res);
-	return res;
-}
-
-#endif /* defined(CONFIG_SCST_DEBUG) || defined(CONFIG_SCST_TRACING) */
 
 #if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 34)
 /**
@@ -564,49 +329,6 @@ static struct scst_acg *__scst_lookup_acg(const struct scst_tgt *tgt,
  ** Target Template
  **/
 
-#if defined(CONFIG_SCST_DEBUG) || defined(CONFIG_SCST_TRACING)
-
-static ssize_t scst_tgtt_trace_level_show(struct device_driver *drv, char *buf)
-{
-	struct scst_tgt_template *tgtt;
-
-	tgtt = scst_drv_to_tgtt(drv);
-
-	return scst_trace_level_show(tgtt->trace_tbl,
-		tgtt->trace_flags ? *tgtt->trace_flags : 0, buf,
-		tgtt->trace_tbl_help);
-}
-
-static ssize_t scst_tgtt_trace_level_store(struct device_driver *drv,
-					   const char *buf, size_t count)
-{
-	int res;
-	struct scst_tgt_template *tgtt;
-
-	TRACE_ENTRY();
-
-	tgtt = scst_drv_to_tgtt(drv);
-
-	res = mutex_lock_interruptible(&scst_log_mutex);
-	if (res != 0)
-		goto out;
-
-	res = scst_write_trace(buf, count, tgtt->trace_flags,
-		tgtt->default_trace_flags, tgtt->name, tgtt->trace_tbl);
-
-	mutex_unlock(&scst_log_mutex);
-
-out:
-	TRACE_EXIT_RES(res);
-	return res;
-}
-
-static struct driver_attribute tgtt_trace_attr =
-	__ATTR(trace_level, S_IRUGO | S_IWUSR,
-	       scst_tgtt_trace_level_show, scst_tgtt_trace_level_store);
-
-#endif /* #if defined(CONFIG_SCST_DEBUG) || defined(CONFIG_SCST_TRACING) */
-
 /**
  * scst_tgtt_add_target_show() - Whether the add_target method is supported.
  */
@@ -813,18 +535,16 @@ int scst_tgtt_sysfs_create(struct scst_tgt_template *tgtt)
 		}
 	}
 
-#if defined(CONFIG_SCST_DEBUG) || defined(CONFIG_SCST_TRACING)
-	if (tgtt->trace_flags != NULL) {
-		res = driver_create_file(scst_sysfs_get_tgtt_drv(tgtt),
-					 &tgtt_trace_attr);
-		if (res != 0) {
-			PRINT_ERROR("Can't add trace_flag for target "
-				"driver %s", tgtt->name);
-			goto out_del;
-		}
+	res = scst_tgtt_create_debugfs_dir(tgtt);
+	if (res) {
+		PRINT_ERROR("Can't create tracing files for target driver %s",
+			    tgtt->name);
+		goto out_del;
 	}
-#endif
-	res = 0;
+
+	res = scst_tgtt_create_debugfs_files(tgtt);
+	if (res)
+		goto out_del;
 
 out:
 	TRACE_EXIT_RES(res);
@@ -838,6 +558,8 @@ out_del:
 void scst_tgtt_sysfs_del(struct scst_tgt_template *tgtt)
 {
 	TRACE_ENTRY();
+	scst_tgtt_remove_debugfs_files(tgtt);
+	scst_tgtt_remove_debugfs_dir(tgtt);
 	driver_unregister(&tgtt->tgtt_drv);
 	TRACE_EXIT();
 }
@@ -1538,6 +1260,10 @@ int scst_tgt_sysfs_create(struct scst_tgt *tgt)
 		}
 	}
 
+	res = scst_tgt_create_debugfs_dir(tgt);
+	if (res)
+		goto out_err;
+
 out:
 	TRACE_EXIT_RES(res);
 	return res;
@@ -1554,6 +1280,7 @@ void scst_tgt_sysfs_del(struct scst_tgt *tgt)
 {
 	TRACE_ENTRY();
 
+	scst_tgt_remove_debugfs_dir(tgt);
 	kobject_del(tgt->tgt_sess_kobj);
 	kobject_del(tgt->tgt_luns_kobj);
 	kobject_del(tgt->tgt_ini_grp_kobj);
@@ -1609,29 +1336,6 @@ static struct device_attribute scst_dev_sysfs_type_description_attr =
 #endif
 	__ATTR(type_description, S_IRUGO, scst_dev_sysfs_type_description_show,
 	       NULL);
-
-#if defined(CONFIG_SCST_DEBUG) || defined(CONFIG_SCST_TRACING)
-
-static ssize_t scst_dev_sysfs_dump_prs(struct device *device,
-	struct device_attribute *attr, const char *buf, size_t count)
-{
-	ssize_t res;
-	struct scst_device *dev;
-
-	TRACE_ENTRY();
-
-	dev = scst_dev_to_dev(device);
-	scst_pr_dump_prs(dev, true);
-	res = count;
-
-	TRACE_EXIT_RES(res);
-	return res;
-}
-
-static struct device_attribute dev_dump_prs_attr =
-	__ATTR(dump_prs, S_IWUSR, NULL, scst_dev_sysfs_dump_prs);
-
-#endif /* defined(CONFIG_SCST_DEBUG) || defined(CONFIG_SCST_TRACING) */
 
 static int scst_process_dev_sysfs_threads_data_store(
 	struct scst_device *dev, int threads_num,
@@ -1964,6 +1668,17 @@ int scst_dev_sysfs_create(struct scst_device *dev)
 				    dev->virt_name);
 			goto out_err;
 		}
+
+		res = scst_dev_create_debugfs_dir(dev);
+		if (res) {
+			PRINT_ERROR("Can't create debug files for dev %s",
+				    dev->virt_name);
+			goto out_err;
+		}
+
+		res = scst_dev_create_debugfs_files(dev);
+		if (res)
+			goto out_err;
 	} else {
 		/* Pass-through SCSI device. */
 		WARN_ON(!dev->scsi_dev);
@@ -1996,19 +1711,6 @@ int scst_dev_sysfs_create(struct scst_device *dev)
 		}
 	}
 
-#if defined(CONFIG_SCST_DEBUG) || defined(CONFIG_SCST_TRACING)
-	if (dev->virt_id) {
-		res = device_create_file(scst_sysfs_get_dev_dev(dev),
-					 &dev_dump_prs_attr);
-		if (res != 0) {
-			PRINT_ERROR("Can't create attr %s for dev %s",
-				    dev_dump_prs_attr.attr.name,
-				    dev->virt_name);
-			goto out_err;
-		}
-	}
-#endif
-
 out:
 	TRACE_EXIT_RES(res);
 	return res;
@@ -2027,10 +1729,11 @@ void scst_dev_sysfs_del(struct scst_device *dev)
 
 	BUG_ON(!dev->handler);
 
+	/* Shared */
+	scst_dev_remove_debugfs_files(dev);
+	scst_dev_remove_debugfs_dir(dev);
+
 	/* Pass-through device attributes. */
-#if defined(CONFIG_SCST_DEBUG) || defined(CONFIG_SCST_TRACING)
-	device_remove_file(scst_sysfs_get_dev_dev(dev), &dev_dump_prs_attr);
-#endif
 	device_remove_files(scst_sysfs_get_dev_dev(dev), scst_pt_dev_attrs);
 
 	/* Virtual device attributes. */
@@ -2040,6 +1743,7 @@ void scst_dev_sysfs_del(struct scst_device *dev)
 	device_remove_files(scst_sysfs_get_dev_dev(dev), dev_thread_attr);
 	device_remove_files(scst_sysfs_get_dev_dev(dev), scst_virt_dev_attrs);
 
+	/* Shared */
 	kobject_del(dev->dev_exp_kobj);
 	kobject_put(dev->dev_exp_kobj);
 	dev->dev_exp_kobj = NULL;
@@ -2063,122 +1767,6 @@ void scst_dev_sysfs_put(struct scst_device *dev)
  ** Tgt_dev implementation
  **/
 
-#ifdef CONFIG_SCST_MEASURE_LATENCY
-
-static char *scst_io_size_names[] = {
-	"<=8K  ",
-	"<=32K ",
-	"<=128K",
-	"<=512K",
-	">512K "
-};
-
-static ssize_t scst_tgt_dev_latency_show(struct kobject *kobj,
-	struct kobj_attribute *attr, char *buffer)
-{
-	int res, i;
-	char buf[50];
-	struct scst_tgt_dev *tgt_dev;
-
-	TRACE_ENTRY();
-
-	tgt_dev = scst_kobj_to_tgt_dev(kobj);
-
-	res = 0;
-	for (i = 0; i < SCST_LATENCY_STATS_NUM; i++) {
-		uint64_t scst_time_wr, tgt_time_wr, dev_time_wr;
-		unsigned int processed_cmds_wr;
-		uint64_t scst_time_rd, tgt_time_rd, dev_time_rd;
-		unsigned int processed_cmds_rd;
-		struct scst_ext_latency_stat *latency_stat;
-
-		latency_stat = &tgt_dev->dev_latency_stat[i];
-		scst_time_wr = latency_stat->scst_time_wr;
-		scst_time_rd = latency_stat->scst_time_rd;
-		tgt_time_wr = latency_stat->tgt_time_wr;
-		tgt_time_rd = latency_stat->tgt_time_rd;
-		dev_time_wr = latency_stat->dev_time_wr;
-		dev_time_rd = latency_stat->dev_time_rd;
-		processed_cmds_wr = latency_stat->processed_cmds_wr;
-		processed_cmds_rd = latency_stat->processed_cmds_rd;
-
-		res += scnprintf(&buffer[res], PAGE_SIZE - res,
-			 "%-5s %-9s %-15lu ", "Write", scst_io_size_names[i],
-			(unsigned long)processed_cmds_wr);
-		if (processed_cmds_wr == 0)
-			processed_cmds_wr = 1;
-
-		do_div(scst_time_wr, processed_cmds_wr);
-		snprintf(buf, sizeof(buf), "%lu/%lu/%lu/%lu",
-			(unsigned long)latency_stat->min_scst_time_wr,
-			(unsigned long)scst_time_wr,
-			(unsigned long)latency_stat->max_scst_time_wr,
-			(unsigned long)latency_stat->scst_time_wr);
-		res += scnprintf(&buffer[res], PAGE_SIZE - res,
-			"%-47s", buf);
-
-		do_div(tgt_time_wr, processed_cmds_wr);
-		snprintf(buf, sizeof(buf), "%lu/%lu/%lu/%lu",
-			(unsigned long)latency_stat->min_tgt_time_wr,
-			(unsigned long)tgt_time_wr,
-			(unsigned long)latency_stat->max_tgt_time_wr,
-			(unsigned long)latency_stat->tgt_time_wr);
-		res += scnprintf(&buffer[res], PAGE_SIZE - res,
-			"%-47s", buf);
-
-		do_div(dev_time_wr, processed_cmds_wr);
-		snprintf(buf, sizeof(buf), "%lu/%lu/%lu/%lu",
-			(unsigned long)latency_stat->min_dev_time_wr,
-			(unsigned long)dev_time_wr,
-			(unsigned long)latency_stat->max_dev_time_wr,
-			(unsigned long)latency_stat->dev_time_wr);
-		res += scnprintf(&buffer[res], PAGE_SIZE - res,
-			"%-47s\n", buf);
-
-		res += scnprintf(&buffer[res], PAGE_SIZE - res,
-			"%-5s %-9s %-15lu ", "Read", scst_io_size_names[i],
-			(unsigned long)processed_cmds_rd);
-		if (processed_cmds_rd == 0)
-			processed_cmds_rd = 1;
-
-		do_div(scst_time_rd, processed_cmds_rd);
-		snprintf(buf, sizeof(buf), "%lu/%lu/%lu/%lu",
-			(unsigned long)latency_stat->min_scst_time_rd,
-			(unsigned long)scst_time_rd,
-			(unsigned long)latency_stat->max_scst_time_rd,
-			(unsigned long)latency_stat->scst_time_rd);
-		res += scnprintf(&buffer[res], PAGE_SIZE - res,
-			"%-47s", buf);
-
-		do_div(tgt_time_rd, processed_cmds_rd);
-		snprintf(buf, sizeof(buf), "%lu/%lu/%lu/%lu",
-			(unsigned long)latency_stat->min_tgt_time_rd,
-			(unsigned long)tgt_time_rd,
-			(unsigned long)latency_stat->max_tgt_time_rd,
-			(unsigned long)latency_stat->tgt_time_rd);
-		res += scnprintf(&buffer[res], PAGE_SIZE - res,
-			"%-47s", buf);
-
-		do_div(dev_time_rd, processed_cmds_rd);
-		snprintf(buf, sizeof(buf), "%lu/%lu/%lu/%lu",
-			(unsigned long)latency_stat->min_dev_time_rd,
-			(unsigned long)dev_time_rd,
-			(unsigned long)latency_stat->max_dev_time_rd,
-			(unsigned long)latency_stat->dev_time_rd);
-		res += scnprintf(&buffer[res], PAGE_SIZE - res,
-			"%-47s\n", buf);
-	}
-
-	TRACE_EXIT_RES(res);
-	return res;
-}
-
-static struct kobj_attribute tgt_dev_latency_attr =
-	__ATTR(latency, S_IRUGO,
-		scst_tgt_dev_latency_show, NULL);
-
-#endif /* CONFIG_SCST_MEASURE_LATENCY */
-
 static ssize_t scst_tgt_dev_active_commands_show(struct kobject *kobj,
 			    struct kobj_attribute *attr, char *buf)
 {
@@ -2198,9 +1786,6 @@ static struct kobj_attribute tgt_dev_active_commands_attr =
 
 struct attribute *scst_tgt_dev_attrs[] = {
 	&tgt_dev_active_commands_attr.attr,
-#ifdef CONFIG_SCST_MEASURE_LATENCY
-	&tgt_dev_latency_attr.attr,
-#endif
 	NULL,
 };
 
@@ -2218,14 +1803,27 @@ int scst_tgt_dev_sysfs_create(struct scst_tgt_dev *tgt_dev)
 		goto out;
 	}
 
+	res = scst_tgt_dev_create_debugfs_dir(tgt_dev);
+	if (res)
+		goto err;
+
+	res = scst_tgt_dev_lat_create(tgt_dev);
+	if (res)
+		goto err;
+
 out:
 	TRACE_EXIT_RES(res);
 	return res;
+err:
+	scst_tgt_dev_sysfs_del(tgt_dev);
+	goto out;
 }
 
 void scst_tgt_dev_sysfs_del(struct scst_tgt_dev *tgt_dev)
 {
 	TRACE_ENTRY();
+	scst_tgt_dev_lat_remove(tgt_dev);
+	scst_tgt_dev_remove_debugfs_dir(tgt_dev);
 	kobject_del(&tgt_dev->tgt_dev_kobj);
 	TRACE_EXIT();
 }
@@ -2233,234 +1831,6 @@ void scst_tgt_dev_sysfs_del(struct scst_tgt_dev *tgt_dev)
 /**
  ** Sessions subdirectory implementation
  **/
-
-#ifdef CONFIG_SCST_MEASURE_LATENCY
-
-static ssize_t scst_sess_latency_show(struct kobject *kobj,
-	struct kobj_attribute *attr, char *buffer)
-{
-	ssize_t res;
-	struct scst_session *sess;
-	int i;
-	char buf[50];
-	uint64_t scst_time, tgt_time, dev_time;
-	unsigned int processed_cmds;
-
-	TRACE_ENTRY();
-
-	sess = scst_kobj_to_sess(kobj);
-
-	res = 0;
-	res += scnprintf(&buffer[res], PAGE_SIZE - res,
-		"%-15s %-15s %-46s %-46s %-46s\n",
-		"T-L names", "Total commands", "SCST latency",
-		"Target latency", "Dev latency (min/avg/max/all ns)");
-
-	spin_lock_bh(&sess->lat_lock);
-
-	for (i = 0; i < SCST_LATENCY_STATS_NUM ; i++) {
-		uint64_t scst_time_wr, tgt_time_wr, dev_time_wr;
-		unsigned int processed_cmds_wr;
-		uint64_t scst_time_rd, tgt_time_rd, dev_time_rd;
-		unsigned int processed_cmds_rd;
-		struct scst_ext_latency_stat *latency_stat;
-
-		latency_stat = &sess->sess_latency_stat[i];
-		scst_time_wr = latency_stat->scst_time_wr;
-		scst_time_rd = latency_stat->scst_time_rd;
-		tgt_time_wr = latency_stat->tgt_time_wr;
-		tgt_time_rd = latency_stat->tgt_time_rd;
-		dev_time_wr = latency_stat->dev_time_wr;
-		dev_time_rd = latency_stat->dev_time_rd;
-		processed_cmds_wr = latency_stat->processed_cmds_wr;
-		processed_cmds_rd = latency_stat->processed_cmds_rd;
-
-		res += scnprintf(&buffer[res], PAGE_SIZE - res,
-			"%-5s %-9s %-15lu ",
-			"Write", scst_io_size_names[i],
-			(unsigned long)processed_cmds_wr);
-		if (processed_cmds_wr == 0)
-			processed_cmds_wr = 1;
-
-		do_div(scst_time_wr, processed_cmds_wr);
-		snprintf(buf, sizeof(buf), "%lu/%lu/%lu/%lu",
-			(unsigned long)latency_stat->min_scst_time_wr,
-			(unsigned long)scst_time_wr,
-			(unsigned long)latency_stat->max_scst_time_wr,
-			(unsigned long)latency_stat->scst_time_wr);
-		res += scnprintf(&buffer[res], PAGE_SIZE - res,
-			"%-47s", buf);
-
-		do_div(tgt_time_wr, processed_cmds_wr);
-		snprintf(buf, sizeof(buf), "%lu/%lu/%lu/%lu",
-			(unsigned long)latency_stat->min_tgt_time_wr,
-			(unsigned long)tgt_time_wr,
-			(unsigned long)latency_stat->max_tgt_time_wr,
-			(unsigned long)latency_stat->tgt_time_wr);
-		res += scnprintf(&buffer[res], PAGE_SIZE - res,
-			"%-47s", buf);
-
-		do_div(dev_time_wr, processed_cmds_wr);
-		snprintf(buf, sizeof(buf), "%lu/%lu/%lu/%lu",
-			(unsigned long)latency_stat->min_dev_time_wr,
-			(unsigned long)dev_time_wr,
-			(unsigned long)latency_stat->max_dev_time_wr,
-			(unsigned long)latency_stat->dev_time_wr);
-		res += scnprintf(&buffer[res], PAGE_SIZE - res,
-			"%-47s\n", buf);
-
-		res += scnprintf(&buffer[res], PAGE_SIZE - res,
-			"%-5s %-9s %-15lu ",
-			"Read", scst_io_size_names[i],
-			(unsigned long)processed_cmds_rd);
-		if (processed_cmds_rd == 0)
-			processed_cmds_rd = 1;
-
-		do_div(scst_time_rd, processed_cmds_rd);
-		snprintf(buf, sizeof(buf), "%lu/%lu/%lu/%lu",
-			(unsigned long)latency_stat->min_scst_time_rd,
-			(unsigned long)scst_time_rd,
-			(unsigned long)latency_stat->max_scst_time_rd,
-			(unsigned long)latency_stat->scst_time_rd);
-		res += scnprintf(&buffer[res], PAGE_SIZE - res,
-			"%-47s", buf);
-
-		do_div(tgt_time_rd, processed_cmds_rd);
-		snprintf(buf, sizeof(buf), "%lu/%lu/%lu/%lu",
-			(unsigned long)latency_stat->min_tgt_time_rd,
-			(unsigned long)tgt_time_rd,
-			(unsigned long)latency_stat->max_tgt_time_rd,
-			(unsigned long)latency_stat->tgt_time_rd);
-		res += scnprintf(&buffer[res], PAGE_SIZE - res,
-			"%-47s", buf);
-
-		do_div(dev_time_rd, processed_cmds_rd);
-		snprintf(buf, sizeof(buf), "%lu/%lu/%lu/%lu",
-			(unsigned long)latency_stat->min_dev_time_rd,
-			(unsigned long)dev_time_rd,
-			(unsigned long)latency_stat->max_dev_time_rd,
-			(unsigned long)latency_stat->dev_time_rd);
-		res += scnprintf(&buffer[res], PAGE_SIZE - res,
-			"%-47s\n", buf);
-	}
-
-	scst_time = sess->scst_time;
-	tgt_time = sess->tgt_time;
-	dev_time = sess->dev_time;
-	processed_cmds = sess->processed_cmds;
-
-	res += scnprintf(&buffer[res], PAGE_SIZE - res,
-		"\n%-15s %-16d", "Overall ", processed_cmds);
-
-	if (processed_cmds == 0)
-		processed_cmds = 1;
-
-	do_div(scst_time, processed_cmds);
-	snprintf(buf, sizeof(buf), "%lu/%lu/%lu/%lu",
-		(unsigned long)sess->min_scst_time,
-		(unsigned long)scst_time,
-		(unsigned long)sess->max_scst_time,
-		(unsigned long)sess->scst_time);
-	res += scnprintf(&buffer[res], PAGE_SIZE - res,
-		"%-47s", buf);
-
-	do_div(tgt_time, processed_cmds);
-	snprintf(buf, sizeof(buf), "%lu/%lu/%lu/%lu",
-		(unsigned long)sess->min_tgt_time,
-		(unsigned long)tgt_time,
-		(unsigned long)sess->max_tgt_time,
-		(unsigned long)sess->tgt_time);
-	res += scnprintf(&buffer[res], PAGE_SIZE - res,
-		"%-47s", buf);
-
-	do_div(dev_time, processed_cmds);
-	snprintf(buf, sizeof(buf), "%lu/%lu/%lu/%lu",
-		(unsigned long)sess->min_dev_time,
-		(unsigned long)dev_time,
-		(unsigned long)sess->max_dev_time,
-		(unsigned long)sess->dev_time);
-	res += scnprintf(&buffer[res], PAGE_SIZE - res,
-		"%-47s\n\n", buf);
-
-	spin_unlock_bh(&sess->lat_lock);
-
-	TRACE_EXIT_RES(res);
-	return res;
-}
-
-static int scst_sess_zero_latency(struct scst_session *sess)
-{
-	int res, t;
-
-	TRACE_ENTRY();
-
-	res = mutex_lock_interruptible(&scst_mutex);
-	if (res != 0)
-		goto out;
-
-	PRINT_INFO("Zeroing latency statistics for initiator "
-		"%s", sess->initiator_name);
-
-	spin_lock_bh(&sess->lat_lock);
-
-	sess->scst_time = 0;
-	sess->tgt_time = 0;
-	sess->dev_time = 0;
-	sess->min_scst_time = 0;
-	sess->min_tgt_time = 0;
-	sess->min_dev_time = 0;
-	sess->max_scst_time = 0;
-	sess->max_tgt_time = 0;
-	sess->max_dev_time = 0;
-	sess->processed_cmds = 0;
-	memset(sess->sess_latency_stat, 0,
-		sizeof(sess->sess_latency_stat));
-
-	for (t = SESS_TGT_DEV_LIST_HASH_SIZE-1; t >= 0; t--) {
-		struct list_head *head = &sess->sess_tgt_dev_list[t];
-		struct scst_tgt_dev *tgt_dev;
-		list_for_each_entry(tgt_dev, head, sess_tgt_dev_list_entry) {
-			tgt_dev->scst_time = 0;
-			tgt_dev->tgt_time = 0;
-			tgt_dev->dev_time = 0;
-			tgt_dev->processed_cmds = 0;
-			memset(tgt_dev->dev_latency_stat, 0,
-				sizeof(tgt_dev->dev_latency_stat));
-		}
-	}
-
-	spin_unlock_bh(&sess->lat_lock);
-
-	mutex_unlock(&scst_mutex);
-
-out:
-	TRACE_EXIT_RES(res);
-	return res;
-}
-
-static ssize_t scst_sess_latency_store(struct kobject *kobj,
-	struct kobj_attribute *attr, const char *buf, size_t count)
-{
-	int res;
-	struct scst_session *sess;
-
-	TRACE_ENTRY();
-
-	sess = scst_kobj_to_sess(kobj);
-
-	res = scst_sess_zero_latency(sess);
-	if (res == 0)
-		res = count;
-
-	TRACE_EXIT_RES(res);
-	return res;
-}
-
-static struct kobj_attribute session_latency_attr =
-	__ATTR(latency, S_IRUGO | S_IWUSR, scst_sess_latency_show,
-	       scst_sess_latency_store);
-
-#endif /* CONFIG_SCST_MEASURE_LATENCY */
 
 static ssize_t scst_sess_sysfs_commands_show(struct kobject *kobj,
 			    struct kobj_attribute *attr, char *buf)
@@ -2550,9 +1920,6 @@ struct attribute *scst_session_attrs[] = {
 	&session_bidi_cmd_count_attr.attr,
 	&session_bidi_io_count_kb_attr.attr,
 	&session_none_cmd_count_attr.attr,
-#ifdef CONFIG_SCST_MEASURE_LATENCY
-	&session_latency_attr.attr,
-#endif /* CONFIG_SCST_MEASURE_LATENCY */
 	NULL,
 };
 
@@ -2613,6 +1980,14 @@ int scst_sess_sysfs_create(struct scst_session *sess)
 	if (res)
 		goto out_free;
 
+	res = scst_sess_create_debugfs_dir(sess);
+	if (res)
+		goto out_free;
+
+	res = scst_sess_lat_create(sess);
+	if (res)
+		goto out_free;
+
 out:
 	TRACE_EXIT_RES(res);
 	return res;
@@ -2624,6 +1999,8 @@ out_free:
 void scst_sess_sysfs_del(struct scst_session *sess)
 {
 	TRACE_ENTRY();
+	scst_sess_lat_remove(sess);
+	scst_sess_remove_debugfs_dir(sess);
 	kobject_del(&sess->sess_kobj);
 	TRACE_EXIT();
 }
@@ -3486,49 +2863,6 @@ out:
  ** Dev handlers
  **/
 
-#if defined(CONFIG_SCST_DEBUG) || defined(CONFIG_SCST_TRACING)
-
-static ssize_t scst_devt_trace_level_show(struct device_driver *drv, char *buf)
-{
-	struct scst_dev_type *devt;
-
-	devt = scst_drv_to_devt(drv);
-
-	return scst_trace_level_show(devt->trace_tbl,
-		devt->trace_flags ? *devt->trace_flags : 0, buf,
-		devt->trace_tbl_help);
-}
-
-static ssize_t scst_devt_trace_level_store(struct device_driver *drv,
-					   const char *buf, size_t count)
-{
-	int res;
-	struct scst_dev_type *devt;
-
-	TRACE_ENTRY();
-
-	devt = scst_drv_to_devt(drv);
-
-	res = mutex_lock_interruptible(&scst_log_mutex);
-	if (res != 0)
-		goto out;
-
-	res = scst_write_trace(buf, count, devt->trace_flags,
-		devt->default_trace_flags, devt->name, devt->trace_tbl);
-
-	mutex_unlock(&scst_log_mutex);
-
-out:
-	TRACE_EXIT_RES(res);
-	return res;
-}
-
-static struct driver_attribute devt_trace_attr =
-	__ATTR(trace_level, S_IRUGO | S_IWUSR,
-	       scst_devt_trace_level_show, scst_devt_trace_level_store);
-
-#endif /* #if defined(CONFIG_SCST_DEBUG) || defined(CONFIG_SCST_TRACING) */
-
 static ssize_t scst_devt_type_show(struct device_driver *drv, char *buf)
 {
 	struct scst_dev_type *devt = scst_drv_to_devt(drv);
@@ -3898,17 +3232,16 @@ int scst_devt_sysfs_create(struct scst_dev_type *devt)
 		}
 	}
 
-#if defined(CONFIG_SCST_DEBUG) || defined(CONFIG_SCST_TRACING)
-	if (devt->trace_flags) {
-		res = driver_create_file(scst_sysfs_get_devt_drv(devt),
-					 &devt_trace_attr);
-		if (res != 0) {
-			PRINT_ERROR("Can't add devt trace_flag for dev "
-				"handler %s", devt->name);
-			goto out_err;
-		}
+	res = scst_devt_create_debugfs_dir(devt);
+	if (res) {
+		PRINT_ERROR("Can't create tracing files for device type %s",
+			    devt->name);
+		goto out_err;
 	}
-#endif
+
+	res = scst_devt_create_debugfs_files(devt);
+	if (res)
+		goto out_err;
 
 out:
 	TRACE_EXIT_RES(res);
@@ -3922,6 +3255,8 @@ out_err:
 void scst_devt_sysfs_del(struct scst_dev_type *devt)
 {
 	TRACE_ENTRY();
+	scst_devt_remove_debugfs_files(devt);
+	scst_devt_remove_debugfs_dir(devt);
 	TRACE_EXIT();
 }
 
@@ -4934,38 +4269,6 @@ static struct device_attribute scst_max_tasklet_cmd_attr =
 	__ATTR(max_tasklet_cmd, S_IRUGO | S_IWUSR, scst_max_tasklet_cmd_show,
 	       scst_max_tasklet_cmd_store);
 
-#if defined(CONFIG_SCST_DEBUG) || defined(CONFIG_SCST_TRACING)
-
-static ssize_t scst_main_trace_level_show(struct device *device,
-				struct device_attribute *attr, char *buf)
-{
-	return scst_trace_level_show(scst_local_trace_tbl, trace_flag,
-			buf, NULL);
-}
-
-static ssize_t scst_main_trace_level_store(struct device *device,
-	struct device_attribute *attr, const char *buf, size_t count)
-{
-	int res;
-
-	TRACE_ENTRY();
-
-	res = mutex_lock_interruptible(&scst_log_mutex);
-	if (res != 0)
-		goto out;
-
-	res = scst_write_trace(buf, count, &trace_flag,
-		SCST_DEFAULT_LOG_FLAGS, "scst", scst_local_trace_tbl);
-
-	mutex_unlock(&scst_log_mutex);
-
-out:
-	TRACE_EXIT_RES(res);
-	return res;
-}
-
-#endif /* defined(CONFIG_SCST_DEBUG) || defined(CONFIG_SCST_TRACING) */
-
 static ssize_t scst_version_show(struct device *device,
 				 struct device_attribute *attr, char *buf)
 {
@@ -4984,12 +4287,6 @@ static struct device_attribute scst_setup_id_attr =
 	__ATTR(setup_id, S_IRUGO | S_IWUSR, scst_setup_id_show,
 	       scst_setup_id_store);
 
-#if defined(CONFIG_SCST_DEBUG) || defined(CONFIG_SCST_TRACING)
-static struct device_attribute scst_main_trace_level_attr =
-	__ATTR(trace_level, S_IRUGO | S_IWUSR, scst_main_trace_level_show,
-	       scst_main_trace_level_store);
-#endif
-
 static struct device_attribute scst_version_attr =
 	__ATTR(version, S_IRUGO, scst_version_show, NULL);
 
@@ -5002,9 +4299,6 @@ static const struct device_attribute *scst_root_default_attrs[] = {
 	&scst_threads_attr,
 	&scst_setup_id_attr,
 	&scst_max_tasklet_cmd_attr,
-#if defined(CONFIG_SCST_DEBUG) || defined(CONFIG_SCST_TRACING)
-	&scst_main_trace_level_attr,
-#endif
 	&scst_version_attr,
 	NULL
 };
@@ -5260,9 +4554,13 @@ int __init scst_sysfs_init(void)
 
 	TRACE_ENTRY();
 
-	res = bus_register(&scst_target_bus);
+	res = scst_debugfs_init();
 	if (res)
 		goto out;
+
+	res = bus_register(&scst_target_bus);
+	if (res)
+		goto out_cleanup_debugfs;
 
 	res = bus_register(&scst_device_bus);
 	if (res != 0)
@@ -5293,12 +4591,6 @@ int __init scst_sysfs_init(void)
 		goto out_unregister_device;
 	}
 
-	res = scst_add_sgv_kobj(&scst_device->kobj, "sgv");
-	if (res) {
-		PRINT_ERROR("%s", "Creation of SCST sgv kernel object failed.");
-		goto out_remove_files;
-	}
-
 	scst_device_groups_kobj = kobject_create_and_add("device_groups",
 							 &scst_device->kobj);
 	if (scst_device_groups_kobj == NULL)
@@ -5308,16 +4600,28 @@ int __init scst_sysfs_init(void)
 			       scst_device_groups_attrs))
 		goto device_groups_attrs_error;
 
+	res = scst_main_create_debugfs_dir();
+	if (res) {
+		PRINT_ERROR("%s", "Creating SCST trace files failed.");
+		goto out_remove_dg_files;
+	}
+
+	res = scst_main_create_debugfs_files(scst_get_main_debugfs_dir());
+	if (res)
+		goto out_remove_debugfs_dir;
+
 out:
 	TRACE_EXIT_RES(res);
 	return res;
 
+out_remove_debugfs_dir:
+	scst_main_remove_debugfs_dir();
+out_remove_dg_files:
+	sysfs_remove_files(scst_device_groups_kobj, scst_device_groups_attrs);
 device_groups_attrs_error:
 	kobject_del(scst_device_groups_kobj);
 	kobject_put(scst_device_groups_kobj);
 device_groups_kobj_error:
-	scst_del_put_sgv_kobj();
-out_remove_files:
 	device_remove_files(scst_device, scst_root_default_attrs);
 out_unregister_device:
 	device_unregister(scst_device);
@@ -5328,6 +4632,8 @@ out_unregister_device_bus:
 	bus_unregister(&scst_device_bus);
 out_unregister_target_bus:
 	bus_unregister(&scst_target_bus);
+out_cleanup_debugfs:
+	scst_debugfs_cleanup();
 	goto out;
 }
 
@@ -5337,12 +4643,12 @@ void scst_sysfs_cleanup(void)
 
 	PRINT_INFO("%s", "Exiting SCST sysfs hierarchy...");
 
-	sysfs_remove_files(scst_device_groups_kobj, scst_device_groups_attrs);
+	scst_main_remove_debugfs_files(scst_get_main_debugfs_dir());
+	scst_main_remove_debugfs_dir();
 
+	sysfs_remove_files(scst_device_groups_kobj, scst_device_groups_attrs);
 	kobject_del(scst_device_groups_kobj);
 	kobject_put(scst_device_groups_kobj);
-
-	scst_del_put_sgv_kobj();
 
 	device_remove_files(scst_device, scst_root_default_attrs);
 
@@ -5351,6 +4657,8 @@ void scst_sysfs_cleanup(void)
 	bus_unregister(&scst_device_bus);
 
 	bus_unregister(&scst_target_bus);
+
+	scst_debugfs_cleanup();
 
 	/*
 	 * Wait until the release method of the sysfs root object has returned.

@@ -3571,8 +3571,10 @@ static struct scst_tgt_template srpt_template = {
 	.sess_attrs			 = srpt_sess_attrs,
 #endif
 #if defined(CONFIG_SCST_DEBUG) || defined(CONFIG_SCST_TRACING)
-	.default_trace_flags		 = DEFAULT_SRPT_TRACE_FLAGS,
-	.trace_flags			 = &trace_flag,
+	.trace_data = {
+		.default_trace_flags		 = DEFAULT_SRPT_TRACE_FLAGS,
+		.trace_flags			 = &trace_flag,
+	},
 #endif
 	.detect				 = srpt_detect,
 	.release			 = srpt_release,

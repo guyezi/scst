@@ -588,6 +588,7 @@ struct scst_acg;
 struct scst_acg_dev;
 struct scst_acn;
 struct scst_aen;
+struct scst_trace_log;
 
 /*
  * SCST uses 64-bit numbers to represent LUN's internally. The value
@@ -596,6 +597,20 @@ struct scst_aen;
 #define NO_SUCH_LUN ((uint64_t)-1)
 
 typedef enum dma_data_direction scst_data_direction;
+
+#if defined(CONFIG_SCST_DEBUG) || defined(CONFIG_SCST_TRACING)
+/**
+ * struct scst_trace_data - Tracing-related data.
+ * @default_trace_flags: Default trace flags.
+ * @trace_flags: Actual trace flags.
+ * @trace_tbl: Table with values and names of additional tracing flags.
+ */
+struct scst_trace_data {
+	const unsigned long	 default_trace_flags;
+	unsigned long		*trace_flags;
+	struct scst_trace_log	*trace_tbl;
+};
+#endif
 
 /*
  * SCST target template: defines target driver's parameters and callback
@@ -996,17 +1011,13 @@ struct scst_tgt_template {
 	 */
 	int threads_num;
 
-	/* Optional default log flags */
-	const unsigned long default_trace_flags;
-
-	/* Optional pointer to trace flags */
-	unsigned long *trace_flags;
-
-	/* Optional local trace table */
-	struct scst_trace_log *trace_tbl;
-
-	/* Optional local trace table help string */
-	const char *trace_tbl_help;
+#if defined(CONFIG_DEBUG_FS)
+	struct dentry *debugfs_dir;
+#endif
+#if defined(CONFIG_SCST_DEBUG) || defined(CONFIG_SCST_TRACING)
+	struct scst_trace_data trace_data;
+	struct scst_trace_files *trace_files;
+#endif
 
 #ifndef CONFIG_SCST_PROC
 	/* sysfs attributes, if any */
@@ -1391,18 +1402,14 @@ struct scst_dev_type {
 	/* Threads pool type. Valid only if threads_num > 0. */
 	enum scst_dev_type_threads_pool_type threads_pool_type;
 
-	/* Optional default log flags */
-	const unsigned long default_trace_flags;
-
-	/* Optional pointer to trace flags */
-	unsigned long *trace_flags;
-
-	/* Optional local trace table */
-	struct scst_trace_log *trace_tbl;
-
 #ifndef CONFIG_SCST_PROC
-	/* Optional local trace table help string */
-	const char *trace_tbl_help;
+#if defined(CONFIG_DEBUG_FS)
+	struct dentry *debugfs_dir;
+#endif
+#if defined(CONFIG_SCST_DEBUG) || defined(CONFIG_SCST_TRACING)
+	struct scst_trace_data trace_data;
+	struct scst_trace_files *trace_files;
+#endif
 
 	/* Optional help string for mgmt_cmd commands */
 	const char *mgmt_cmd_help;
@@ -1525,6 +1532,11 @@ struct scst_tgt {
 	struct kobject *tgt_sess_kobj; /* target/sessions/ */
 	struct kobject *tgt_luns_kobj; /* target/luns/ */
 	struct kobject *tgt_ini_grp_kobj; /* target/ini_groups/ */
+
+#if defined(CONFIG_DEBUG_FS)
+	struct dentry *debugfs_dir;
+	struct dentry *sessions_dir;
+#endif
 #endif
 };
 
@@ -1673,6 +1685,10 @@ struct scst_session {
 				int result);
 	void (*unreg_done_fn) (struct scst_session *sess);
 
+#if defined(CONFIG_DEBUG_FS)
+	struct dentry *debugfs_dir;
+	struct dentry *luns_dir;
+#endif
 #ifdef CONFIG_SCST_MEASURE_LATENCY
 	/*
 	 * Must be the last to allow to work with drivers who don't know
@@ -1684,6 +1700,8 @@ struct scst_session {
 	uint64_t min_scst_time, min_tgt_time, min_dev_time;
 	uint64_t max_scst_time, max_tgt_time, max_dev_time;
 	struct scst_ext_latency_stat sess_latency_stat[SCST_LATENCY_STATS_NUM];
+
+	struct scst_debugfs_file *latency_file;
 #endif
 };
 
@@ -2113,6 +2131,9 @@ struct scst_cmd {
 
 	struct scst_cmd *orig_cmd; /* Used to issue REQUEST SENSE */
 
+#if defined(CONFIG_DEBUG_FS)
+	struct dentry *debugfs_dir;
+#endif
 #ifdef CONFIG_SCST_MEASURE_LATENCY
 	/*
 	 * Must be the last to allow to work with drivers who don't know
@@ -2405,6 +2426,14 @@ struct scst_device {
 
 	struct kobject *dev_exp_kobj; /* exported groups */
 
+#if defined(CONFIG_DEBUG_FS)
+	struct dentry *debugfs_dir;
+#endif
+#if defined(CONFIG_SCST_DEBUG) || defined(CONFIG_SCST_TRACING)
+	struct scst_trace_files *trace_files;
+	struct scst_debugfs_file *dump_pr_file;
+#endif
+
 	/* Export number in the dev's sysfs list. Protected by scst_mutex */
 	int dev_exported_lun_num;
 #endif
@@ -2512,6 +2541,9 @@ struct scst_tgt_dev {
 
 	struct kobject tgt_dev_kobj; /* kobject for this struct */
 
+#if defined(CONFIG_DEBUG_FS)
+	struct dentry *debugfs_dir;
+#endif
 #ifdef CONFIG_SCST_MEASURE_LATENCY
 	/*
 	 * Must be the last to allow to work with drivers who don't know
@@ -2522,6 +2554,8 @@ struct scst_tgt_dev {
 	uint64_t scst_time, tgt_time, dev_time;
 	unsigned int processed_cmds;
 	struct scst_ext_latency_stat dev_latency_stat[SCST_LATENCY_STATS_NUM];
+
+	struct scst_debugfs_file *latency_file;
 #endif
 };
 

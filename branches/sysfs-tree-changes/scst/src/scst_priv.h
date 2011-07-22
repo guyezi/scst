@@ -536,8 +536,6 @@ void scst_tgt_sysfs_put(struct scst_tgt *tgt);
 int scst_sess_sysfs_create(struct scst_session *sess);
 void scst_sess_sysfs_del(struct scst_session *sess);
 int scst_recreate_sess_luns_link(struct scst_session *sess);
-int scst_add_sgv_kobj(struct kobject *parent, const char *name);
-void scst_del_put_sgv_kobj(void);
 int scst_devt_sysfs_init(struct scst_dev_type *devt);
 int scst_devt_sysfs_create(struct scst_dev_type *devt);
 void scst_devt_sysfs_del(struct scst_dev_type *devt);
