@@ -4063,6 +4063,70 @@ int scst_init_thread(void *arg)
 }
 
 /**
+ * scst_ioctx_get() - Associate an I/O context with a thread.
+ *
+ * Associate an I/O context with a thread in such a way that all threads in an
+ * SCST thread pool share the same I/O context. This greatly improves thread
+ * pool I/O performance with at least the CFQ scheduler.
+ *
+ * Note: A more elegant approach would be to allocate the I/O context in
+ * scst_init_threads() instead of this function. That approach is only possible
+ * though after exporting alloc_io_context(). A previous discussion of this
+ * topic can be found here: http://lkml.org/lkml/2008/12/11/282.
+ */
+static void scst_ioctx_get(struct scst_cmd_threads *cmd_threads)
+{
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 25)
+	mutex_lock(&cmd_threads->io_context_mutex);
+
+	WARN_ON(current->io_context);
+
+	if (cmd_threads != &scst_main_cmd_threads) {
+		/*
+		 * For linked IO contexts io_context might be not NULL while
+		 * io_context 0.
+		 */
+		if (cmd_threads->io_context == NULL) {
+			cmd_threads->io_context = get_io_context(GFP_KERNEL, -1);
+			TRACE_MGMT_DBG("Alloced new IO context %p (cmd_threads"
+				       " %p)", cmd_threads->io_context,
+				       cmd_threads);
+			/*
+			 * Put the extra reference created by get_io_context()
+			 * because we don't need it.
+			 */
+			put_io_context(cmd_threads->io_context);
+		} else {
+			current->io_context =
+				ioc_task_link(cmd_threads->io_context);
+			TRACE_MGMT_DBG("Linked IO context %p (cmd_threads %p)",
+				       cmd_threads->io_context, cmd_threads);
+		}
+		cmd_threads->io_context_refcnt++;
+	}
+
+	mutex_unlock(&cmd_threads->io_context_mutex);
+#endif
+
+	cmd_threads->io_context_ready = true;
+}
+
+/**
+ * scst_ioctx_put() - Free I/O context allocated by scst_ioctx_get().
+ */
+static void scst_ioctx_put(struct scst_cmd_threads *cmd_threads)
+{
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 25)
+	if (cmd_threads != &scst_main_cmd_threads) {
+		mutex_lock(&cmd_threads->io_context_mutex);
+		if (--cmd_threads->io_context_refcnt == 0)
+			cmd_threads->io_context = NULL;
+		mutex_unlock(&cmd_threads->io_context_mutex);
+	}
+#endif
+}
+
+/**
  * scst_process_active_cmd() - process active command
  *
  * Description:
@@ -4284,41 +4348,7 @@ int scst_cmd_thread(void *arg)
 #endif
 	current->flags |= PF_NOFREEZE;
 
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 25)
-	mutex_lock(&p_cmd_threads->io_context_mutex);
-
-	WARN_ON(current->io_context);
-
-	if (p_cmd_threads != &scst_main_cmd_threads) {
-		/*
-		 * For linked IO contexts io_context might be not NULL while
-		 * io_context 0.
-		 */
-		if (p_cmd_threads->io_context == NULL) {
-			p_cmd_threads->io_context = get_io_context(GFP_KERNEL, -1);
-			TRACE_MGMT_DBG("Alloced new IO context %p "
-				"(p_cmd_threads %p)",
-				p_cmd_threads->io_context,
-				p_cmd_threads);
-			/*
-			 * Put the extra reference created by get_io_context()
-			 * because we don't need it.
-			 */
-			put_io_context(p_cmd_threads->io_context);
-		} else {
-			current->io_context = ioc_task_link(p_cmd_threads->io_context);
-			TRACE_MGMT_DBG("Linked IO context %p "
-				"(p_cmd_threads %p)", p_cmd_threads->io_context,
-				p_cmd_threads);
-		}
-		p_cmd_threads->io_context_refcnt++;
-	}
-
-	mutex_unlock(&p_cmd_threads->io_context_mutex);
-#endif
-
-	smp_wmb();
-	p_cmd_threads->io_context_ready = true;
+	scst_ioctx_get(p_cmd_threads);
 
 	spin_lock_irq(&p_cmd_threads->cmd_list_lock);
 	while (!kthread_should_stop()) {
@@ -4337,14 +4367,7 @@ int scst_cmd_thread(void *arg)
 	}
 	spin_unlock_irq(&p_cmd_threads->cmd_list_lock);
 
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 25)
-	if (p_cmd_threads != &scst_main_cmd_threads) {
-		mutex_lock(&p_cmd_threads->io_context_mutex);
-		if (--p_cmd_threads->io_context_refcnt == 0)
-			p_cmd_threads->io_context = NULL;
-		mutex_unlock(&p_cmd_threads->io_context_mutex);
-	}
-#endif
+	scst_ioctx_put(p_cmd_threads);
 
 	PRINT_INFO("Processing thread %s (PID %d) finished", current->comm,
 		current->pid);
