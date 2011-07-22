@@ -4330,7 +4330,7 @@ static int scst_dg_tgs_mgmt_store_work_fn(char *cmd, struct scst_dev_group *dg)
 	res = -EINVAL;
 	pp = cmd;
 	p = scst_get_next_lexem(&pp);
-	if (strcasecmp(p, "add") == 0) {
+	if (strcasecmp(p, "create") == 0 || strcasecmp(p, "add") == 0) {
 		dev_name = scst_get_next_lexem(&pp);
 		if (!*dev_name)
 			goto out;
@@ -4414,7 +4414,7 @@ static ssize_t scst_device_groups_mgmt_store_work_fn(char *cmd)
 
 	res = -EINVAL;
 	p = scst_get_next_lexem(&pp);
-	if (strcasecmp(p, "add") == 0) {
+	if (strcasecmp(p, "create") == 0 || strcasecmp(p, "add") == 0) {
 		group_name = scst_get_next_lexem(&pp);
 		if (!*group_name)
 			goto out;
