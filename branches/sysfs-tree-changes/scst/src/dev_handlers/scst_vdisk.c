@@ -575,6 +575,19 @@ static char *__vdev_get_filename(struct scst_vdisk_dev *virt_dev)
 		return "none";
 }
 
+static char *vdev_dup_filename(struct scst_vdisk_dev *virt_dev)
+{
+	char *filename;
+
+	BUG_ON(!virt_dev);
+
+	mutex_lock(&virt_dev->filename_mutex);
+	filename = kstrdup(__vdev_get_filename(virt_dev), GFP_KERNEL);
+	mutex_unlock(&virt_dev->filename_mutex);
+
+	return filename;
+}
+
 static void vdev_set_filename(struct scst_vdisk_dev *virt_dev, char *n)
 {
 	BUG_ON(!virt_dev);
@@ -589,6 +602,7 @@ static struct file *vdev_open_fd(struct scst_vdisk_dev *virt_dev)
 {
 	int open_flags = 0;
 	struct file *fd;
+	char *filename;
 
 	TRACE_ENTRY();
 
@@ -600,11 +614,13 @@ static struct file *vdev_open_fd(struct scst_vdisk_dev *virt_dev)
 		open_flags |= O_DIRECT;
 	if (virt_dev->wt_flag && !virt_dev->nv_cache)
 		open_flags |= O_SYNC;
-	mutex_lock(&virt_dev->filename_mutex);
-	TRACE_DBG("Opening file %s, flags 0x%x",
-		  virt_dev->filename, open_flags);
-	fd = filp_open(virt_dev->filename, O_LARGEFILE | open_flags, 0600);
-	mutex_unlock(&virt_dev->filename_mutex);
+	filename = vdev_dup_filename(virt_dev);
+	if (filename) {
+		TRACE_DBG("Opening file %s, flags 0x%x", filename, open_flags);
+		fd = filp_open(filename, O_LARGEFILE | open_flags, 0600);
+		kfree(filename);
+	} else
+		fd = ERR_PTR(-ENOMEM);
 
 	TRACE_EXIT();
 	return fd;
@@ -614,19 +630,24 @@ static void vdisk_blockio_check_flush_support(struct scst_vdisk_dev *virt_dev)
 {
 	struct inode *inode;
 	struct file *fd;
+	char *filename;
 
 	TRACE_ENTRY();
 
 	if (!virt_dev->blockio || virt_dev->rd_only || virt_dev->nv_cache)
 		goto out;
 
-	mutex_lock(&virt_dev->filename_mutex);
-	fd = filp_open(virt_dev->filename, O_LARGEFILE, 0600);
-	if (IS_ERR(fd)) {
-		PRINT_ERROR("filp_open(%s) returned error %ld",
-			virt_dev->filename, PTR_ERR(fd));
-		goto out_unlock;
-	}
+	filename = vdev_dup_filename(virt_dev);
+	if (filename) {
+		fd = filp_open(filename, O_LARGEFILE, 0600);
+		if (IS_ERR(fd))
+			PRINT_ERROR("filp_open(%s) returned error %ld",
+				    filename, PTR_ERR(fd));
+		kfree(filename);
+	} else
+		fd = ERR_PTR(-ENOMEM);
+	if (IS_ERR(fd))
+		goto out;
 
 	inode = fd->f_dentry->d_inode;
 
@@ -644,8 +665,6 @@ static void vdisk_blockio_check_flush_support(struct scst_vdisk_dev *virt_dev)
 
 out_close:
 	filp_close(fd, NULL);
-out_unlock:
-	mutex_unlock(&virt_dev->filename_mutex);
 out:
 	TRACE_EXIT();
 	return;
@@ -655,18 +674,18 @@ static void vdisk_check_tp_support(struct scst_vdisk_dev *virt_dev)
 {
 	struct inode *inode = NULL;
 	struct file *fd = NULL;
+	char *filename;
 
 	TRACE_ENTRY();
 
 	virt_dev->dev_thin_provisioned = 0;
 
-	mutex_lock(&virt_dev->filename_mutex);
-
-	if (!virt_dev->rd_only && virt_dev->filename) {
-		fd = filp_open(virt_dev->filename, O_LARGEFILE, 0600);
+	filename = vdev_dup_filename(virt_dev);
+	if (!virt_dev->rd_only && filename) {
+		fd = filp_open(filename, O_LARGEFILE, 0600);
 		if (IS_ERR(fd)) {
 			PRINT_ERROR("filp_open(%s) returned error %ld",
-				virt_dev->filename, PTR_ERR(fd));
+				    filename, PTR_ERR(fd));
 			goto out_check;
 		}
 	}
@@ -675,8 +694,7 @@ static void vdisk_check_tp_support(struct scst_vdisk_dev *virt_dev)
 
 	if (virt_dev->blockio) {
 		if (!S_ISBLK(inode->i_mode)) {
-			PRINT_ERROR("%s is NOT a block device",
-				virt_dev->filename);
+			PRINT_ERROR("%s is NOT a block device", filename);
 			goto out_close;
 		}
 #if LINUX_VERSION_CODE > KERNEL_VERSION(2, 6, 31)
@@ -700,19 +718,18 @@ out_check:
 	if (virt_dev->thin_provisioned_manually_set) {
 		if (virt_dev->thin_provisioned && !virt_dev->dev_thin_provisioned) {
 			PRINT_WARNING("Device %s doesn't support thin "
-				"provisioning, disabling it.",
-				virt_dev->filename);
+				"provisioning, disabling it.", filename);
 			virt_dev->thin_provisioned = 0;
 		}
 	} else if (virt_dev->blockio) {
 		virt_dev->thin_provisioned = virt_dev->dev_thin_provisioned;
 		if (virt_dev->thin_provisioned)
 			PRINT_INFO("Auto enable thin provisioning for device "
-				"%s", virt_dev->filename);
+				   "%s", filename);
 
 	}
 
-	mutex_unlock(&virt_dev->filename_mutex);
+	kfree(filename);
 
 	TRACE_EXIT();
 	return;
@@ -805,10 +822,10 @@ static int vdisk_attach(struct scst_device *dev)
 		if (virt_dev->nullio)
 			err = VDISK_NULLIO_SIZE;
 		else {
-			mutex_lock(&virt_dev->filename_mutex);
-			res = vdisk_get_file_size(virt_dev->filename,
-				virt_dev->blockio, &err);
-			mutex_unlock(&virt_dev->filename_mutex);
+			char *filename = vdev_dup_filename(virt_dev);
+			res = vdisk_get_file_size(filename, virt_dev->blockio,
+						  &err);
+			kfree(filename);
 			if (res != 0)
 				goto out;
 		}
@@ -1449,6 +1466,7 @@ static void vdev_blockio_get_unmap_params(struct scst_vdisk_dev *virt_dev,
 #if LINUX_VERSION_CODE > KERNEL_VERSION(2, 6, 32) || (defined(RHEL_MAJOR) && RHEL_MAJOR -0 >= 6)
 	struct file *fd;
 	struct request_queue *q;
+	char *filename;
 #endif
 
 	TRACE_ENTRY();
@@ -1458,16 +1476,17 @@ static void vdev_blockio_get_unmap_params(struct scst_vdisk_dev *virt_dev,
 	*max_unmap_lba = 0xFFFFFFFF;
 
 #if LINUX_VERSION_CODE > KERNEL_VERSION(2, 6, 32) || (defined(RHEL_MAJOR) && RHEL_MAJOR -0 >= 6)
-	fd = filp_open(virt_dev->filename, O_LARGEFILE, 0600);
+	filename = vdev_dup_filename(virt_dev);
+	fd = filp_open(filename, O_LARGEFILE, 0600);
 	if (IS_ERR(fd)) {
-		PRINT_ERROR("filp_open(%s) returned error %ld",
-			virt_dev->filename, PTR_ERR(fd));
+		PRINT_ERROR("filp_open(%s) returned error %ld", filename,
+			    PTR_ERR(fd));
 		goto out;
 	}
 
 	q = bdev_get_queue(fd->f_dentry->d_inode->i_bdev);
 	if (q == NULL) {
-		PRINT_ERROR("No queue for device %s", virt_dev->filename);
+		PRINT_ERROR("No queue for device %s", filename);
 		goto out_close;
 	}
 
@@ -1482,6 +1501,7 @@ out_close:
 	filp_close(fd, NULL);
 
 out:
+	kfree(filename);
 #endif
 	TRACE_EXIT();
 	return;
@@ -3428,13 +3448,13 @@ static int vdisk_resync_size(struct scst_vdisk_dev *virt_dev)
 {
 	loff_t file_size;
 	int res = 0;
+	char *filename;
 
 	sBUG_ON(virt_dev->nullio);
 
-	mutex_lock(&virt_dev->filename_mutex);
-	res = vdisk_get_file_size(virt_dev->filename,
-			virt_dev->blockio, &file_size);
-	mutex_unlock(&virt_dev->filename_mutex);
+	filename = vdev_dup_filename(virt_dev);
+	res = vdisk_get_file_size(filename, virt_dev->blockio, &file_size);
+	kfree(filename);
 	if (res != 0)
 		goto out;
 
@@ -4123,8 +4143,7 @@ static int vcdrom_change(struct scst_vdisk_dev *virt_dev,
 
 		vdev_set_filename(virt_dev, fn);
 
-		res = vdisk_get_file_size(filename,
-				virt_dev->blockio, &err);
+		res = vdisk_get_file_size(fn, virt_dev->blockio, &err);
 		if (res != 0)
 			goto out_free_fn;
 	} else {
