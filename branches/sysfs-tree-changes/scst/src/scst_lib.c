@@ -3122,13 +3122,13 @@ found:
 			t->acg_dev->acg->acg_io_grouping_type);
 	} else {
 		res = t;
-		if (!*(volatile bool*)&res->active_cmd_threads->io_context_ready) {
+		if (scst_wait_ioctx_timeout(res->active_cmd_threads, HZ / 10)
+		    <= 0) {
 			TRACE_MGMT_DBG("IO context for t %p not yet "
 				"initialized, waiting...", t);
 			msleep(100);
 			goto found;
 		}
-		smp_rmb();
 		TRACE_MGMT_DBG("Going to share IO context %p (res %p, ini %s, "
 			"dev %s, cmd_threads %p, grouping type %d)",
 			res->active_cmd_threads->io_context, res,

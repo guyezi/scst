@@ -4109,6 +4109,7 @@ static void scst_ioctx_get(struct scst_cmd_threads *cmd_threads)
 #endif
 
 	cmd_threads->io_context_ready = true;
+	wake_up_all(&cmd_threads->io_context_wait);
 }
 
 /**

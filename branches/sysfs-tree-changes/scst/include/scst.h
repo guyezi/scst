@@ -1722,6 +1722,7 @@ struct scst_cmd_threads {
 	int io_context_refcnt;
 
 	bool io_context_ready;
+	wait_queue_head_t io_context_wait;
 
 	/* io_context_mutex protects io_context and io_context_refcnt. */
 	struct mutex io_context_mutex;
@@ -1731,6 +1732,29 @@ struct scst_cmd_threads {
 
 	struct list_head lists_list_entry;
 };
+
+/**
+ * scst_wait_ioctx() - Wait until an I/O context becomes available.
+ * @pool: Thread pool to wait on.
+ */
+static inline void scst_wait_ioctx(struct scst_cmd_threads *pool)
+{
+	wait_event(pool->io_context_wait, pool->io_context_ready);
+}
+
+/**
+ * scst_wait_ioctx_timeout() - Wait until an I/O context becomes available.
+ * @pool: Thread pool to wait on.
+ * @j: Maximum number of jiffies to wait.
+ *
+ * Returns the number of jiffies remaining if the I/O context became available
+ * in time and zero if the I/O context did not become available in time.
+ */
+static inline int scst_wait_ioctx_timeout(struct scst_cmd_threads *pool, int j)
+{
+	return wait_event_timeout(pool->io_context_wait, pool->io_context_ready,
+				  j);
+}
 
 /*
  * Used to execute cmd's in order of arrival, honoring SCSI task attributes
