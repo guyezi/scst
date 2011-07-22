@@ -4364,8 +4364,7 @@ static ssize_t vdev_sysfs_filename_show(struct device *device,
 	res = mutex_lock_interruptible(&virt_dev->filename_mutex);
 	if (res)
 		goto out;
-	res = snprintf(buf, SCST_SYSFS_BLOCK_SIZE, "%s\n",
-		       __vdev_get_filename(virt_dev));
+	res = scnprintf(buf, PAGE_SIZE, "%s\n", __vdev_get_filename(virt_dev));
 	mutex_unlock(&virt_dev->filename_mutex);
 
 out:

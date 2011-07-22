@@ -3541,7 +3541,7 @@ static ssize_t dev_user_sysfs_commands_show(struct device *device,
 		list_for_each_entry(ucmd, head, hash_list_entry) {
 			ppos = pos;
 			pos += scnprintf(&buf[pos],
-				SCST_SYSFS_BLOCK_SIZE - pos,
+				PAGE_SIZE - pos,
 				"ucmd %p (state %x, ref %d), "
 				"sent_to_user %d, seen_by_user %d, "
 				"aborted %d, jammed %d, scst_cmd %p\n",
@@ -3549,9 +3549,9 @@ static ssize_t dev_user_sysfs_commands_show(struct device *device,
 				atomic_read(&ucmd->ucmd_ref),
 				ucmd->sent_to_user, ucmd->seen_by_user,
 				ucmd->aborted, ucmd->jammed, ucmd->cmd);
-			if (pos >= SCST_SYSFS_BLOCK_SIZE-1) {
+			if (pos >= PAGE_SIZE - 1) {
 				ppos += scnprintf(&buf[ppos],
-					SCST_SYSFS_BLOCK_SIZE - ppos, "...\n");
+					PAGE_SIZE - ppos, "...\n");
 				pos = ppos;
 				break;
 			}

@@ -647,7 +647,7 @@ static ssize_t iscsi_tgtt_##a##_show(struct device_driver *drv, char *buf) \
 				     attr_name, NULL, &value);		\
 	if (pos)							\
 		goto out;						\
-	pos = scnprintf(buf, SCST_SYSFS_BLOCK_SIZE, "%s\n", (char *)value); \
+	pos = scnprintf(buf, PAGE_SIZE, "%s\n", (char *)value);		\
 	kfree(value);							\
 out:									\
 	TRACE_EXIT_RES(pos);						\
@@ -703,7 +703,7 @@ static ssize_t iscsi_tgt_attr_show(struct device *dev,
 	if (pos != 0)
 		goto out;
 
-	pos = scnprintf(buf, SCST_SYSFS_BLOCK_SIZE, "%s\n", (char *)value);
+	pos = scnprintf(buf, PAGE_SIZE, "%s\n", (char *)value);
 
 	kfree(value);
 

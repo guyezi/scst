@@ -194,7 +194,7 @@ static ssize_t iscsi_conn_ip_show(struct kobject *kobj,
 
 	conn = scst_kobj_to_conn(kobj);
 
-	pos = iscsi_get_initiator_ip(conn, buf, SCST_SYSFS_BLOCK_SIZE);
+	pos = iscsi_get_initiator_ip(conn, buf, PAGE_SIZE);
 
 	TRACE_EXIT_RES(pos);
 	return pos;
@@ -232,7 +232,7 @@ static ssize_t iscsi_conn_state_show(struct kobject *kobj,
 
 	conn = scst_kobj_to_conn(kobj);
 
-	pos = print_conn_state(buf, SCST_SYSFS_BLOCK_SIZE, conn);
+	pos = print_conn_state(buf, PAGE_SIZE, conn);
 
 	TRACE_EXIT_RES(pos);
 	return pos;

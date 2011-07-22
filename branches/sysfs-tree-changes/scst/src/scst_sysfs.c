@@ -1831,9 +1831,8 @@ static ssize_t scst_dev_scsi_device_show(struct device *device,
 	scsidp = dev->scsi_dev;
 	if (!scsidp)
 		goto out;
-	res = scnprintf(buf, PAGE_SIZE, "%d:%d:%d:%d\n",
-			scsidp->host->host_no, scsidp->channel, scsidp->id,
-			scsidp->lun);
+	res = scnprintf(buf, PAGE_SIZE, "%d:%d:%d:%d\n", scsidp->host->host_no,
+			scsidp->channel, scsidp->id, scsidp->lun);
 out:
 	return res;
 }
@@ -2103,7 +2102,7 @@ static ssize_t scst_tgt_dev_latency_show(struct kobject *kobj,
 		processed_cmds_wr = latency_stat->processed_cmds_wr;
 		processed_cmds_rd = latency_stat->processed_cmds_rd;
 
-		res += scnprintf(&buffer[res], SCST_SYSFS_BLOCK_SIZE - res,
+		res += scnprintf(&buffer[res], PAGE_SIZE - res,
 			 "%-5s %-9s %-15lu ", "Write", scst_io_size_names[i],
 			(unsigned long)processed_cmds_wr);
 		if (processed_cmds_wr == 0)
@@ -2115,7 +2114,7 @@ static ssize_t scst_tgt_dev_latency_show(struct kobject *kobj,
 			(unsigned long)scst_time_wr,
 			(unsigned long)latency_stat->max_scst_time_wr,
 			(unsigned long)latency_stat->scst_time_wr);
-		res += scnprintf(&buffer[res], SCST_SYSFS_BLOCK_SIZE - res,
+		res += scnprintf(&buffer[res], PAGE_SIZE - res,
 			"%-47s", buf);
 
 		do_div(tgt_time_wr, processed_cmds_wr);
@@ -2124,7 +2123,7 @@ static ssize_t scst_tgt_dev_latency_show(struct kobject *kobj,
 			(unsigned long)tgt_time_wr,
 			(unsigned long)latency_stat->max_tgt_time_wr,
 			(unsigned long)latency_stat->tgt_time_wr);
-		res += scnprintf(&buffer[res], SCST_SYSFS_BLOCK_SIZE - res,
+		res += scnprintf(&buffer[res], PAGE_SIZE - res,
 			"%-47s", buf);
 
 		do_div(dev_time_wr, processed_cmds_wr);
@@ -2133,10 +2132,10 @@ static ssize_t scst_tgt_dev_latency_show(struct kobject *kobj,
 			(unsigned long)dev_time_wr,
 			(unsigned long)latency_stat->max_dev_time_wr,
 			(unsigned long)latency_stat->dev_time_wr);
-		res += scnprintf(&buffer[res], SCST_SYSFS_BLOCK_SIZE - res,
+		res += scnprintf(&buffer[res], PAGE_SIZE - res,
 			"%-47s\n", buf);
 
-		res += scnprintf(&buffer[res], SCST_SYSFS_BLOCK_SIZE - res,
+		res += scnprintf(&buffer[res], PAGE_SIZE - res,
 			"%-5s %-9s %-15lu ", "Read", scst_io_size_names[i],
 			(unsigned long)processed_cmds_rd);
 		if (processed_cmds_rd == 0)
@@ -2148,7 +2147,7 @@ static ssize_t scst_tgt_dev_latency_show(struct kobject *kobj,
 			(unsigned long)scst_time_rd,
 			(unsigned long)latency_stat->max_scst_time_rd,
 			(unsigned long)latency_stat->scst_time_rd);
-		res += scnprintf(&buffer[res], SCST_SYSFS_BLOCK_SIZE - res,
+		res += scnprintf(&buffer[res], PAGE_SIZE - res,
 			"%-47s", buf);
 
 		do_div(tgt_time_rd, processed_cmds_rd);
@@ -2157,7 +2156,7 @@ static ssize_t scst_tgt_dev_latency_show(struct kobject *kobj,
 			(unsigned long)tgt_time_rd,
 			(unsigned long)latency_stat->max_tgt_time_rd,
 			(unsigned long)latency_stat->tgt_time_rd);
-		res += scnprintf(&buffer[res], SCST_SYSFS_BLOCK_SIZE - res,
+		res += scnprintf(&buffer[res], PAGE_SIZE - res,
 			"%-47s", buf);
 
 		do_div(dev_time_rd, processed_cmds_rd);
@@ -2166,7 +2165,7 @@ static ssize_t scst_tgt_dev_latency_show(struct kobject *kobj,
 			(unsigned long)dev_time_rd,
 			(unsigned long)latency_stat->max_dev_time_rd,
 			(unsigned long)latency_stat->dev_time_rd);
-		res += scnprintf(&buffer[res], SCST_SYSFS_BLOCK_SIZE - res,
+		res += scnprintf(&buffer[res], PAGE_SIZE - res,
 			"%-47s\n", buf);
 	}
 
@@ -2252,7 +2251,7 @@ static ssize_t scst_sess_latency_show(struct kobject *kobj,
 	sess = scst_kobj_to_sess(kobj);
 
 	res = 0;
-	res += scnprintf(&buffer[res], SCST_SYSFS_BLOCK_SIZE - res,
+	res += scnprintf(&buffer[res], PAGE_SIZE - res,
 		"%-15s %-15s %-46s %-46s %-46s\n",
 		"T-L names", "Total commands", "SCST latency",
 		"Target latency", "Dev latency (min/avg/max/all ns)");
@@ -2276,7 +2275,7 @@ static ssize_t scst_sess_latency_show(struct kobject *kobj,
 		processed_cmds_wr = latency_stat->processed_cmds_wr;
 		processed_cmds_rd = latency_stat->processed_cmds_rd;
 
-		res += scnprintf(&buffer[res], SCST_SYSFS_BLOCK_SIZE - res,
+		res += scnprintf(&buffer[res], PAGE_SIZE - res,
 			"%-5s %-9s %-15lu ",
 			"Write", scst_io_size_names[i],
 			(unsigned long)processed_cmds_wr);
@@ -2289,7 +2288,7 @@ static ssize_t scst_sess_latency_show(struct kobject *kobj,
 			(unsigned long)scst_time_wr,
 			(unsigned long)latency_stat->max_scst_time_wr,
 			(unsigned long)latency_stat->scst_time_wr);
-		res += scnprintf(&buffer[res], SCST_SYSFS_BLOCK_SIZE - res,
+		res += scnprintf(&buffer[res], PAGE_SIZE - res,
 			"%-47s", buf);
 
 		do_div(tgt_time_wr, processed_cmds_wr);
@@ -2298,7 +2297,7 @@ static ssize_t scst_sess_latency_show(struct kobject *kobj,
 			(unsigned long)tgt_time_wr,
 			(unsigned long)latency_stat->max_tgt_time_wr,
 			(unsigned long)latency_stat->tgt_time_wr);
-		res += scnprintf(&buffer[res], SCST_SYSFS_BLOCK_SIZE - res,
+		res += scnprintf(&buffer[res], PAGE_SIZE - res,
 			"%-47s", buf);
 
 		do_div(dev_time_wr, processed_cmds_wr);
@@ -2307,10 +2306,10 @@ static ssize_t scst_sess_latency_show(struct kobject *kobj,
 			(unsigned long)dev_time_wr,
 			(unsigned long)latency_stat->max_dev_time_wr,
 			(unsigned long)latency_stat->dev_time_wr);
-		res += scnprintf(&buffer[res], SCST_SYSFS_BLOCK_SIZE - res,
+		res += scnprintf(&buffer[res], PAGE_SIZE - res,
 			"%-47s\n", buf);
 
-		res += scnprintf(&buffer[res], SCST_SYSFS_BLOCK_SIZE - res,
+		res += scnprintf(&buffer[res], PAGE_SIZE - res,
 			"%-5s %-9s %-15lu ",
 			"Read", scst_io_size_names[i],
 			(unsigned long)processed_cmds_rd);
@@ -2323,7 +2322,7 @@ static ssize_t scst_sess_latency_show(struct kobject *kobj,
 			(unsigned long)scst_time_rd,
 			(unsigned long)latency_stat->max_scst_time_rd,
 			(unsigned long)latency_stat->scst_time_rd);
-		res += scnprintf(&buffer[res], SCST_SYSFS_BLOCK_SIZE - res,
+		res += scnprintf(&buffer[res], PAGE_SIZE - res,
 			"%-47s", buf);
 
 		do_div(tgt_time_rd, processed_cmds_rd);
@@ -2332,7 +2331,7 @@ static ssize_t scst_sess_latency_show(struct kobject *kobj,
 			(unsigned long)tgt_time_rd,
 			(unsigned long)latency_stat->max_tgt_time_rd,
 			(unsigned long)latency_stat->tgt_time_rd);
-		res += scnprintf(&buffer[res], SCST_SYSFS_BLOCK_SIZE - res,
+		res += scnprintf(&buffer[res], PAGE_SIZE - res,
 			"%-47s", buf);
 
 		do_div(dev_time_rd, processed_cmds_rd);
@@ -2341,7 +2340,7 @@ static ssize_t scst_sess_latency_show(struct kobject *kobj,
 			(unsigned long)dev_time_rd,
 			(unsigned long)latency_stat->max_dev_time_rd,
 			(unsigned long)latency_stat->dev_time_rd);
-		res += scnprintf(&buffer[res], SCST_SYSFS_BLOCK_SIZE - res,
+		res += scnprintf(&buffer[res], PAGE_SIZE - res,
 			"%-47s\n", buf);
 	}
 
@@ -2350,7 +2349,7 @@ static ssize_t scst_sess_latency_show(struct kobject *kobj,
 	dev_time = sess->dev_time;
 	processed_cmds = sess->processed_cmds;
 
-	res += scnprintf(&buffer[res], SCST_SYSFS_BLOCK_SIZE - res,
+	res += scnprintf(&buffer[res], PAGE_SIZE - res,
 		"\n%-15s %-16d", "Overall ", processed_cmds);
 
 	if (processed_cmds == 0)
@@ -2362,7 +2361,7 @@ static ssize_t scst_sess_latency_show(struct kobject *kobj,
 		(unsigned long)scst_time,
 		(unsigned long)sess->max_scst_time,
 		(unsigned long)sess->scst_time);
-	res += scnprintf(&buffer[res], SCST_SYSFS_BLOCK_SIZE - res,
+	res += scnprintf(&buffer[res], PAGE_SIZE - res,
 		"%-47s", buf);
 
 	do_div(tgt_time, processed_cmds);
@@ -2371,7 +2370,7 @@ static ssize_t scst_sess_latency_show(struct kobject *kobj,
 		(unsigned long)tgt_time,
 		(unsigned long)sess->max_tgt_time,
 		(unsigned long)sess->tgt_time);
-	res += scnprintf(&buffer[res], SCST_SYSFS_BLOCK_SIZE - res,
+	res += scnprintf(&buffer[res], PAGE_SIZE - res,
 		"%-47s", buf);
 
 	do_div(dev_time, processed_cmds);
@@ -2380,7 +2379,7 @@ static ssize_t scst_sess_latency_show(struct kobject *kobj,
 		(unsigned long)dev_time,
 		(unsigned long)sess->max_dev_time,
 		(unsigned long)sess->dev_time);
-	res += scnprintf(&buffer[res], SCST_SYSFS_BLOCK_SIZE - res,
+	res += scnprintf(&buffer[res], PAGE_SIZE - res,
 		"%-47s\n\n", buf);
 
 	spin_unlock_bh(&sess->lat_lock);
@@ -2483,8 +2482,7 @@ static ssize_t scst_sess_sysfs_initiator_name_show(struct kobject *kobj,
 
 	sess = scst_kobj_to_sess(kobj);
 
-	return scnprintf(buf, SCST_SYSFS_BLOCK_SIZE, "%s\n",
-		sess->initiator_name);
+	return scnprintf(buf, PAGE_SIZE, "%s\n", sess->initiator_name);
 }
 
 static struct kobj_attribute session_initiator_name_attr =
@@ -3220,8 +3218,7 @@ out:
 static ssize_t scst_acn_file_show(struct kobject *kobj,
 	struct kobj_attribute *attr, char *buf)
 {
-	return scnprintf(buf, SCST_SYSFS_BLOCK_SIZE, "%s\n",
-		attr->attr.name);
+	return scnprintf(buf, PAGE_SIZE, "%s\n", attr->attr.name);
 }
 
 int scst_acn_sysfs_create(struct scst_acn *acn)
