@@ -797,19 +797,19 @@ int iscsi_tgtt_add_attr(const struct iscsi_kern_attr *attr_info)
 	list_for_each_entry(tgtt_attr, attrs_list, attrs_list_entry) {
 		if (strcmp(tgtt_attr->name, attr_info->name) == 0) {
 			PRINT_ERROR("Attribute %s for %s already exist",
-				    attr_info->name, name);
+				attr_info->name, name);
 			res = -EEXIST;
 			goto out;
 		}
 	}
 
 	TRACE_DBG("Adding %s's attr %s with mode %x", name,
-		  attr_info->name, attr_info->mode);
+		attr_info->name, attr_info->mode);
 
 	tgtt_attr = kzalloc(sizeof(*tgtt_attr), GFP_KERNEL);
 	if (tgtt_attr == NULL) {
 		PRINT_ERROR("Unable to allocate user (size %zd)",
-			    sizeof(*tgtt_attr));
+			sizeof(*tgtt_attr));
 		res = -ENOMEM;
 		goto out;
 	}
@@ -817,7 +817,7 @@ int iscsi_tgtt_add_attr(const struct iscsi_kern_attr *attr_info)
 	tgtt_attr->name = kstrdup(attr_info->name, GFP_KERNEL);
 	if (tgtt_attr->name == NULL) {
 		PRINT_ERROR("Unable to allocate attr %s name/value (target %s)",
-			    attr_info->name, name);
+			attr_info->name, name);
 		res = -ENOMEM;
 		goto out_free;
 	}
