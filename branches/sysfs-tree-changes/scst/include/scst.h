@@ -600,7 +600,8 @@ struct scst_trace_log;
 
 typedef enum dma_data_direction scst_data_direction;
 
-#if defined(CONFIG_SCST_DEBUG) || defined(CONFIG_SCST_TRACING)
+#if !defined(INSIDE_KERNEL_TREE) ||					\
+	defined(CONFIG_SCST_DEBUG) || defined(CONFIG_SCST_TRACING)
 /**
  * struct scst_trace_data - Tracing-related data.
  * @default_trace_flags: Default trace flags.
@@ -1016,7 +1017,8 @@ struct scst_tgt_template {
 #if defined(CONFIG_DEBUG_FS)
 	struct dentry *debugfs_dir;
 #endif
-#if defined(CONFIG_SCST_DEBUG) || defined(CONFIG_SCST_TRACING)
+#if !defined(INSIDE_KERNEL_TREE) ||					\
+	defined(CONFIG_SCST_DEBUG) || defined(CONFIG_SCST_TRACING)
 	struct scst_trace_data trace_data;
 	struct scst_trace_files *trace_files;
 #endif
@@ -1408,7 +1410,8 @@ struct scst_dev_type {
 #if defined(CONFIG_DEBUG_FS)
 	struct dentry *debugfs_dir;
 #endif
-#if defined(CONFIG_SCST_DEBUG) || defined(CONFIG_SCST_TRACING)
+#if !defined(INSIDE_KERNEL_TREE) ||					\
+	defined(CONFIG_SCST_DEBUG) || defined(CONFIG_SCST_TRACING)
 	struct scst_trace_data trace_data;
 	struct scst_trace_files *trace_files;
 #endif
@@ -2431,7 +2434,8 @@ struct scst_device {
 #if defined(CONFIG_DEBUG_FS)
 	struct dentry *debugfs_dir;
 #endif
-#if defined(CONFIG_SCST_DEBUG) || defined(CONFIG_SCST_TRACING)
+#if !defined(INSIDE_KERNEL_TREE) ||					\
+	defined(CONFIG_SCST_DEBUG) || defined(CONFIG_SCST_TRACING)
 	struct scst_trace_files *trace_files;
 	struct scst_debugfs_file *dump_pr_file;
 #endif
