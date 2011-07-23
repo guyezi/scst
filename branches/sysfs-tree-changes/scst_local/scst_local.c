@@ -965,7 +965,7 @@ static int scst_local_queuecommand_lck(struct scsi_cmnd *SCpnt,
 
 	scsi_set_resid(SCpnt, 0);
 
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 25)
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 25))
 	/*
 	 * Allocate a tgt_specific_structure. We need this in case we need
 	 * to construct a single element SGL.

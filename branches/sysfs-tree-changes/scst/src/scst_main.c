@@ -288,7 +288,7 @@ int __scst_register_target_template(struct scst_tgt_template *vtt,
 
 #ifndef CONFIG_SCST_PROC
 	res = scst_tgtt_sysfs_init(vtt);
-	if (res)
+	if (res != 0)
 		goto out_unlock;
 	res = scst_tgtt_sysfs_create(vtt);
 	if (res != 0)
@@ -894,7 +894,7 @@ static int scst_register_device(struct scsi_device *scsidp)
 	TRACE_ENTRY();
 
 	res = scst_suspend_activity(true);
-	if (res)
+	if (res != 0)
 		goto out;
 
 	res = mutex_lock_interruptible(&scst_mutex);
@@ -902,10 +902,11 @@ static int scst_register_device(struct scsi_device *scsidp)
 		goto out_resume;
 
 	res = scst_alloc_device(GFP_KERNEL, &dev);
-	if (res)
+	if (res != 0)
 		goto out_unlock;
 
 	dev->type = scsidp->type;
+
 	dev->virt_name = kasprintf(GFP_KERNEL, "%d:%d:%d:%d",
 				   scsidp->host->host_no,
 				   scsidp->channel, scsidp->id, scsidp->lun);
@@ -933,17 +934,17 @@ static int scst_register_device(struct scsi_device *scsidp)
 	list_for_each_entry(dt, &scst_dev_type_list, dev_type_list_entry) {
 		if (dt->type == scsidp->type) {
 			res = scst_assign_dev_handler(dev, dt);
-			if (res)
+			if (res != 0)
 				goto out_free_dev;
 			break;
 		}
 	}
 #else
 	res = scst_dev_sysfs_init(dev);
-	if (res)
+	if (res != 0)
 		goto out_free_dev;
 	res = scst_dev_sysfs_create(dev);
-	if (res)
+	if (res != 0)
 		goto out_put;
 #endif
 
@@ -1116,15 +1117,15 @@ int scst_register_virtual_device(struct scst_dev_type *dev_handler,
 	}
 
 	res = scst_check_device_name(dev_name);
-	if (res)
+	if (res != 0)
 		goto out;
 
 	res = scst_dev_handler_check(dev_handler);
-	if (res)
+	if (res != 0)
 		goto out;
 
 	res = scst_suspend_activity(true);
-	if (res)
+	if (res != 0)
 		goto out;
 
 	res = mutex_lock_interruptible(&scst_mutex);
@@ -1140,7 +1141,7 @@ int scst_register_virtual_device(struct scst_dev_type *dev_handler,
 	}
 
 	res = scst_alloc_device(GFP_KERNEL, &dev);
-	if (res)
+	if (res != 0)
 		goto out_unlock;
 
 	dev->type = dev_handler->type;
@@ -1168,15 +1169,15 @@ int scst_register_virtual_device(struct scst_dev_type *dev_handler,
 
 #ifndef CONFIG_SCST_PROC
 	res = scst_dev_sysfs_init(dev);
-	if (res)
+	if (res != 0)
 		goto out_pr_clear_dev;
 	res = scst_dev_sysfs_create(dev);
-	if (res)
+	if (res != 0)
 		goto out_pr_clear_dev;
 #endif
 
 	res = scst_assign_dev_handler(dev, dev_handler);
-	if (res)
+	if (res != 0)
 #ifndef CONFIG_SCST_PROC
 		goto out_sysfs_del;
 #else
@@ -1310,7 +1311,7 @@ int __scst_register_dev_driver(struct scst_dev_type *dev_type,
 	}
 
 	res = scst_dev_handler_check(dev_type);
-	if (res)
+	if (res != 0)
 		goto out;
 
 #if !defined(SCSI_EXEC_REQ_FIFO_DEFINED)
@@ -1336,7 +1337,7 @@ int __scst_register_dev_driver(struct scst_dev_type *dev_type,
 
 #ifdef CONFIG_SCST_PROC
 	res = scst_suspend_activity(true);
-	if (res)
+	if (res != 0)
 		goto out;
 #endif
 
@@ -1363,7 +1364,7 @@ int __scst_register_dev_driver(struct scst_dev_type *dev_type,
 #ifdef CONFIG_SCST_PROC
 	if (!dev_type->no_proc) {
 		res = scst_build_proc_dev_handler_dir_entries(dev_type);
-		if (res)
+		if (res < 0)
 			goto out_unlock;
 	}
 
@@ -1379,10 +1380,10 @@ int __scst_register_dev_driver(struct scst_dev_type *dev_type,
 	}
 #else
 	res = scst_devt_sysfs_init(dev_type);
-	if (res)
+	if (res != 0)
 		goto out_unlock;
 	res = scst_devt_sysfs_create(dev_type);
-	if (res)
+	if (res != 0)
 		goto out_put;
 #endif
 
@@ -1504,7 +1505,7 @@ int __scst_register_virtual_dev_driver(struct scst_dev_type *dev_type,
 	}
 
 	res = scst_dev_handler_check(dev_type);
-	if (res)
+	if (res != 0)
 		goto out;
 
 	res = mutex_lock_interruptible(&scst_mutex);
@@ -1523,10 +1524,10 @@ int __scst_register_virtual_dev_driver(struct scst_dev_type *dev_type,
 		goto out_del;
 #else
 	res = scst_devt_sysfs_init(dev_type);
-	if (res)
+	if (res != 0)
 		goto out;
 	res = scst_devt_sysfs_create(dev_type);
-	if (res)
+	if (res != 0)
 		goto out_put;
 #endif
 
@@ -1847,7 +1848,7 @@ assign:
 		TRACE_DBG("Calling new dev handler's attach(%p)", dev);
 		res = handler->attach(dev);
 		TRACE_DBG("New dev handler's attach() returned %d", res);
-		if (res) {
+		if (res != 0) {
 			PRINT_ERROR("New device handler's %s attach() "
 				"failed: %d", handler->name, res);
 			goto out;
@@ -1856,7 +1857,7 @@ assign:
 
 #ifndef CONFIG_SCST_PROC
 	res = scst_dev_sysfs_create(dev);
-	if (res)
+	if (res != 0)
 		goto out_detach;
 #endif
 
@@ -1878,7 +1879,7 @@ assign:
 	}
 
 	res = scst_create_dev_threads(dev);
-	if (res)
+	if (res != 0)
 		goto out_err_detach_tgt;
 
 out:
@@ -2300,7 +2301,7 @@ static int __init init_scst(void)
 	}
 
 	res = scst_sysfs_init();
-	if (res)
+	if (res != 0)
 		goto out_destroy_aen_mempool;
 
 	scst_tg_init();

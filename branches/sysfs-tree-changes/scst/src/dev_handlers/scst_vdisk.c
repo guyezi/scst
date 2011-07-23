@@ -665,6 +665,7 @@ static void vdisk_blockio_check_flush_support(struct scst_vdisk_dev *virt_dev)
 
 out_close:
 	filp_close(fd, NULL);
+
 out:
 	TRACE_EXIT();
 	return;
