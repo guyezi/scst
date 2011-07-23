@@ -466,6 +466,35 @@ out_err_up:
 EXPORT_SYMBOL(scst_unregister_target_template);
 
 /**
+ * generate_unique_target_name() - Generate a unique target name.
+ * @vtt: Target template.
+ * @tgt: Target to assign a unique name to.
+ */
+static int generate_unique_target_name(struct scst_tgt_template *vtt,
+				       struct scst_tgt *tgt)
+{
+	int tgt_num;
+
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 29)
+	lockdep_assert_held(&scst_mutex);
+#endif
+
+	for (tgt_num = 0; ; ++tgt_num) {
+		kfree(tgt->tgt_name);
+		tgt->tgt_name = kasprintf(GFP_KERNEL, "%s%s%d", vtt->name,
+					  SCST_DEFAULT_TGT_NAME_SUFFIX,
+					  tgt_num);
+		if (!tgt->tgt_name) {
+			TRACE(TRACE_OUT_OF_MEM, "Allocation of tgt name failed "
+			      "(template name %s)", vtt->name);
+			return -ENOMEM;
+		}
+		if (!__scst_lookup_tgt(vtt, tgt->tgt_name))
+			return 0;
+	}
+}
+
+/**
  * scst_register_target() - register target
  *
  * Registers a target for template vtt and returns new target structure on
@@ -484,7 +513,7 @@ struct scst_tgt *scst_register_target(struct scst_tgt_template *vtt,
 		goto out;
 
 	rc = mutex_lock_interruptible(&scst_mutex);
-	if (rc)
+	if (rc != 0)
 		goto out_free_tgt;
 
 	if (target_name != NULL) {
@@ -509,17 +538,9 @@ struct scst_tgt *scst_register_target(struct scst_tgt_template *vtt,
 			goto out_unlock;
 		}
 	} else {
-		static int tgt_num; /* protected by scst_mutex */
-
-		tgt->tgt_name = kasprintf(GFP_KERNEL, "%s%s%d", vtt->name,
-			SCST_DEFAULT_TGT_NAME_SUFFIX, tgt_num);
-		if (tgt->tgt_name == NULL) {
-			PRINT_ERROR("Allocation of tgt name failed "
-				"(template name %s)", vtt->name);
-			rc = -ENOMEM;
+		rc = generate_unique_target_name(vtt, tgt);
+		if (rc != 0)
 			goto out_unlock;
-		}
-		tgt_num++;
 	}
 
 	list_for_each_entry(t, &vtt->tgt_list, tgt_list_entry) {

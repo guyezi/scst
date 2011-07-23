@@ -294,6 +294,8 @@ int scst_queue_retry_cmd(struct scst_cmd *cmd, int finished_cmds);
 
 int scst_alloc_tgt(struct scst_tgt_template *tgtt, struct scst_tgt **tgt);
 void scst_free_tgt(struct scst_tgt *tgt);
+struct scst_tgt *__scst_lookup_tgt(struct scst_tgt_template *tgtt,
+				   const char *target_name);
 
 int scst_alloc_device(gfp_t gfp_mask, struct scst_device **out_dev);
 void scst_free_device(struct scst_device *dev);

@@ -285,24 +285,6 @@ static struct scst_tgt_template *__scst_lookup_tgtt(const char *name)
 	return NULL;
 }
 
-static struct scst_tgt *__scst_lookup_tgt(struct scst_tgt_template *tgtt,
-					  const char *target_name)
-{
-	struct scst_tgt *tgt;
-
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 29)
-	lockdep_assert_held(&scst_mutex);
-#endif
-
-	list_for_each_entry(tgt, &tgtt->tgt_list, tgt_list_entry)
-		if (strcmp(tgt->tgt_name, target_name) == 0)
-			return tgt;
-
-	TRACE_DBG("tgt %s not found", target_name);
-
-	return NULL;
-}
-
 static struct scst_acg *__scst_lookup_acg(const struct scst_tgt *tgt,
 					  const char *acg_name)
 {

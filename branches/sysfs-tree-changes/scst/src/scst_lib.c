@@ -2614,6 +2614,25 @@ static void scst_init_order_data(struct scst_order_data *order_data)
 	return;
 }
 
+/**
+ * __scst_lookup_tgt() - Look up a target by name.
+ */
+struct scst_tgt *__scst_lookup_tgt(struct scst_tgt_template *tgtt,
+				   const char *target_name)
+{
+	struct scst_tgt *tgt;
+
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 29)
+	lockdep_assert_held(&scst_mutex);
+#endif
+
+	list_for_each_entry(tgt, &tgtt->tgt_list, tgt_list_entry)
+		if (strcmp(tgt->tgt_name, target_name) == 0)
+			return tgt;
+
+	return NULL;
+}
+
 /* Called under scst_mutex and suspended activity */
 int scst_alloc_device(gfp_t gfp_mask, struct scst_device **out_dev)
 {
