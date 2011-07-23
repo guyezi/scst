@@ -1,0 +1,288 @@
+What:		/sys/devices/scst/mgmt
+Date:		December 2010
+Contact:	Bart Van Assche <bvanassche@acm.org>
+Description:
+		Interface through which SCST management commands can be
+		issued. Read-write. Brief documentation of the syntax of these
+		commands can be obtained by reading this file (e.g. cat
+		/sys/devices/scst/mgmt). Detailed information is available
+		below.
+
+What:		/sys/devices/scst/setup_id
+Date:		December 2010
+Contact:	Bart Van Assche <bvanassche@acm.org>
+Description:
+		SCST setup ID. Allows to identify otherwise identical SCST
+		setups on different systems. As an example, the
+		vdisk device handler uses this to generate the T10 vendor
+		specific identifier ID and USN of virtual devices. Must be
+		set before any virtual devices are created. Read-write.
+
+What:		/sys/devices/scst/threads
+Date:		December 2010
+Contact:	Bart Van Assche <bvanassche@acm.org>
+Description:
+		Number of global I/O threads. The global I/O threads are used
+		by asynchronous device handlers or when explicitly configured
+		(i.e. when threads_num has been set to zero). Read-write.
+
+What:		/sys/devices/scst/version
+Date:		December 2010
+Contact:	Bart Van Assche <bvanassche@acm.org>
+Description:
+		SCST version number. Read-only. An example:
+
+		$ cat /sys/devices/scst/version
+		2.0.0
+
+-------------------------------------------------------------------------------
+
+
+Issuing management commands via /sys/devices/scst/mgmt
+
+
+1 Device driver commands
+========================
+
+1.1 Managing virtual devices
+----------------------------
+
+The syntax for creating a virtual device is as follows:
+
+echo "in device_driver/<devt> add_device <device_name> [<parameters>]" \
+  >/sys/devices/scst/mgmt
+
+where <devt> is the name of a virtual device handler and <parameters> is a
+semicolon-separated list of <name>=<value> pairs. The supported parameters are
+enumerated in the add_device_parameters file of each virtual device
+driver. E.g. for vdisk_fileio the parameters supported at device creation time
+are:
+
+$ cat /sys/bus/scst_tgt_dev/drivers/vdisk_fileio/add_device_parameters
+filename
+blocksize
+write_through
+nv_cache
+o_direct
+read_only
+removable
+thin_provisioned
+
+An example of how to create a vdisk_fileio device with NV-cache and thin
+provisioning enabled:
+
+echo "in device_driver/vdisk_fileio add_device disk01 filename=/home/exported-storage;nv_cache=1;thin_provisioned=1" >/sys/devices/scst/mgmt
+
+Removing virtual devices is possible via the del_device command. An example:
+
+echo "in device_driver/vdisk_fileio del_device disk01" >/sys/devices/scst/mgmt
+
+The remaining commands (add_attribute, del_attribute, add_device_attribute and
+del_device_attribute) allow to add or remove dynamically sysfs files for
+virtual devices and their drivers. There are not yet any virtual devices or
+virtual device drivers that allow this.
+
+1.2 Managing pass-through devices
+---------------------------------
+
+SCST supports SCSI pass-through. Before a LUN number can be assigned to a SCSI
+device, a device handler has to be assigned via the add_device command:
+
+echo "in device_driver/<devt> add_device H:C:I:L" >/sys/devices/scst/mgmt
+
+The syntax for disabling SCSI passthrough is similar:
+
+echo "in device_driver/<devt> del_device H:C:I:L" >/sys/devices/scst/mgmt
+
+In the above <devt> is the name of a pass-through handler and H:C:I:L is a
+quadruplet identifying a local SCSI device. An example:
+
+echo "in device_driver/dev_disk add_device 2:0:0:0" >/sys/devices/scst/mgmt
+echo "in device_driver/dev_disk del_device 2:0:0:0" >/sys/devices/scst/mgmt
+
+A list with the names of all currently loaded virtual and pass-through drivers
+can be obtained as follows:
+
+$ ls /sys/bus/scst_tgt_dev/drivers
+dev_cdrom    dev_disk_perf    dev_processor  dev_tape_perf  vdisk_fileio
+dev_changer  dev_modisk       dev_raid       vcdrom         vdisk_nullio
+dev_disk     dev_modisk_perf  dev_tape       vdisk_blockio
+
+
+2 Device management commands
+============================
+
+The syntax of device management commands is as follows:
+
+echo "in device/<dev> <dev_cmd>" >/sys/devices/scst/mgmt
+
+where <dev> is a device name and <dev_cmd> is one of:
+
+set_filename <filename>
+set_threads_num <n>
+set_thread_pool_type <thread_pool_type>
+
+These commands are documented in
+Documentation/ABI/stable/sysfs-devices-scst_tgt_dev.
+
+
+3 Target driver commands
+========================
+
+3.1 Adding and removing targets
+-------------------------------
+
+Adding and removing targets dynamically is possible with the add_target and
+remove_target commands. This is supported by scst_local but not by ib_srpt. An
+example for scst_local:
+
+# echo "in target_driver/scst_local add_target tgt2 session_name=tgt2_sess" >/sys/devices/scst/mgmt
+# ls /sys/bus/scst_target/drivers/scst_local/tgt2/sessions
+tgt2_sess
+# echo "in target_driver/scst_local del_target tgt2" >/sys/devices/scst/mgmt
+# ls /sys/bus/scst_target/drivers/scst_local/tgt2/sessions
+ls: cannot access /sys/bus/scst_target/drivers/scst_local/tgt2/sessions: No such file or directory
+
+3.2 Driver-specific commands
+----------------------------
+
+Each driver can define additional commands. As an example, the scst_local
+driver supports the add_session and del_session commands. See also the
+driver-specific documentation for more information.
+
+
+4 Target commands
+=================
+
+The following target commands are supported via /sys/devices/scst/mgmt:
+enable, disable and set_cpu_mask. These commands are documented in
+Documentation/ABI/stable/sysfs-devices-scst_target.
+
+
+5 Target LUN commands
+=====================
+
+The syntax of the commands for managing the set of LUNs associated with a
+target is as follows:
+
+in target_driver/<tgtt>/<target>/luns <lun_cmd>
+
+where lun_cmd is one of:
+
+add|del H:C:I:L <lun> [<parameters>]
+add <vname> <lun> [<parameters>]
+del <lun>
+replace H:C:I:L <lun> [<parameters>]
+replace <vname> <lun> [<parameters>]
+clear
+
+and where <vname> is the name of a virtual device, <lun> is a LUN number and
+<parameters> is a semicolon-separated list of parameters. Currently the only
+supported parameter is the parameter called "read_only" (either 0 or 1).
+
+# echo "in target_driver/ib_srpt/ib_srpt_target_0/luns clear" >/sys/devices/scst/mgmt
+# echo "in target_driver/ib_srpt/ib_srpt_target_0/luns add disk01 0" >/sys/devices/scst/mgmt
+# readlink /sys/bus/scst_target/drivers/ib_srpt/ib_srpt_target_0/luns/0/device
+../../../disk01
+# echo "in target_driver/ib_srpt/ib_srpt_target_0/luns replace disk02 0" >/sys/devices/scst/mgmt
+# readlink /sys/bus/scst_target/drivers/ib_srpt/ib_srpt_target_0/luns/0/device
+../../../disk02
+
+
+6 Access control group commands
+===============================
+
+6.1 Access control group creation and removal
+---------------------------------------------
+
+A list of zero or more access control groups (ACGs) can be associated with
+each target. ACGs allow to define which initiator has access to which LUNs.
+The syntax for creating and removing ACGs is:
+
+in target_driver/<tgtt>/<target>/ini_groups <acg_mgmt_cmd>
+
+where <acg_mgmt_cmd> is one of:
+
+create <group_name>
+del <group_name>
+
+An example:
+
+# echo "in target_driver/ib_srpt/ib_srpt_target_0/ini_groups create group1" >/sys/devices/scst/mgmt
+# ls /sys/bus/scst_target/drivers/ib_srpt/ib_srpt_target_0/ini_groups
+group1
+
+6.2 Access control group properties
+-----------------------------------
+
+The access control group CPU mask can be modified via the set_cpu_mask
+command. See also Documentation/ABI/stable/sysfs-devices-scst_target for more
+information.
+
+6.3 Managing ACG LUNs
+---------------------
+
+The syntax of the commands for managing the LUNs associated with an ACG is as
+follows:
+
+in target_driver/<tgtt>/<target>/ini_groups/<acg>/luns <lun_cmd>
+
+add|del H:C:I:L <lun> [<parameters>]
+add <vname> <lun> [<parameters>]
+del <lun>
+replace H:C:I:L <lun> [<parameters>]
+replace <vname> <lun> [<parameters>]
+clear
+
+See also section 5 for more information about these commands. An example:
+
+# echo "in target_driver/ib_srpt/ib_srpt_target_0/ini_groups/group1/luns add disk01 0" >/sys/devices/scst/mgmt
+# readlink /sys/bus/scst_target/drivers/ib_srpt/ib_srpt_target_0/ini_groups/group1/luns/0/device
+../../../disk01
+
+6.4 Associating initiators with an ACG
+--------------------------------------
+
+The syntax of the commands for manipulating the list of initiators associated
+with an ACG is as follows:
+
+in target_driver/<tgtt>/<target>/ini_groups/<acg>/initiators <acg_ini_cmd>
+
+where <acg_ini_cmd> is one of:
+
+add <initiator_name>
+del <initiator_name>
+move <initiator_name> <dest_group_name>
+clear
+
+These commands allow to add an initiator name to the initiator name list of an
+ACG, remove an initiator name from that list, move an initatior name from one
+ACG to another or to clear that initiator name list entirely. For the "add"
+and "del" commands the initiator name may be a pattern instead of a literal
+initator name. The following wildcard characters are supported:
+- '*' matches any substring.
+- '?' matches any character.
+- '!' at the start of a pattern will cause the pattern to match with every
+  initiator name that does not match with the subsequent pattern.
+As an example, the pattern "!abc*" will match with every initiator name that
+does not start with the sequence "abc".
+
+Below one can find an example for the target driver ib_srpt. For the SRP
+protocol initiator names are 128-bit hexadecimal numbers with leading "0x".
+The ib_srpt driver uses the SRP initiator port identifier for the session
+name. Associating the ACG called "group1" with the two HCA ports with GUIDs
+$port1 and $port2 is possible as follows:
+
+# port1="0x00000000000000000002c9030005f34b"
+# port2="0x00000000000000000002c9030005f34c"
+# echo "in target_driver/ib_srpt/ib_srpt_target_0/ini_groups/group1/initiators add $port1" >/sys/devices/scst/mgmt
+# echo "in target_driver/ib_srpt/ib_srpt_target_0/ini_groups/group1/initiators add $port2" >/sys/devices/scst/mgmt
+# ls /sys/bus/scst_target/drivers/ib_srpt/ib_srpt_target_0/ini_groups/group1/initiators
+0x00000000000000000002c9030005f34b 0x00000000000000000002c9030005f34c
+
+The cumulative effect of the commands shown as examples in sections 6.1, 6.3
+and this section is that the initiator identified by GUID $ini1 and only that
+initiator will see the LUNs defined in the ACG with name "group1". If no other
+ACGs have been defined, all other initiators that log in to the same target
+will see the LUNs associated with the target itself. Making a LUN available to
+some hosts and not available to other hosts is also called LUN masking.

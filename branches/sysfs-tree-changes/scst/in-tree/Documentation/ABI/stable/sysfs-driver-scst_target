@@ -1,0 +1,55 @@
+What:		/sys/bus/scst_target/drivers/*/add_target
+Date:		December 2010
+Contact:	Bart Van Assche <bvanassche@acm.org>
+Description:
+		Whether or not dynamic creation and removal of SCSI targets is
+		supported by a particular SCST target driver. The value 1
+		means that dynamic target creation/removal is supported
+		and the value 0 means that dynamic target creation/removal is
+		not supported. Read-only.
+
+What:		/sys/bus/scst_target/drivers/*/add_target_parameters
+Date:		December 2010
+Contact:	Bart Van Assche <bvanassche@acm.org>
+Description:
+		Names of the parameters that may be specified at target
+		creation time. Each parameter name appears on a separate
+		line. This file only exists if dynamic target creation and
+		removal is supported. Read-only.
+
+What:		/sys/bus/scst_target/drivers/*/driver_attributes
+Date:		December 2010
+Contact:	Bart Van Assche <bvanassche@acm.org>
+Description:
+		Names of the SCSI target driver sysfs files that may be created
+		or removed dynamically. Each file name appears on a
+		separate line. This file only exists if dynamic target driver
+		file creation and removal is supported. Read-only.
+
+What:		/sys/bus/scst_target/drivers/*/enabled
+Date:		December 2010
+Contact:	Bart Van Assche <bvanassche@acm.org>
+Description:
+		Allows to enable or disable the operation of a SCST target
+		driver. The value 1 means enabled and 0 means disabled.
+		Defaults to 0 (disabled). This allows to configure a target
+		driver before it becomes operational. Only exists if disabling
+		the particual target driver is supported. Read-write.
+
+What:		/sys/bus/scst_target/drivers/*/target_attributes
+Date:		December 2010
+Contact:	Bart Van Assche <bvanassche@acm.org>
+Description:
+		Names of the sysfs files that may be created and/or removed
+		dynamically for a target. Each file name appears on a separate
+		line. This file only exists if dynamic target file creation
+		and removal is supported. Read-only.
+
+What:		/sys/bus/scst_target/drivers/*/version
+Date:		December 2010
+Contact:	Bart Van Assche <bvanassche@acm.org>
+Description:
+		Target driver version. Read-only. An example:
+
+		$ cat /sys/bus/scst_target/drivers/scst_local/version
+		1.0.0

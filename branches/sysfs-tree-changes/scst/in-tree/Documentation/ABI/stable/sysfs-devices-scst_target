@@ -1,0 +1,214 @@
+What:		/sys/bus/scst_target/devices/*/addr_method
+Date:		December 2010
+Contact:	Bart Van Assche <bvanassche@acm.org>
+Description:
+		LUN addressing method used by this target when e.g. responding
+		to a REPORT_LUNS command. One of the values PERIPHERAL, FLAT
+		or LUN. Read-write. While most initiators work well with the
+		default addressing method (PERIPHERAL), some initiators need
+		the FLAT addressing method (HP/UX) or LUN addressing (AIX).
+		Note: the LUN addressing method can also be configured for a
+		security group. That allows to define the LUN addressing
+		method on a per-initiator basis. See also SAM-4, section 4.6,
+		Logical Unit Numbers.
+
+What:		/sys/bus/scst_target/devices/*/cpu_mask
+Date:		December 2010
+Contact:	Bart Van Assche <bvanassche@acm.org>
+Description:
+		Target-specific CPU mask in hexadecimal format. While this
+		file is read-only, changing the CPU mask is possible via
+		the set_cpu_mask command. As an example, the commands below
+		show how to make scst_local use any CPU for processing SCSI
+		commands except CPUs 0, 1, 2 or 3:
+
+		# cat /sys/bus/scst_target/devices/scst_local_tgt/cpu_mask
+		ffffffff,ffffffff
+		# echo "in target_driver/scst_local/scst_local_tgt set_cpu_mask ffffffff,fffffff0" >/sys/devices/scst/mgmt
+		# cat /sys/bus/scst_target/devices/scst_local_tgt/cpu_mask
+		ffffffff,fffffff0
+
+What:		/sys/bus/scst_target/devices/*/force_close
+Date:		December 2010
+Contact:	Bart Van Assche <bvanassche@acm.org>
+Description:
+		If this file exists, writing any data to this file will
+		forcibly close all sessions associated with a target.
+		Write-only.
+
+What:		/sys/bus/scst_target/devices/*/enabled
+Date:		December 2010
+Contact:	Bart Van Assche <bvanassche@acm.org>
+Description:
+		Whether a target is currently enabled ("1") or disabled ("0").
+		No new connections are accepted for a
+		target that is in the disabled state. Defaults to disabled
+		("0"). This allows to configure a target before any connections
+		are accepted. Read-only. Notes:
+		- Enabling a target is only allowed if its relative target
+		  port identifier is unique.
+		- Enabling or disabling a target is possible via the SCST
+		  device. An example:
+
+		$ echo "in target_driver/ib_srpt/ib_srpt_target_0 disable" >/sys/devices/scst/mgmt
+		$ cat /sys/devices/ib_srpt_target_0/enabled
+		0
+		$ echo "in target_driver/ib_srpt/ib_srpt_target_0 enable" >/sys/devices/scst/mgmt
+		$ cat /sys/devices/ib_srpt_target_0/enabled
+
+What:		/sys/bus/scst_target/devices/<target>/hw_address
+Date:		December 2010
+Contact:	Bart Van Assche <bvanassche@acm.org>
+Description:
+		Address that uniquely identifies the hardware entity that
+		corresponds to a target. For ib_srpt this is the HCA node
+		GUID. Read-only. An example:
+
+		$ cat /sys/bus/scst_target/devices/ib_srpt_target_0/address
+		0002c9030005f34e
+
+What:		/sys/bus/scst_target/devices/*/hw_target
+Date:		December 2010
+Contact:	Bart Van Assche <bvanassche@acm.org>
+Description:
+		Allows to distinguish hardware and virtual targets. The value
+		1 means that there is a one-to-one correspondence between this
+		target and a hardware entity, and the value 0 means that there
+		is no such one-to-one correspondence. This file only exists
+		when the target driver supports both hardware and virtual
+		targets. Read-only.
+
+What:		/sys/bus/scst_target/devices/*/ini_groups/<acg>/addr_method
+Date:		December 2010
+Contact:	Bart Van Assche <bvanassche@acm.org>
+Description:
+		LUN addressing method for this ACG (access control group).
+		Read-write.
+
+What:		/sys/bus/scst_target/devices/*/ini_groups/<acg>/cpu_mask
+Date:		December 2010
+Contact:	Bart Van Assche <bvanassche@acm.org>
+Description:
+		CPU mask associated with this ACG. Read-only. Modifying this
+		CPU mask is possible via the set_cpu_mask command. An example:
+
+		# cat /sys/bus/scst_target/devices/scst_local_tgt/ini_groups/group1/cpu_mask
+		ffffffff,ffffffff
+		# echo "in target_driver/scst_local/scst_local_tgt/ini_groups/group1 set_cpu_mask 1" >/sys/devices/scst/mgmt
+		# cat /sys/bus/scst_target/devices/scst_local_tgt/ini_groups/group1/cpu_mask
+		00000000,00000001
+
+What:		/sys/bus/scst_target/devices/*/ini_groups/<acg>/initiators/<ini>
+Date:		December 2010
+Contact:	Bart Van Assche <bvanassche@acm.org>
+Description:
+		Name of an initiator associated with this ACG. The contents
+		of this file is the same as the filename. Read-only.
+
+What:		/sys/bus/scst_target/devices/*/ini_groups/<acg>/initiators/luns/parameters
+Date:		December 2010
+Contact:	Bart Van Assche <bvanassche@acm.org>
+Description:
+		Names of the parameters supported when adding a LUN to an ACG,
+		one per line. Read-only.
+
+What:		/sys/bus/scst_target/devices/*/ini_groups/<acg>/initiators/luns/<number>/device
+Date:		December 2010
+Contact:	Bart Van Assche <bvanassche@acm.org>
+Description:
+		Soft link to the SCST device associated with this LUN. An
+		example:
+		$ readlink /sys/bus/scst_target/devices/scst_local_tgt/ini_groups/group1/luns/0/device
+		../../../../../disk01
+
+What:		/sys/bus/scst_target/devices/*/ini_groups/<acg>/initiators/luns/<number>/read_only
+Date:		December 2010
+Contact:	Bart Van Assche <bvanassche@acm.org>
+Description:
+		Whether the LUN has been exported read-only ("1") or
+		read-write ("0"). This file is read-only.
+
+What:		/sys/bus/scst_target/devices/*/io_grouping_type
+Date:		December 2010
+Contact:	Bart Van Assche <bvanassche@acm.org>
+Description:
+		I/O context sharing setting. I/O context sharing may improve
+		I/O performance significantly when using the CFQ I/O scheduler
+		and rotating storage media. The allowed values for this
+		parameter are:
+		* "auto"		Use one I/O context per initiator.
+		* "this_group_only"	Use the same I/O context for all
+					sessions associated with this target.
+		* "never"		Never share I/O contexts.
+		* <I/O context number>	Share an I/O context over all targets
+					that have this I/O context number. Must
+					be a number above zero.
+		Read-write.
+
+What:		/sys/bus/scst_target/devices/*/luns/parameters
+Date:		December 2010
+Contact:	Bart Van Assche <bvanassche@acm.org>
+Description:
+		Names of the parameters supported when adding a LUN to a
+		target, one per line. Read-only.
+
+What:		/sys/bus/scst_target/devices/*/luns/<number>/device
+Date:		December 2010
+Contact:	Bart Van Assche <bvanassche@acm.org>
+Description:
+		Soft link to the exported SCST device. Read-only.
+
+What:		/sys/bus/scst_target/devices/*/luns/<number>/read_only
+Date:		December 2010
+Contact:	Bart Van Assche <bvanassche@acm.org>
+Description:
+		Whether this LUN is read-only (1) or read-write (0).
+		Read-create.
+
+What:		/sys/bus/scst_target/devices/*/sessions/<session>/commands
+Date:		December 2010
+Contact:	Bart Van Assche <bvanassche@acm.org>
+Description:
+		Number of SCSI commands being executed for this session.
+		Read-only.
+
+What:		/sys/bus/scst_target/devices/*/sessions/<session>/force_close
+Date:		December 2010
+Contact:	Bart Van Assche <bvanassche@acm.org>
+Description:
+		Attribute that allows to forcibly close a session. Optional,
+		write-only.
+
+What:		/sys/bus/scst_target/devices/*/sessions/<session>/initiator_name
+Date:		December 2010
+Contact:	Bart Van Assche <bvanassche@acm.org>
+Description:
+		Session name. For most target drivers this is a name that
+		identifies the initiator. Read-only.
+
+What:		/sys/bus/scst_target/devices/*/sessions/<session>/lun<number>/active_commands
+Date:		December 2010
+Contact:	Bart Van Assche <bvanassche@acm.org>
+Description:
+		Number of active commands. Read-only.
+
+What:		/sys/bus/scst_target/devices/*/sessions/<session>/luns
+Date:		December 2010
+Contact:	Bart Van Assche <bvanassche@acm.org>
+Description:
+		Soft link to the LUNs exported via this session. That soft
+		link either points to the LUNs associated with the
+		corresponding target or to the LUNs associated with an ACG.
+		Examples:
+
+		$ readlink /sys/devices/scst_local_tgt/sessions/scst_local_host/luns
+		../../luns
+		$ readlink /sys/devices/ib_srpt_target_0/sessions/0x00000000000000000002c9030005f34b/luns
+../../ini_groups/initiator1/luns
+
+What:		/sys/bus/scst_target/devices/*/rel_tgt_id
+Date:		December 2010
+Contact:	Bart Van Assche <bvanassche@acm.org>
+Description:
+		SCSI Relative Target Port Identifier, which is used by e.g.
+		persistent reservation commands. Read-write.

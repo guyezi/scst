@@ -1,0 +1,20 @@
+What:		/sys/bus/scst_target/drivers/scst_local/aborts
+Date:		December 2010
+Contact:	Richard Sharpe <realrichardsharpe@gmail.com>
+Description:
+		Number of SCSI commands that have been aborted by the SCSI
+		initiator. Read-only.
+
+What:		/sys/bus/scst_target/drivers/scst_local/device_resets
+Date:		December 2010
+Contact:	Richard Sharpe <realrichardsharpe@gmail.com>
+Description:
+		Number of SCSI device resets that have been performed by the
+		SCSI initiator. Read-only.
+
+What:		/sys/bus/scst_target/drivers/scst_local/target_resets
+Date:		December 2010
+Contact:	Richard Sharpe <realrichardsharpe@gmail.com>
+Description:
+		Number of SCSI target resets that have been performed by the
+		SCSI initiator. Read-only.

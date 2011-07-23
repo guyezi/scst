@@ -1,0 +1,9 @@
+What:		/sys/bus/scst_target/drivers/ib_srpt/service_id
+Date:		December 2010
+Contact:	Bart Van Assche <bvanassche@acm.org>
+Description:
+		SRP Service ID used by ib_srpt on this server. Read-only. An
+		example:
+
+		$ cat /sys/bus/scst_target/drivers/ib_srpt/service_id
+		0002c9030005f34e

@@ -1,0 +1,23 @@
+What:		/sys/bus/scst_target/devices/<target>/phys_transport_version
+Date:		December 2010
+Contact:	Richard Sharpe <realrichardsharpe@gmail.com>
+Description:
+		SCSI physical transport version. Defines which physical
+		interface scst_local will resemble. See also SPC-4 for more
+		information. Read-write.
+
+What:		/sys/bus/scst_target/devices/<target>/scsi_transport_version
+Date:		December 2010
+Contact:	Richard Sharpe <realrichardsharpe@gmail.com>
+Description:
+		SCSI transport version. Defines which SCSI transport
+		scst_local will resemble. The default is SAS. See also SPC-4
+		for more information. Read-write.
+
+What:		/sys/bus/scst_target/devices/<target>/sessions/<session>/transport_id
+Date:		December 2010
+Contact:	Richard Sharpe <realrichardsharpe@gmail.com>
+Description:
+		SCSI transport ID in binary format. Necessary e.g. for
+		implementing persistent reservation support. See also SPC-4
+		for more information. Read-write.

@@ -1,0 +1,51 @@
+What:		/sys/bus/scst_tgt_dev/drivers/*/add_device_parameters
+Date:		December 2010
+Contact:	Bart Van Assche <bvanassche@acm.org>
+Description:
+		Names of the parameters supported when adding a device. Each
+		parameter name appears on a separate line. Read-only.
+		An example:
+
+		$ cat /sys/bus/scst_tgt_dev/drivers/vdisk_fileio/add_device_parameters
+		filename
+		blocksize
+		write_through
+		nv_cache
+		o_direct
+		read_only
+		removable
+		thin_provisioned
+
+What:		/sys/bus/scst_tgt_dev/drivers/*/type
+Date:		December 2010
+Contact:	Bart Van Assche <bvanassche@acm.org>
+Description:
+		A number in the range 0..17 representing the SCSI peripheral
+		device type of the devices managed by this driver as defined
+		in SPC-4. Read-only. The defined types and their meaning are:
+
+		 0 Direct access block device (e.g., magnetic disk)
+		 1 Sequential-access device (e.g., magnetic tape)
+		 2 Printer device
+		 3 Processor device
+		 4 Write-once device (e.g., some optical disks)
+		 5 CD/DVD device
+		 6 Scanner device (obsolete)
+		 7 Optical memory device (e.g., some optical disks)
+		 8 Media changer device (e.g., jukeboxes)
+		 9 Communications device (obsolete)
+		10 Obsolete
+		11 Obsolete
+		12 Storage array controller device (e.g., RAID)
+		13 Enclosure services device
+		14 Simplified direct-access device (e.g., magnetic disk)
+		15 Optical card reader/writer device
+		16 Bridge Controller Commands
+		17 Object-based Storage Device
+
+What:		/sys/bus/scst_tgt_dev/drivers/*/type_description
+Date:		December 2010
+Contact:	Bart Van Assche <bvanassche@acm.org>
+Description:
+		Textual description of the SCSI peripheral type of the devices
+		managed by this driver. Read-only.

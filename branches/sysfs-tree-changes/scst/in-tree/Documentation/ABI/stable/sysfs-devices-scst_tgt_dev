@@ -1,0 +1,217 @@
+What:		/sys/bus/scst_tgt_dev/device/*/blocksize
+Date:		December 2010
+Contact:	Bart Van Assche <bvanassche@acm.org>
+Description:
+		Block size that has been configured for a virtual device. Must
+		be a power of two and equal to or above 512. Read-create.
+
+What:		/sys/bus/scst_tgt_dev/device/*/exported/export<nr>
+Date:		December 2010
+Contact:	Bart Van Assche <bvanassche@acm.org>
+Description:
+		Zero or more soft links to the LUNs via which this device
+		has been exported. An example:
+
+		$ for f in /sys/bus/scst_tgt_dev/devices/disk01/exported/export*; do echo $f; readlink $f; done
+		/sys/bus/scst_tgt_dev/devices/disk01/exported/export0
+		../../ib_srpt_target_0/ini_groups/initiator1/luns/0
+		/sys/bus/scst_tgt_dev/devices/disk01/exported/export1
+		../../ib_srpt_target_0/luns/0
+		/sys/bus/scst_tgt_dev/devices/disk01/exported/export2
+		../../ib_srpt_target_1/luns/0
+
+What:		/sys/bus/scst_tgt_dev/device/*/filename
+Date:		December 2010
+Contact:	Bart Van Assche <bvanassche@acm.org>
+Description:
+		For virtual devices, the absolute path of the associated file
+		or device. Read-create for vdisk_blockio and vdisk_fileio
+		devices and read-only for vcdrom devices. For vcdrom devices
+		this parameter can be modified via the set_filename
+		command. Configuring a non-empty path is interpret as
+		inserting a medium and setting an empty path is interpret as
+		removing a medium. An example of how to add a vcdrom device,
+		how to trigger medium insertion and medium removal:
+
+		# echo "in device_driver/vcdrom add_device vcdrom1" >/sys/devices/scst/mgmt
+		# echo "in device/vcdrom1 set_filename /cdrom.iso" >/sys/devices/scst/mgmt
+		# cat /sys/bus/scst_tgt_dev/devices/vcdrom1/filename
+		/cdrom.iso
+		# echo "in device/vcdrom1 set_filename" >/sys/devices/scst/mgmt
+		# od -c /sys/bus/scst_tgt_dev/devices/vcdrom1/filename
+		0000000  \n
+		0000001
+
+What:		/sys/bus/scst_tgt_dev/device/*/nv_cache
+Date:		December 2010
+Contact:	Bart Van Assche <bvanassche@acm.org>
+Description:
+		Whether or not acknowledging writes early has been enabled for
+		a vdisk_blockio or vdisk_fileio device. The value 1 means that
+		acknowledging writes early has been enabled and the value 0
+		means that acknowledging writes early has been disabled.
+		Warning: while enabling early write acknowledgements does
+		decrease I/O latency, for a storage medium that neither has a
+		non-volatile cache nor an UPS enabling early write
+		acknowledgements may result in data loss in case of a power
+		failure. Read-create.
+
+What:		/sys/bus/scst_tgt_dev/device/*/o_direct
+Date:		December 2010
+Contact:	Bart Van Assche <bvanassche@acm.org>
+Description:
+		The value 1 means that all caching has been disabled (direct
+		or non-buffered I/O) for a vdisk_fileio device and the value 0
+		means that caching is enabled (asynchronous or buffered
+		I/O). Read-create.
+
+What:		/sys/bus/scst_tgt_dev/device/*/read_only
+Date:		December 2010
+Contact:	Bart Van Assche <bvanassche@acm.org>
+Description:
+		For virtual devices, whether or not to deny write commands. 1
+		stands for read-only and 0 for read-write. The "read_only"
+		file itself is read-create.
+
+What:		/sys/bus/scst_tgt_dev/device/*/removable
+Date:		December 2010
+Contact:	Bart Van Assche <bvanassche@acm.org>
+Description:
+		For vdisk_blockio, vdisk_fileio and vdisk_nullio devices,
+		whether or not the underlying storage medium has been
+		configured as removable when the virtual device was
+		created. The value "1" means removable and the value "0" means
+		not removable. Read-create.
+
+What:		/sys/bus/scst_tgt_dev/device/*/resync_size
+Date:		December 2010
+Contact:	Bart Van Assche <bvanassche@acm.org>
+Description:
+		For vdisk_fileio and vdisk_blockio devices, writing any data
+		to this file will cause SCST to reexamine the size of the
+		underlying storage medium. Write-only. See also the "filename"
+		and "size_mb" files.
+
+What:		/sys/bus/scst_tgt_dev/device/*/scsi_device
+Date:		December 2010
+Contact:	Bart Van Assche <bvanassche@acm.org>
+Description:
+		For SCSI devices, the device identification in H:C:I:L format.
+		Read-only. An example:
+
+		$ cat /sys/bus/scst_tgt_dev/devices/1:0:0:0/scsi_device
+		1:0:0:0
+
+What:		/sys/bus/scst_tgt_dev/device/*/size_mb
+Date:		December 2010
+Contact:	Bart Van Assche <bvanassche@acm.org>
+Description:
+		For virtual devices, the internally cached size in MB of the
+		underlying storage device (1 MB = 1048576 bytes). Read-only.
+		See also the "filename" and "resync_size" files.
+
+What:		/sys/bus/scst_tgt_dev/device/*/t10_dev_id
+Date:		December 2010
+Contact:	Bart Van Assche <bvanassche@acm.org>
+Description:
+		SCSI device ID associated with the virtual device. This is the
+		ID reported e.g. via the Device Identification page (0x83) of
+		the INQUIRY command. Read-write.
+
+What:		/sys/bus/scst_tgt_dev/device/*/thin_provisioned
+Date:		December 2010
+Contact:	Bart Van Assche <bvanassche@acm.org>
+Description:
+		Whether or not thin provisioning support has been enabled (1)
+		or not (0) for a virtual device. If thin provisioning support
+		has been enabled, SCST will report to the SCSI initiator that
+		thin provisioning is supported and SCSI UNMAP commands will be
+		translated to deallocation requests for the underlying
+		storage. See also SBC-3 for further information. Read-create.
+
+What:		/sys/bus/scst_tgt_dev/device/*/threads_num
+Date:		December 2010
+Contact:	Bart Van Assche <bvanassche@acm.org>
+Description:
+		Zero if the global thread pool is used for processing SCSI
+		commands received for a device or the number of threads of a
+		dedicated thread pool that is used for processing SCSI
+		commands received for this device (any number above zero).
+		Read-create. Modifying this parameter is possible via the
+		set_threads_num command. An example:
+
+		# cat /sys/bus/scst_tgt_dev/devices/disk01/threads_num
+		2
+		# echo "in device/disk01 set_threads_num 4" >/sys/devices/scst/mgmt
+		# cat /sys/bus/scst_tgt_dev/devices/disk01/threads_num
+		4
+
+What:		/sys/bus/scst_tgt_dev/device/*/threads_pool_type
+Date:		December 2010
+Contact:	Bart Van Assche <bvanassche@acm.org>
+Description:
+		Thread pool configuration setting. This file will contain the
+		text "Async" if the global thread pool is used for processing
+		SCSI commands for this device. If a dedicated thread pool has
+		been configured then there is either one thread pool per
+		initiator ("per_initiator") or one thread pool for all
+		initiators ("shared"). Read-create. Modifying this parameter
+		is possible via the set_thread_pool_type command. An example:
+
+		# cat /sys/bus/scst_tgt_dev/devices/disk01/threads_pool_type
+		shared
+		# echo "in device/disk01 set_thread_pool_type per_initiator" >/sys/devices/scst/mgmt
+		# cat /sys/bus/scst_tgt_dev/devices/disk01/threads_pool_type
+		per_initiator
+
+What:		/sys/bus/scst_tgt_dev/device/*/type
+Date:		December 2010
+Contact:	Bart Van Assche <bvanassche@acm.org>
+Description:
+		A number in the range 0..17 representing the SCSI peripheral
+		device type as defined in SPC-4. Read-only. The defined types
+		and their meaning are:
+
+		 0 Direct access block device (e.g., magnetic disk)
+		 1 Sequential-access device (e.g., magnetic tape)
+		 2 Printer device
+		 3 Processor device
+		 4 Write-once device (e.g., some optical disks)
+		 5 CD/DVD device
+		 6 Scanner device (obsolete)
+		 7 Optical memory device (e.g., some optical disks)
+		 8 Media changer device (e.g., jukeboxes)
+		 9 Communications device (obsolete)
+		10 Obsolete
+		11 Obsolete
+		12 Storage array controller device (e.g., RAID)
+		13 Enclosure services device
+		14 Simplified direct-access device (e.g., magnetic disk)
+		15 Optical card reader/writer device
+		16 Bridge Controller Commands
+		17 Object-based Storage Device
+
+What:		/sys/bus/scst_tgt_dev/device/*/type_description
+Date:		December 2010
+Contact:	Bart Van Assche <bvanassche@acm.org>
+Description:
+		Textual description of the SCSI peripheral device type as
+		defined in SPC-4. See also the description of the
+		"type" file for a list of descriptions. Read-only.
+
+What:		/sys/bus/scst_tgt_dev/device/*/usn
+Date:		December 2010
+Contact:	Bart Van Assche <bvanassche@acm.org>
+Description:
+		Unique serial number of a virtual device as reported e.g. by
+		the SCSI INQUIRY response. This number is generated by SCST
+		during creation of the virtual device by hashing the device
+		name and the setup ID. Read-only.
+
+What:		/sys/bus/scst_tgt_dev/device/*/write_through
+Date:		December 2010
+Contact:	Bart Van Assche <bvanassche@acm.org>
+Description:
+		Whether or not write-back caching has been disabled for a
+		vdisk_fileio device. The value 0 stands for write-back mode
+		and the value 1 stands for write-through mode. Read-create.
