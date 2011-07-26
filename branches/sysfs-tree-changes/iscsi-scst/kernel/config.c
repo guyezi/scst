@@ -641,8 +641,6 @@ static ssize_t iscsi_tgtt_##a##_show(struct device_driver *drv, char *buf) \
 	int pos;							\
 	void *value;							\
 									\
-	TRACE_ENTRY();							\
-									\
 	pos = iscsi_sysfs_send_event(0, E_GET_ATTR_VALUE,		\
 				     attr_name, NULL, &value);		\
 	if (pos)							\
@@ -650,7 +648,6 @@ static ssize_t iscsi_tgtt_##a##_show(struct device_driver *drv, char *buf) \
 	pos = scnprintf(buf, PAGE_SIZE, "%s\n", (char *)value);		\
 	kfree(value);							\
 out:									\
-	TRACE_EXIT_RES(pos);						\
 	return pos;							\
 }									\
 									\
@@ -661,14 +658,10 @@ static ssize_t iscsi_tgtt_##a##_store(struct device_driver *drv,	\
 	int res;							\
 	char *buffer;							\
 									\
-	TRACE_ENTRY();							\
-									\
 	res = -ENOMEM;							\
 	buffer = kasprintf(GFP_KERNEL, "%.*s", (int)count, buf);	\
 	if (!buffer)							\
 		goto out;						\
-									\
-	TRACE_DBG("attr %s, buffer %s", attr_name, buffer);		\
 									\
 	res = iscsi_sysfs_send_event(0, E_SET_ATTR_VALUE, attr_name,	\
 				     buffer, NULL);			\
@@ -676,7 +669,6 @@ static ssize_t iscsi_tgtt_##a##_store(struct device_driver *drv,	\
 	if (res == 0)							\
 		res = count;						\
 out:									\
-	TRACE_EXIT_RES(res);						\
 	return res;							\
 }
 

@@ -41,6 +41,7 @@
 #include <linux/ctype.h>
 #include <linux/slab.h>
 #include <linux/kthread.h>
+#include <linux/delay.h>
 #ifdef INSIDE_KERNEL_TREE
 #include <scst/scst.h>
 #else
