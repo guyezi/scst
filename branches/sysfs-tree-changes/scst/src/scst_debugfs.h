@@ -23,7 +23,7 @@
 #include "scst.h"
 #endif
 
-#if defined(CONFIG_DEBUG_FS)
+#if !defined(CONFIG_SCST_PROC) && defined(CONFIG_DEBUG_FS)
 
 struct scst_debugfs_attr {
 	struct attribute attr;
@@ -82,9 +82,9 @@ static inline void scst_main_remove_debugfs_dir(void)
 {
 }
 
-struct dentry *scst_get_main_debugfs_dir(void)
+static inline struct dentry *scst_get_main_debugfs_dir(void)
 {
-	return NULL
+	return NULL;
 }
 
 static inline int scst_tgtt_create_debugfs_dir(struct scst_tgt_template *tgtt)

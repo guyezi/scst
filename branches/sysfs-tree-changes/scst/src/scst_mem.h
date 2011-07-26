@@ -166,8 +166,6 @@ static inline int scst_sgv_debugfs_create(struct dentry *parent)
 
 static inline void scst_sgv_debugfs_remove(void)
 {
-	scst_devt_remove_debugfs_files(devt);
-	scst_devt_remove_debugfs_dir(devt);
 }
 
 #endif /*defined(CONFIG_SCST_DEBUG) || defined(CONFIG_SCST_TRACING)*/

@@ -24,6 +24,8 @@
 #endif
 #include "scst_debugfs.h"
 
+#if !defined(CONFIG_SCST_PROC)
+
 /**
  * scst_trace_attr - One debugfs file for controlling tracing.
  */
@@ -102,5 +104,7 @@ static inline void scst_dev_remove_debugfs_files(struct scst_device *dev)
 }
 
 #endif /*defined(CONFIG_SCST_DEBUG) || defined(CONFIG_SCST_TRACING)*/
+
+#endif
 
 #endif /*defined(_SCST_TRACING_H_)*/

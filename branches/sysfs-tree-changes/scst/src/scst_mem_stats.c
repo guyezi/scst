@@ -27,7 +27,7 @@
 #include "scst_mem_stats.h"
 #include "scst_priv.h"
 
-#if defined(CONFIG_SCST_DEBUG) || defined(CONFIG_SCST_TRACING)
+#if !defined(CONFIG_SCST_PROC) && defined(CONFIG_SCST_DEBUG) || defined(CONFIG_SCST_TRACING)
 
 static struct dentry *sgv_debugfs_dir;
 static struct scst_debugfs_file *sgv_global_stats_file;

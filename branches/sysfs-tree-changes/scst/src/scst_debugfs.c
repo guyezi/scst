@@ -29,7 +29,7 @@
 #include "scst_debugfs.h"
 #include "scst_priv.h"
 
-#if defined(CONFIG_DEBUG_FS)
+#if !defined(CONFIG_SCST_PROC) && defined(CONFIG_DEBUG_FS)
 
 static struct dentry *scst_root_debugfs_dir;
 static struct dentry *scst_main_debugfs_dir;

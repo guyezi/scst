@@ -20,7 +20,7 @@ static inline int scst_sgv_pool_debugfs_create(struct sgv_pool *pool)
 	return 0;
 }
 
-static void scst_sgv_pool_debugfs_remove(struct sgv_pool *pool)
+static inline void scst_sgv_pool_debugfs_remove(struct sgv_pool *pool)
 {
 }
 

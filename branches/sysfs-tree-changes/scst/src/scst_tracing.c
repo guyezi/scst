@@ -28,7 +28,7 @@
 #include "scst_pres.h"
 #include "scst_tracing.h"
 
-#if defined(CONFIG_SCST_DEBUG) || defined(CONFIG_SCST_TRACING)
+#if !defined(CONFIG_SCST_PROC) && (defined(CONFIG_SCST_DEBUG) || defined(CONFIG_SCST_TRACING))
 
 static void scst_remove_trace_files(struct scst_trace_files *trace_files);
 

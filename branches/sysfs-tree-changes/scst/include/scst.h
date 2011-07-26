@@ -1014,16 +1014,20 @@ struct scst_tgt_template {
 	 */
 	int threads_num;
 
-#if defined(CONFIG_DEBUG_FS)
-	struct dentry *debugfs_dir;
-#endif
 #if !defined(INSIDE_KERNEL_TREE) ||					\
 	defined(CONFIG_SCST_DEBUG) || defined(CONFIG_SCST_TRACING)
 	struct scst_trace_data trace_data;
-	struct scst_trace_files *trace_files;
 #endif
 
 #ifndef CONFIG_SCST_PROC
+#if !defined(INSIDE_KERNEL_TREE) ||					\
+	defined(CONFIG_SCST_DEBUG) || defined(CONFIG_SCST_TRACING)
+#endif
+	struct scst_trace_files *trace_files;
+#if defined(CONFIG_DEBUG_FS)
+	struct dentry *debugfs_dir;
+#endif
+
 	/* sysfs attributes, if any */
 #if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 34)
 	struct driver_attribute **tgtt_attrs;
@@ -1406,14 +1410,18 @@ struct scst_dev_type {
 	/* Threads pool type. Valid only if threads_num > 0. */
 	enum scst_dev_type_threads_pool_type threads_pool_type;
 
-#ifndef CONFIG_SCST_PROC
-#if defined(CONFIG_DEBUG_FS)
-	struct dentry *debugfs_dir;
-#endif
 #if !defined(INSIDE_KERNEL_TREE) ||					\
 	defined(CONFIG_SCST_DEBUG) || defined(CONFIG_SCST_TRACING)
 	struct scst_trace_data trace_data;
+#endif
+
+#ifndef CONFIG_SCST_PROC
+#if !defined(INSIDE_KERNEL_TREE) ||					\
+	defined(CONFIG_SCST_DEBUG) || defined(CONFIG_SCST_TRACING)
 	struct scst_trace_files *trace_files;
+#endif
+#if defined(CONFIG_DEBUG_FS)
+	struct dentry *debugfs_dir;
 #endif
 
 	/* Optional help string for mgmt_cmd commands */
