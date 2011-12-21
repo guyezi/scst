@@ -616,15 +616,7 @@ static int handle_e_get_attr_value(int fd, const struct iscsi_kern_event *event)
 			add_key_mark(res_str, sizeof(res_str), 0);
 		} else
 			snprintf(res_str, sizeof(res_str), "%s\n", "");
-	} else if (strcasecmp(ISCSI_ISNS_ENTITY_ATTR_NAME, pp) == 0)	{
-		if (target != NULL) {
-			log_error("Not NULL target %s for global attribute %s",
-				target->name, pp);
-			res = -EINVAL;
-			goto out_free;
-		}
-		snprintf(res_str, sizeof(res_str), "%s", isns_entity_target_name);
-	} else	{
+	} else {
 		log_error("Unknown attribute %s", pp);
 		res = -EINVAL;
 		goto out_free;
@@ -1000,10 +992,7 @@ static int handle_e_set_attr_value(int fd, const struct iscsi_kern_event *event)
 			}
 		} else
 			goto out_free_server;
-	} else if (strcasecmp(ISCSI_ISNS_ENTITY_ATTR_NAME, pp) == 0) {
-		pp = config_sep_string(&p);
-		strlcpy(isns_entity_target_name, pp, sizeof(isns_entity_target_name));
-	} else	{
+	} else {
 		log_error("Unknown attribute %s", pp);
 		res = -EINVAL;
 		goto out_free;

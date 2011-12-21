@@ -31,10 +31,6 @@
 #include <linux/interrupt.h>
 #include <linux/wait.h>
 #include <linux/cpumask.h>
-#ifdef CONFIG_SCST_MEASURE_LATENCY
-#include <linux/log2.h>
-#endif
-#include <asm/unaligned.h>
 
 /* #define CONFIG_SCST_PROC */
 
@@ -66,18 +62,13 @@ typedef _Bool bool;
 #define false 0
 #endif
 
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 21) && !defined(RHEL_MAJOR)
-#define __packed __attribute__((packed))
-#define __aligned __attribute__((aligned))
-#endif
-
 #ifdef INSIDE_KERNEL_TREE
 #include <scst/scst_sgv.h>
 #else
 #include "scst_sgv.h"
 #endif
 
-#if LINUX_VERSION_CODE <= KERNEL_VERSION(2, 6, 20) && !defined(BACKPORT_LINUX_CPUMASK_H)
+#if LINUX_VERSION_CODE <= KERNEL_VERSION(2, 6, 20)
 #define nr_cpu_ids NR_CPUS
 #endif
 
@@ -165,81 +156,77 @@ static inline unsigned int queue_max_hw_sectors(struct request_queue *q)
  ** more efficient generated code of the corresponding
  ** "switch" statements.
  *************************************************************/
-enum {
-	/* Dev handler's parse() is going to be called */
-	SCST_CMD_STATE_PARSE = 0,
 
-	/* Allocation of the cmd's data buffer */
-	SCST_CMD_STATE_PREPARE_SPACE,
+/* Dev handler's parse() is going to be called */
+#define SCST_CMD_STATE_PARSE	     0
 
-	/* Calling preprocessing_done() */
-	SCST_CMD_STATE_PREPROCESSING_DONE,
+/* Allocation of the cmd's data buffer */
+#define SCST_CMD_STATE_PREPARE_SPACE 1
 
-	/* Target driver's rdy_to_xfer() is going to be called */
-	SCST_CMD_STATE_RDY_TO_XFER,
+/* Calling preprocessing_done() */
+#define SCST_CMD_STATE_PREPROCESSING_DONE 2
 
-	/* Target driver's pre_exec() is going to be called */
-	SCST_CMD_STATE_TGT_PRE_EXEC,
+/* Target driver's rdy_to_xfer() is going to be called */
+#define SCST_CMD_STATE_RDY_TO_XFER   3
 
-	/*
-	 * Cmd is going to be sent for execution. The first stage of it is
-	 * order checking
-	 */
-	SCST_CMD_STATE_EXEC_CHECK_SN,
+/* Target driver's pre_exec() is going to be called */
+#define SCST_CMD_STATE_TGT_PRE_EXEC  4
 
-	/* Internal post-exec checks */
-	SCST_CMD_STATE_PRE_DEV_DONE,
+/* Cmd is going to be sent for execution */
+#define SCST_CMD_STATE_SEND_FOR_EXEC 5
 
-	/* Internal MODE SELECT pages related checks */
-	SCST_CMD_STATE_MODE_SELECT_CHECKS,
+/* Internal post-exec checks */
+#define SCST_CMD_STATE_PRE_DEV_DONE  6
 
-	/* Dev handler's dev_done() is going to be called */
-	SCST_CMD_STATE_DEV_DONE,
+/* Internal MODE SELECT pages related checks */
+#define SCST_CMD_STATE_MODE_SELECT_CHECKS 7
 
-	/* Checks before target driver's xmit_response() is called */
-	SCST_CMD_STATE_PRE_XMIT_RESP,
+/* Dev handler's dev_done() is going to be called */
+#define SCST_CMD_STATE_DEV_DONE      8
 
-	/* Target driver's xmit_response() is going to be called */
-	SCST_CMD_STATE_XMIT_RESP,
+/* Checks before target driver's xmit_response() is called */
+#define SCST_CMD_STATE_PRE_XMIT_RESP 9
 
-	/* Cmd finished */
-	SCST_CMD_STATE_FINISHED,
+/* Target driver's xmit_response() is going to be called */
+#define SCST_CMD_STATE_XMIT_RESP     10
 
-	/* Internal cmd finished */
-	SCST_CMD_STATE_FINISHED_INTERNAL,
+/* Cmd finished */
+#define SCST_CMD_STATE_FINISHED      11
 
-	SCST_CMD_STATE_LAST_ACTIVE = (SCST_CMD_STATE_FINISHED_INTERNAL+100),
+/* Internal cmd finished */
+#define SCST_CMD_STATE_FINISHED_INTERNAL 12
 
-	/* A cmd is created, but scst_cmd_init_done() not called */
-	SCST_CMD_STATE_INIT_WAIT,
+#define SCST_CMD_STATE_LAST_ACTIVE   (SCST_CMD_STATE_FINISHED_INTERNAL+100)
 
-	/* LUN translation (cmd->tgt_dev assignment) */
-	SCST_CMD_STATE_INIT,
+/* A cmd is created, but scst_cmd_init_done() not called */
+#define SCST_CMD_STATE_INIT_WAIT     (SCST_CMD_STATE_LAST_ACTIVE+1)
 
-	/* Waiting for scst_restart_cmd() */
-	SCST_CMD_STATE_PREPROCESSING_DONE_CALLED,
+/* LUN translation (cmd->tgt_dev assignment) */
+#define SCST_CMD_STATE_INIT          (SCST_CMD_STATE_LAST_ACTIVE+2)
 
-	/* Waiting for data from the initiator (until scst_rx_data() called) */
-	SCST_CMD_STATE_DATA_WAIT,
+/* Waiting for scst_restart_cmd() */
+#define SCST_CMD_STATE_PREPROCESSING_DONE_CALLED (SCST_CMD_STATE_LAST_ACTIVE+3)
 
-	/*
-	 * Cmd is ready for exec (after check if its device is blocked or should
-	 * be blocked)
-	 */
-	SCST_CMD_STATE_EXEC_CHECK_BLOCKING,
+/* Waiting for data from the initiator (until scst_rx_data() called) */
+#define SCST_CMD_STATE_DATA_WAIT     (SCST_CMD_STATE_LAST_ACTIVE+4)
 
-	/* Cmd is being checked if it should be executed locally */
-	SCST_CMD_STATE_LOCAL_EXEC,
+/*
+ * Cmd is ready for exec (after check if its device is blocked or should
+ * be blocked)
+ */
+#define SCST_CMD_STATE_START_EXEC (SCST_CMD_STATE_LAST_ACTIVE+5)
 
-	/* Cmd is ready for execution */
-	SCST_CMD_STATE_REAL_EXEC,
+/* Cmd is being checked if it should be executed locally */
+#define SCST_CMD_STATE_LOCAL_EXEC    (SCST_CMD_STATE_LAST_ACTIVE+6)
 
-	/* Waiting for CDB's execution finish */
-	SCST_CMD_STATE_EXEC_WAIT,
+/* Cmd is ready for execution */
+#define SCST_CMD_STATE_REAL_EXEC     (SCST_CMD_STATE_LAST_ACTIVE+7)
 
-	/* Waiting for response's transmission finish */
-	SCST_CMD_STATE_XMIT_WAIT,
-};
+/* Waiting for CDB's execution finish */
+#define SCST_CMD_STATE_REAL_EXECUTING (SCST_CMD_STATE_LAST_ACTIVE+8)
+
+/* Waiting for response's transmission finish */
+#define SCST_CMD_STATE_XMIT_WAIT     (SCST_CMD_STATE_LAST_ACTIVE+9)
 
 /*************************************************************
  * Can be returned instead of cmd's state by dev handlers'
@@ -265,28 +252,27 @@ enum {
 /*************************************************************
  ** States of mgmt command processing state machine
  *************************************************************/
-enum {
-	/* LUN translation (mcmd->tgt_dev assignment) */
-	SCST_MCMD_STATE_INIT = 0,
 
-	/* Mgmt cmd is being processed */
-	SCST_MCMD_STATE_EXEC,
+/* LUN translation (mcmd->tgt_dev assignment) */
+#define SCST_MCMD_STATE_INIT				0
 
-	/* Waiting for affected commands done */
-	SCST_MCMD_STATE_WAITING_AFFECTED_CMDS_DONE,
+/* Mgmt cmd is being processed */
+#define SCST_MCMD_STATE_EXEC				1
 
-	/* Post actions when affected commands done */
-	SCST_MCMD_STATE_AFFECTED_CMDS_DONE,
+/* Waiting for affected commands done */
+#define SCST_MCMD_STATE_WAITING_AFFECTED_CMDS_DONE	2
 
-	/* Waiting for affected local commands finished */
-	SCST_MCMD_STATE_WAITING_AFFECTED_CMDS_FINISHED,
+/* Post actions when affected commands done */
+#define SCST_MCMD_STATE_AFFECTED_CMDS_DONE		3
 
-	/* Target driver's task_mgmt_fn_done() is going to be called */
-	SCST_MCMD_STATE_DONE,
+/* Waiting for affected local commands finished */
+#define SCST_MCMD_STATE_WAITING_AFFECTED_CMDS_FINISHED	4
 
-	/* The mcmd finished */
-	SCST_MCMD_STATE_FINISHED,
-};
+/* Target driver's task_mgmt_fn_done() is going to be called */
+#define SCST_MCMD_STATE_DONE				5
+
+/* The mcmd finished */
+#define SCST_MCMD_STATE_FINISHED			6
 
 /*************************************************************
  ** Constants for "atomic" parameter of SCST's functions
@@ -1085,7 +1071,7 @@ struct scst_tgt_template {
 	/*
 	 * Optional revision to be reported in the SCSI inquiry response. If
 	 * NULL, an SCST device handler specific default value will be used,
-	 * e.g. " 210" for scst_vdisk file I/O.
+	 * e.g. " 220" for scst_vdisk file I/O.
 	 */
 	const char *revision;
 
@@ -1216,9 +1202,9 @@ struct scst_dev_type {
 	 * exec_sync flag and consider to setup dedicated threads by
 	 * setting threads_num > 0.
 	 *
-	 * Dev handlers implementing internal queuing in their exec() callback
-	 * should call scst_check_local_events() just before the actual
-	 * command's execution (i.e. after it's taken from the internal queue).
+	 * !! If this function is implemented, scst_check_local_events() !!
+	 * !! shall be called inside it just before the actual command's !!
+	 * !! execution.                                                 !!
 	 *
 	 * OPTIONAL, if not set, the commands will be sent directly to SCSI
 	 * device.
@@ -1524,31 +1510,15 @@ struct scst_tgt {
 
 #ifdef CONFIG_SCST_MEASURE_LATENCY
 
-/* Divide two 64-bit numbers with reasonably accuracy. */
-static inline void __scst_time_per_cmd(uint64_t *t, uint64_t n)
-{
-	unsigned shift;
-
-	if (!n)
-		return;
-	shift = max(0, ilog2(n) - 32 + 1);
-	*t >>= shift;
-	n >>= shift;
-	WARN_ON(n != (uint32_t)n);
-	do_div(*t, (uint32_t)n);
-}
-
-#define scst_time_per_cmd(t, n) __scst_time_per_cmd(&(t), (n))
-
 /* Defines extended latency statistics */
 struct scst_ext_latency_stat {
 	uint64_t scst_time_rd, tgt_time_rd, dev_time_rd;
-	uint64_t processed_cmds_rd;
+	unsigned int processed_cmds_rd;
 	uint64_t min_scst_time_rd, min_tgt_time_rd, min_dev_time_rd;
 	uint64_t max_scst_time_rd, max_tgt_time_rd, max_dev_time_rd;
 
 	uint64_t scst_time_wr, tgt_time_wr, dev_time_wr;
-	uint64_t processed_cmds_wr;
+	unsigned int processed_cmds_wr;
 	uint64_t min_scst_time_wr, min_tgt_time_wr, min_dev_time_wr;
 	uint64_t max_scst_time_wr, max_tgt_time_wr, max_dev_time_wr;
 };
@@ -1692,7 +1662,7 @@ struct scst_session {
 	 */
 	spinlock_t lat_lock;
 	uint64_t scst_time, tgt_time, dev_time;
-	uint64_t processed_cmds;
+	unsigned int processed_cmds;
 	uint64_t min_scst_time, min_tgt_time, min_dev_time;
 	uint64_t max_scst_time, max_tgt_time, max_dev_time;
 	struct scst_ext_latency_stat sess_latency_stat[SCST_LATENCY_STATS_NUM];
@@ -1921,6 +1891,12 @@ struct scst_cmd {
 	 */
 	unsigned int finished:1;
 
+	/*
+	 * Set if scst_check_local_events() can be called more than once. Set by
+	 * scst_pre_check_local_events().
+	 */
+	unsigned int check_local_events_once_done:1;
+
 #ifdef CONFIG_SCST_DEBUG_TM
 	/* Set if the cmd was delayed by task management debugging code */
 	unsigned int tm_dbg_delayed:1;
@@ -1940,7 +1916,6 @@ struct scst_cmd {
 	struct scst_tgt_template *tgtt;	/* to save extra dereferences */
 	struct scst_tgt *tgt;		/* to save extra dereferences */
 	struct scst_device *dev;	/* to save extra dereferences */
-	struct scst_dev_type *devt;	/* to save extra dereferences */
 
 	/* corresponding I_T_L device for this cmd */
 	struct scst_tgt_dev *tgt_dev;
@@ -2261,7 +2236,7 @@ struct scst_device {
 	 ** below fields, hence the alignment.
 	 *************************************************************/
 
-	unsigned int queue_alg:4 __aligned(sizeof(long));
+	unsigned int queue_alg:4  __attribute__((aligned(sizeof(long))));
 	unsigned int tst:3;
 	unsigned int tas:1;
 	unsigned int swp:1;
@@ -2303,7 +2278,7 @@ struct scst_device {
 	 * Set if dev is persistently reserved. Protected by dev_pr_mutex.
 	 * Modified independently to the above field, hence the alignment.
 	 */
-	unsigned int pr_is_set:1 __aligned(sizeof(long));
+	unsigned int pr_is_set:1 __attribute__((aligned(sizeof(long))));
 
 	/*
 	 * Set if there is a thread changing or going to change PR state(s).
@@ -2333,7 +2308,7 @@ struct scst_device {
 	 * True if persist through power loss is activated. Modified
 	 * independently to the above field, hence the alignment.
 	 */
-	unsigned short pr_aptpl:1 __aligned(sizeof(long));
+	unsigned short pr_aptpl:1 __attribute__((aligned(sizeof(long))));
 
 	/* Persistent reservation type */
 	uint8_t pr_type;
@@ -2523,7 +2498,7 @@ struct scst_tgt_dev {
 	 * Protected by sess->lat_lock.
 	 */
 	uint64_t scst_time, tgt_time, dev_time;
-	uint64_t processed_cmds;
+	unsigned int processed_cmds;
 	struct scst_ext_latency_stat dev_latency_stat[SCST_LATENCY_STATS_NUM];
 #endif
 };
@@ -3583,6 +3558,8 @@ void scst_aen_done(struct scst_aen *aen);
  * define the backported macro's because OFED has already defined these.
  */
 
+#ifndef __BACKPORT_LINUX_SCATTERLIST_H_TO_2_6_23__
+
 static inline bool sg_is_chain(struct scatterlist *sg)
 {
 	return false;
@@ -3593,19 +3570,15 @@ static inline struct scatterlist *sg_chain_ptr(struct scatterlist *sg)
 	return NULL;
 }
 
-#ifndef sg_page
 static inline struct page *sg_page(struct scatterlist *sg)
 {
 	return sg->page;
 }
-#endif
 
 static inline void *sg_virt(struct scatterlist *sg)
 {
 	return page_address(sg_page(sg)) + sg->offset;
 }
-
-#ifndef __BACKPORT_LINUX_SCATTERLIST_H_TO_2_6_23__
 
 static inline void sg_init_table(struct scatterlist *sgl, unsigned int nents)
 {
@@ -3865,14 +3838,12 @@ static inline int scst_get_out_buf_count(struct scst_cmd *cmd)
 int scst_get_buf_full(struct scst_cmd *cmd, uint8_t **buf);
 void scst_put_buf_full(struct scst_cmd *cmd, uint8_t *buf);
 
-static inline gfp_t scst_cmd_get_gfp_flags(struct scst_cmd *cmd)
-{
-	return cmd->noio_mem_alloc ? GFP_NOIO : GFP_KERNEL;
-}
-
 #if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 23) && !defined(BACKPORT_LINUX_WORKQUEUE_TO_2_6_19)
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 20))
 static inline int cancel_delayed_work_sync(struct delayed_work *work)
+#else
+static inline int cancel_delayed_work_sync(struct work_struct *work)
+#endif
 {
 	int res;
 
@@ -3880,23 +3851,6 @@ static inline int cancel_delayed_work_sync(struct delayed_work *work)
 	flush_scheduled_work();
 	return res;
 }
-#else
-/*
- * While cancel_delayed_work_sync() has not been defined in the vanilla kernel
- * 2.6.18 nor in 2.6.19 nor in RHEL/CentOS 5.0..5.5, a definition is available
- * in RHEL/CentOS 5.6. Unfortunately that definition is incompatible with what
- * we need. So define cancel_delayed_work() as a macro such that it overrides
- * the RHEL/CentOS 5.6 inline function definition in <linux/workqueue.h>.
- */
-#define cancel_delayed_work_sync(work)		\
-({						\
-	int res;				\
-						\
-	res = cancel_delayed_work((work));	\
-	flush_scheduled_work();			\
-	res;					\
-})
-#endif
 #endif
 
 #ifdef CONFIG_DEBUG_LOCK_ALLOC
@@ -3906,14 +3860,7 @@ extern struct lockdep_map scst_suspend_dep_map;
 #else
 #define scst_assert_activity_suspended() do { } while (0)
 #endif
-
-/* Default suspending timeout for user interface actions */
-#define SCST_SUSPEND_TIMEOUT_USER	(90 * HZ)
-
-/* No timeout in scst_suspend_activity() */
-#define SCST_SUSPEND_TIMEOUT_UNLIMITED	0
-
-int scst_suspend_activity(unsigned long timeout);
+int scst_suspend_activity(bool interruptible);
 void scst_resume_activity(void);
 
 void scst_process_active_cmd(struct scst_cmd *cmd, bool atomic);
@@ -3921,20 +3868,13 @@ void scst_process_active_cmd(struct scst_cmd *cmd, bool atomic);
 void scst_post_parse(struct scst_cmd *cmd);
 void scst_post_alloc_data_buf(struct scst_cmd *cmd);
 
-int __scst_check_local_events(struct scst_cmd *cmd, bool preempt_tests_only);
+int scst_check_local_events(struct scst_cmd *cmd);
 
-/**
- * scst_check_local_events() - check if there are any local SCSI events
- *
- * See description of __scst_check_local_events().
- *
- * Dev handlers implementing internal queuing in their exec() callback should
- * call this function just before the actual command's execution (i.e.
- * after it's taken from the internal queue).
- */
-static inline int scst_check_local_events(struct scst_cmd *cmd)
+static inline int scst_pre_check_local_events(struct scst_cmd *cmd)
 {
-	return __scst_check_local_events(cmd, true);
+	int res = scst_check_local_events(cmd);
+	cmd->check_local_events_once_done = 1;
+	return res;
 }
 
 int scst_set_cmd_abnormal_done_state(struct scst_cmd *cmd);
@@ -4153,87 +4093,15 @@ int scst_get_max_lun_commands(struct scst_session *sess, uint64_t lun);
  * allows exclusive wake ups of threads in LIFO order. We need it to let (yet)
  * unneeded threads sleep and not pollute CPU cache by their stacks.
  */
-static inline void prepare_to_wait_exclusive_head(wait_queue_head_t *q,
-						  wait_queue_t *wait, int state)
+static inline void add_wait_queue_exclusive_head(wait_queue_head_t *q,
+	wait_queue_t *wait)
 {
 	unsigned long flags;
 
 	wait->flags |= WQ_FLAG_EXCLUSIVE;
 	spin_lock_irqsave(&q->lock, flags);
-	if (list_empty(&wait->task_list))
-		__add_wait_queue(q, wait);
-	set_current_state(state);
+	__add_wait_queue(q, wait);
 	spin_unlock_irqrestore(&q->lock, flags);
-}
-
-/**
- * wait_event_locked() - Wait until a condition becomes true.
- * @wq: Wait queue to wait on if @condition is false.
- * @condition: Condition to wait for. Can be any C expression.
- * @lock_type: One of lock, lock_bh or lock_irq.
- * @lock: A spinlock.
- *
- * Caller must hold lock of type @lock_type on @lock.
- */
-#define wait_event_locked(wq, condition, lock_type, lock)		\
-if (!(condition)) {							\
-	DEFINE_WAIT(__wait);						\
-									\
-	do {								\
-		prepare_to_wait_exclusive_head(&(wq), &__wait,		\
-					       TASK_INTERRUPTIBLE);	\
-		if (condition)						\
-			break;						\
-		spin_un ## lock_type(&(lock));				\
-		schedule();						\
-		spin_ ## lock_type(&(lock));				\
-	} while (!(condition));						\
-	finish_wait(&(wq), &__wait);					\
-}
-
-#if defined(RHEL_MAJOR) && RHEL_MAJOR -0 <= 5
-static inline uint16_t get_unaligned_be16(const void *p)
-{
-	return be16_to_cpu(get_unaligned((__be16 *)p));
-}
-
-static inline void put_unaligned_be16(uint16_t i, void *p)
-{
-	put_unaligned(cpu_to_be16(i), (__be16 *)p);
-}
-
-static inline uint32_t get_unaligned_be32(const void *p)
-{
-	return be32_to_cpu(get_unaligned((__be32 *)p));
-}
-
-static inline void put_unaligned_be32(uint32_t i, void *p)
-{
-	put_unaligned(cpu_to_be32(i), (__be32 *)p);
-}
-
-static inline uint64_t get_unaligned_be64(const void *p)
-{
-	return be64_to_cpu(get_unaligned((__be64 *)p));
-}
-
-static inline void put_unaligned_be64(uint64_t i, void *p)
-{
-	put_unaligned(cpu_to_be64(i), (__be64 *)p);
-}
-#endif
-
-/* Only use get_unaligned_be24() if reading p - 1 is allowed. */
-static inline uint32_t get_unaligned_be24(const uint8_t *const p)
-{
-	return get_unaligned_be32(p - 1) & 0xffffffU;
-}
-
-static inline void put_unaligned_be24(const uint32_t v, uint8_t *const p)
-{
-	p[0] = v >> 16;
-	p[1] = v >>  8;
-	p[2] = v >>  0;
 }
 
 #ifndef CONFIG_SCST_PROC

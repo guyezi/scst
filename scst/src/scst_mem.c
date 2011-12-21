@@ -236,8 +236,8 @@ static int sgv_shrink_pool(struct sgv_pool *pool, int nr, int min_interval,
 
 	while (!list_empty(&pool->sorted_recycling_list) &&
 			(atomic_read(&sgv_pages_total) > sgv_lo_wmk)) {
-		struct sgv_pool_obj *obj = list_first_entry(
-			&pool->sorted_recycling_list,
+		struct sgv_pool_obj *obj = list_entry(
+			pool->sorted_recycling_list.next,
 			struct sgv_pool_obj, sorted_recycling_list_entry);
 
 		if (sgv_purge_from_cache(obj, min_interval, cur_time)) {
@@ -295,7 +295,7 @@ static int __sgv_shrink(int nr, int min_interval)
 				goto out_unlock;
 			}
 
-			pool = list_first_entry(&sgv_active_pools_list,
+			pool = list_entry(sgv_active_pools_list.next,
 					typeof(*pool),
 					sgv_active_pools_list_entry);
 		}
@@ -400,8 +400,8 @@ static void sgv_purge_work_fn(struct delayed_work *work)
 	pool->purge_work_scheduled = false;
 
 	while (!list_empty(&pool->sorted_recycling_list)) {
-		struct sgv_pool_obj *obj = list_first_entry(
-			&pool->sorted_recycling_list,
+		struct sgv_pool_obj *obj = list_entry(
+			pool->sorted_recycling_list.next,
 			struct sgv_pool_obj, sorted_recycling_list_entry);
 
 		if (sgv_purge_from_cache(obj, pool->purge_interval, cur_time)) {
@@ -544,7 +544,8 @@ static void sgv_free_sys_sg_entries(struct scatterlist *sg, int sg_count,
 	for (i = 0; i < sg_count; i++) {
 		struct page *p = sg_page(&sg[i]);
 		int len = sg[i].length;
-		int pages = PAGE_ALIGN(len) >> PAGE_SHIFT;
+		int pages =
+			(len >> PAGE_SHIFT) + ((len & ~PAGE_MASK) != 0);
 
 		TRACE_MEM("page %lx, len %d, pages %d",
 			(unsigned long)p, len, pages);
@@ -631,7 +632,8 @@ static int sgv_alloc_sg_entries(struct scatterlist *sg, int pages,
 	if ((clustering_type != sgv_no_clustering) && (trans_tbl != NULL)) {
 		pg = 0;
 		for (i = 0; i < pages; i++) {
-			int n = PAGE_ALIGN(sg[i].length) >> PAGE_SHIFT;
+			int n = (sg[i].length >> PAGE_SHIFT) +
+				((sg[i].length & ~PAGE_MASK) != 0);
 			trans_tbl[i].pg_count = pg;
 			for (j = 0; j < n; j++)
 				trans_tbl[pg++].sg_num = i+1;
@@ -717,7 +719,7 @@ static struct sgv_pool_obj *sgv_get_obj(struct sgv_pool *pool, int cache_num,
 	}
 
 	if (likely(!list_empty(&pool->recycling_lists[cache_num]))) {
-		obj = list_first_entry(&pool->recycling_lists[cache_num],
+		obj = list_entry(pool->recycling_lists[cache_num].next,
 			 struct sgv_pool_obj, recycling_list_entry);
 
 		list_del(&obj->sorted_recycling_list_entry);
@@ -924,7 +926,7 @@ struct scatterlist *sgv_pool_alloc(struct sgv_pool *pool, unsigned int size,
 
 	EXTRACHECKS_BUG_ON((gfp_mask & __GFP_NOFAIL) == __GFP_NOFAIL);
 
-	pages = PAGE_ALIGN(size) >> PAGE_SHIFT;
+	pages = ((size + PAGE_SIZE - 1) >> PAGE_SHIFT);
 	if (pool->single_alloc_pages == 0) {
 		int pages_order = get_order(size);
 		cache_num = pages_order;
@@ -1101,7 +1103,9 @@ success:
 	res = obj->sg_entries;
 	*sgv = obj;
 
-	obj->sg_entries[cnt-1].length -= PAGE_ALIGN(size) - size;
+	if (size & ~PAGE_MASK)
+		obj->sg_entries[cnt-1].length -=
+			PAGE_SIZE - (size & ~PAGE_MASK);
 
 	TRACE_MEM("obj=%p, sg_entries %p (size=%d, pages=%d, sg_count=%d, "
 		"count=%d, last_len=%d)", obj, obj->sg_entries, size, pages,
@@ -1207,7 +1211,7 @@ void sgv_pool_free(struct sgv_pool_obj *obj, struct scst_mem_lim *mem_lim)
 		for (i = 0; i < obj->sg_count; i++) {
 			struct page *p = sg_page(&sg[i]);
 			int len = sg[i].length;
-			int pages = PAGE_ALIGN(len) >> PAGE_SHIFT;
+			int pages = (len >> PAGE_SHIFT) + ((len & ~PAGE_MASK) != 0);
 			while (pages > 0) {
 				if (atomic_read(&p->_count) != 1) {
 					PRINT_WARNING("Freeing page %p with "
@@ -1248,7 +1252,7 @@ EXPORT_SYMBOL_GPL(sgv_pool_free);
 struct scatterlist *scst_alloc(int size, gfp_t gfp_mask, int *count)
 {
 	struct scatterlist *res;
-	int pages = PAGE_ALIGN(size) >> PAGE_SHIFT;
+	int pages = (size >> PAGE_SHIFT) + ((size & ~PAGE_MASK) != 0);
 	struct sgv_pool_alloc_fns sys_alloc_fns = {
 		sgv_alloc_sys_pages, sgv_free_sys_sg_entries };
 	int no_fail = ((gfp_mask & __GFP_NOFAIL) == __GFP_NOFAIL);
@@ -1291,7 +1295,8 @@ struct scatterlist *scst_alloc(int size, gfp_t gfp_mask, int *count)
 	if (cnt <= 0)
 		goto out_free;
 
-	res[cnt-1].length -= PAGE_ALIGN(size) - size;
+	if (size & ~PAGE_MASK)
+		res[cnt-1].length -= PAGE_SIZE - (size & ~PAGE_MASK);
 
 	*count = cnt;
 
@@ -1520,7 +1525,7 @@ void sgv_pool_flush(struct sgv_pool *pool)
 		spin_lock_bh(&pool->sgv_pool_lock);
 
 		while (!list_empty(&pool->recycling_lists[i])) {
-			obj = list_first_entry(&pool->recycling_lists[i],
+			obj = list_entry(pool->recycling_lists[i].next,
 				struct sgv_pool_obj, recycling_list_entry);
 
 			__sgv_purge_from_cache(obj);

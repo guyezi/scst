@@ -721,10 +721,6 @@ int main(int argc, char **argv)
 			S_IRUSR|S_IRGRP|S_IROTH|S_IWUSR, 0);
 	if (err != 0)
 		exit(err);
-	err = kernel_attr_add(NULL, ISCSI_ISNS_ENTITY_ATTR_NAME,
-			S_IRUSR|S_IRGRP|S_IROTH|S_IWUSR, 0);
-	if (err != 0)
-		exit(err);
 #endif
 
 	if ((ipc_fd = iscsi_adm_request_listen()) < 0) {

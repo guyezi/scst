@@ -31,8 +31,8 @@
 
 /* Version numbers, the same as for the kernel */
 #define Q2T_VERSION(a, b, c, d)	(((a) << 030) + ((b) << 020) + (c) << 010 + (d))
-#define Q2T_VERSION_CODE	Q2T_VERSION(3, 0, 0, 0)
-#define Q2T_VERSION_STRING	"3.0.0-pre1"
+#define Q2T_VERSION_CODE	Q2T_VERSION(2, 2, 0, 0)
+#define Q2T_VERSION_STRING	"2.2.0-pre"
 #define Q2T_PROC_VERSION_NAME	"version"
 
 #define Q2T_MAX_CDB_LEN             16
@@ -219,7 +219,7 @@ struct q2t_cmd {
 	union {
 		atio7_entry_t atio7;
 		atio_entry_t atio2x;
-	} __packed atio;
+	} __attribute__((packed)) atio;
 };
 
 struct q2t_sess_work_param {
@@ -247,7 +247,7 @@ struct q2t_mgmt_cmd {
 		notify_entry_t notify_entry;
 		notify24xx_entry_t notify_entry24;
 		abts24_recv_entry_t abts;
-	} __packed orig_iocb;
+	} __attribute__((packed)) orig_iocb;
 };
 
 struct q2t_prm {
@@ -271,7 +271,7 @@ struct srr_imm {
 	union {
 		notify_entry_t notify_entry;
 		notify24xx_entry_t notify_entry24;
-	} __packed imm;
+	} __attribute__((packed)) imm;
 };
 
 struct srr_ctio {

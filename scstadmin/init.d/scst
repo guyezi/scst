@@ -52,10 +52,10 @@ cat <<"EOF"
 #
 
 if [ -e /lib/lsb/init-functions ]; then
-    # Debian, RHEL, Fedora, SLES and openSUSE.
+    # Debian, RHEL / Fedora, SLES / openSUSE.
     . /lib/lsb/init-functions
 else
-    # Slackware (Gentoo has these functions).
+# Slackware.
 log_success_msg() {
     echo "$@"
 }
@@ -80,7 +80,7 @@ cat <<"EOF"
 SCST_CFG=/etc/scst.conf
 
 if [ ! -e /lib/lsb/init-functions ]; then
-    # Slackware and Gentoo.
+# Slackware / Gentoo.
 start_daemon() {
     "$@" >/dev/null 2>&1 &
 }

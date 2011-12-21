@@ -48,7 +48,7 @@
 #ifndef INSIDE_KERNEL_TREE
 #if defined(CONFIG_HIGHMEM4G) || defined(CONFIG_HIGHMEM64G)
 #warning HIGHMEM kernel configurations are not supported by this module,\
- because nowadays it is not worth the effort. Consider changing\
+ because nowadays it isn't worth the effort. Consider changing\
  VMSPLIT option or use a 64-bit configuration instead. See SCST core\
  README file for details.
 #endif
@@ -84,7 +84,7 @@ static unsigned long scst_local_trace_flag = SCST_LOCAL_DEFAULT_LOG_FLAGS;
 #define scsi_bufflen(cmd) ((cmd)->request_bufflen)
 #endif
 
-#define SCST_LOCAL_VERSION "3.0"
+#define SCST_LOCAL_VERSION "2.2.0-pre"
 static const char *scst_local_version_date = "20110901";
 
 /* Some statistics */
@@ -1116,14 +1116,13 @@ static int scst_local_queuecommand_lck(struct scsi_cmnd *SCpnt,
 	return 0;
 }
 
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 37)
-#if !defined(CONFIG_SCST_LOCAL_FORCE_DIRECT_PROCESSING)
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 37) && \
+    !defined(CONFIG_SCST_LOCAL_FORCE_DIRECT_PROCESSING)
 /*
  * See comment in scst_local_queuecommand_lck() near
  * CONFIG_SCST_LOCAL_FORCE_DIRECT_PROCESSING
  */
 static DEF_SCSI_QCMD(scst_local_queuecommand)
-#endif
 #endif
 
 static int scst_local_targ_pre_exec(struct scst_cmd *scst_cmd)
@@ -1153,7 +1152,7 @@ static void scst_process_aens(struct scst_local_sess *sess,
 	TRACE_DBG("Target work sess %p", sess);
 
 	while (!list_empty(&sess->aen_work_list)) {
-		work_item = list_first_entry(&sess->aen_work_list,
+		work_item = list_entry(sess->aen_work_list.next,
 				struct scst_aen_work_item, work_list_entry);
 		list_del(&work_item->work_list_entry);
 
@@ -1494,11 +1493,12 @@ static int scst_local_driver_probe(struct device *dev)
 		ret = -ENODEV;
 		scsi_host_put(hpnt);
 		goto out;
-#ifdef CONFIG_SCST_PROC
-	} else {
-		scsi_scan_host(hpnt);
-#endif
 	}
+#ifdef CONFIG_SCST_PROC
+	else {
+		scsi_scan_host(hpnt);
+	}
+#endif
 
 out:
 	TRACE_EXIT_RES(ret);

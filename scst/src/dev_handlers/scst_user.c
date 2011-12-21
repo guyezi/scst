@@ -38,7 +38,7 @@
 #ifndef INSIDE_KERNEL_TREE
 #if defined(CONFIG_HIGHMEM4G) || defined(CONFIG_HIGHMEM64G)
 #warning HIGHMEM kernel configurations are not supported by this module,\
- because nowadays it is not worth the effort. Consider changing\
+ because nowadays it doesn't worth the effort. Consider changing\
  VMSPLIT option or use a 64-bit configuration instead. See README file\
  for details.
 #endif
@@ -1065,48 +1065,6 @@ static int dev_user_tape_done(struct scst_cmd *cmd)
 	return res;
 }
 
-static inline bool dev_user_mgmt_ucmd(struct scst_user_cmd *ucmd)
-{
-	return (ucmd->state == UCMD_STATE_TM_EXECING) ||
-	       (ucmd->state == UCMD_STATE_ATTACH_SESS) ||
-	       (ucmd->state == UCMD_STATE_DETACH_SESS);
-}
-
-/* Supposed to be called under cmd_list_lock */
-static inline void dev_user_add_to_ready_head(struct scst_user_cmd *ucmd)
-{
-	struct scst_user_dev *dev = ucmd->dev;
-	struct list_head *entry;
-
-	TRACE_ENTRY();
-
-	__list_for_each(entry, &dev->ready_cmd_list) {
-		struct scst_user_cmd *u = list_entry(entry,
-			struct scst_user_cmd, ready_cmd_list_entry);
-		/*
-		 * Skip other queued mgmt commands to not reverse order
-		 * of them and prevent conditions, where DETACH_SESS or a SCSI
-		 * command comes before ATTACH_SESS for the same session.
-		 */
-		if (unlikely(dev_user_mgmt_ucmd(u)))
-			continue;
-		TRACE_DBG("Adding ucmd %p (state %d) after mgmt ucmd %p (state "
-			"%d)", ucmd, ucmd->state, u, u->state);
-		list_add_tail(&ucmd->ready_cmd_list_entry,
-			&u->ready_cmd_list_entry);
-		goto out;
-	}
-
-	TRACE_DBG("Adding ucmd %p (state %d) to tail "
-		"of mgmt ready cmd list", ucmd, ucmd->state);
-	list_add_tail(&ucmd->ready_cmd_list_entry,
-		&dev->ready_cmd_list);
-
-out:
-	TRACE_EXIT();
-	return;
-}
-
 static void dev_user_add_to_ready(struct scst_user_cmd *ucmd)
 {
 	struct scst_user_dev *dev = ucmd->dev;
@@ -1133,16 +1091,25 @@ static void dev_user_add_to_ready(struct scst_user_cmd *ucmd)
 		 * of our commands completed in NOP timeout to allow the head
 		 * commands to go, then we are really overloaded and/or stuck.
 		 */
-		dev_user_add_to_ready_head(ucmd);
-	} else if (unlikely(dev_user_mgmt_ucmd(ucmd))) {
-		dev_user_add_to_ready_head(ucmd);
+		TRACE_DBG("Adding ucmd %p (state %d) to head of ready "
+			"cmd list", ucmd, ucmd->state);
+		list_add(&ucmd->ready_cmd_list_entry,
+			&dev->ready_cmd_list);
+	} else if (unlikely(ucmd->state == UCMD_STATE_TM_EXECING) ||
+		   unlikely(ucmd->state == UCMD_STATE_ATTACH_SESS) ||
+		   unlikely(ucmd->state == UCMD_STATE_DETACH_SESS)) {
+		TRACE_MGMT_DBG("Adding mgmt ucmd %p (state %d) to head of "
+			"ready cmd list", ucmd, ucmd->state);
+		list_add(&ucmd->ready_cmd_list_entry,
+			&dev->ready_cmd_list);
 		do_wake = 1;
 	} else {
 		if ((ucmd->cmd != NULL) &&
 		    unlikely((ucmd->cmd->queue_type == SCST_CMD_QUEUE_HEAD_OF_QUEUE))) {
 			TRACE_DBG("Adding HQ ucmd %p to head of ready cmd list",
 				ucmd);
-			dev_user_add_to_ready_head(ucmd);
+			list_add(&ucmd->ready_cmd_list_entry,
+				&dev->ready_cmd_list);
 		} else {
 			TRACE_DBG("Adding ucmd %p to ready cmd list", ucmd);
 			list_add_tail(&ucmd->ready_cmd_list_entry,
@@ -1830,7 +1797,7 @@ static struct scst_user_cmd *__dev_user_get_next_cmd(struct list_head *cmd_list)
 again:
 	u = NULL;
 	if (!list_empty(cmd_list)) {
-		u = list_first_entry(cmd_list, typeof(*u),
+		u = list_entry(cmd_list->next, typeof(*u),
 			       ready_cmd_list_entry);
 
 		TRACE_DBG("Found ready ucmd %p", u);
@@ -1895,13 +1862,29 @@ static int dev_user_get_next_cmd(struct scst_user_dev *dev,
 	struct scst_user_cmd **ucmd)
 {
 	int res = 0;
+	wait_queue_t wait;
 
 	TRACE_ENTRY();
 
+	init_waitqueue_entry(&wait, current);
+
 	while (1) {
-		wait_event_locked(dev->udev_cmd_threads.cmd_list_waitQ,
-				  test_cmd_threads(dev), lock_irq,
-				  dev->udev_cmd_threads.cmd_list_lock);
+		if (!test_cmd_threads(dev)) {
+			add_wait_queue_exclusive_head(
+				&dev->udev_cmd_threads.cmd_list_waitQ,
+				&wait);
+			for (;;) {
+				set_current_state(TASK_INTERRUPTIBLE);
+				if (test_cmd_threads(dev))
+					break;
+				spin_unlock_irq(&dev->udev_cmd_threads.cmd_list_lock);
+				schedule();
+				spin_lock_irq(&dev->udev_cmd_threads.cmd_list_lock);
+			}
+			set_current_state(TASK_RUNNING);
+			remove_wait_queue(&dev->udev_cmd_threads.cmd_list_waitQ,
+				&wait);
+		}
 
 		dev_user_process_scst_commands(dev);
 
@@ -3050,7 +3033,7 @@ static int dev_user_unregister_dev(struct file *file)
 	down_read(&dev->dev_rwsem);
 	mutex_unlock(&dev_priv_mutex);
 
-	res = scst_suspend_activity(SCST_SUSPEND_TIMEOUT_USER);
+	res = scst_suspend_activity(true);
 	if (res != 0)
 		goto out_up;
 
@@ -3105,7 +3088,7 @@ static int dev_user_flush_cache(struct file *file)
 	down_read(&dev->dev_rwsem);
 	mutex_unlock(&dev_priv_mutex);
 
-	res = scst_suspend_activity(SCST_SUSPEND_TIMEOUT_USER);
+	res = scst_suspend_activity(true);
 	if (res != 0)
 		goto out_up;
 
@@ -3332,7 +3315,7 @@ static int dev_user_set_opt(struct file *file, const struct scst_user_opt *opt)
 	down_read(&dev->dev_rwsem);
 	mutex_unlock(&dev_priv_mutex);
 
-	res = scst_suspend_activity(SCST_SUSPEND_TIMEOUT_USER);
+	res = scst_suspend_activity(true);
 	if (res != 0)
 		goto out_up;
 
@@ -3650,8 +3633,22 @@ static int dev_user_cleanup_thread(void *arg)
 
 	spin_lock(&cleanup_lock);
 	while (!kthread_should_stop()) {
-		wait_event_locked(cleanup_list_waitQ, test_cleanup_list(),
-				  lock, cleanup_lock);
+		wait_queue_t wait;
+		init_waitqueue_entry(&wait, current);
+
+		if (!test_cleanup_list()) {
+			add_wait_queue_exclusive(&cleanup_list_waitQ, &wait);
+			for (;;) {
+				set_current_state(TASK_INTERRUPTIBLE);
+				if (test_cleanup_list())
+					break;
+				spin_unlock(&cleanup_lock);
+				schedule();
+				spin_lock(&cleanup_lock);
+			}
+			set_current_state(TASK_RUNNING);
+			remove_wait_queue(&cleanup_list_waitQ, &wait);
+		}
 
 		/*
 		 * We have to poll devices, because commands can go from SCST
@@ -3666,7 +3663,7 @@ static int dev_user_cleanup_thread(void *arg)
 			while (!list_empty(&cleanup_list)) {
 				int rc;
 
-				dev = list_first_entry(&cleanup_list,
+				dev = list_entry(cleanup_list.next,
 					typeof(*dev), cleanup_list_entry);
 				list_del(&dev->cleanup_list_entry);
 
@@ -3687,7 +3684,7 @@ static int dev_user_cleanup_thread(void *arg)
 			spin_lock(&cleanup_lock);
 
 			while (!list_empty(&cl_devs)) {
-				dev = list_first_entry(&cl_devs, typeof(*dev),
+				dev = list_entry(cl_devs.next, typeof(*dev),
 					cleanup_list_entry);
 				list_move_tail(&dev->cleanup_list_entry,
 					&cleanup_list);

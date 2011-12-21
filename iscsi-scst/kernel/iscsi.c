@@ -734,7 +734,7 @@ static inline struct iscsi_cmnd *iscsi_alloc_main_rsp(struct iscsi_cmnd *parent)
 
 static void iscsi_cmnds_init_write(struct list_head *send, int flags)
 {
-	struct iscsi_cmnd *rsp = list_first_entry(send, struct iscsi_cmnd,
+	struct iscsi_cmnd *rsp = list_entry(send->next, struct iscsi_cmnd,
 						write_list_entry);
 	struct iscsi_conn *conn = rsp->conn;
 	struct list_head *pos, *next;
@@ -2958,7 +2958,7 @@ static void iscsi_push_cmnd(struct iscsi_cmnd *cmnd)
 
 			if (list_empty(&session->pending_list))
 				break;
-			cmnd = list_first_entry(&session->pending_list,
+			cmnd = list_entry(session->pending_list.next,
 					  struct iscsi_cmnd,
 					  pending_list_entry);
 			if (cmnd->pdu.bhs.sn != cmd_sn)
@@ -3362,9 +3362,9 @@ static int iscsi_xmit_response(struct scst_cmd *scst_cmd)
 	 * There's no need for protection, since we are not going to
 	 * dereference them.
 	 */
-	wr_rsp = list_first_entry(&conn->write_list, struct iscsi_cmnd,
+	wr_rsp = list_entry(conn->write_list.next, struct iscsi_cmnd,
 			write_list_entry);
-	our_rsp = list_first_entry(&req->rsp_cmd_list, struct iscsi_cmnd,
+	our_rsp = list_entry(req->rsp_cmd_list.next, struct iscsi_cmnd,
 			rsp_cmd_list_entry);
 	if (wr_rsp == our_rsp) {
 		/*
@@ -3617,7 +3617,7 @@ static int iscsi_scsi_aen(struct scst_aen *aen)
 	rsp_hdr->opcode = ISCSI_OP_ASYNC_MSG;
 	rsp_hdr->flags = ISCSI_FLG_FINAL;
 	rsp_hdr->lun = lun; /* it's already in SCSI form */
-	rsp_hdr->ffffffff = cpu_to_be32(0xffffffff);
+	rsp_hdr->ffffffff = __constant_cpu_to_be32(0xffffffff);
 	rsp_hdr->async_event = ISCSI_ASYNC_SCSI;
 
 	sg = rsp->sg = rsp->rsp_sg;
@@ -3729,7 +3729,8 @@ static int iscsi_get_initiator_port_transport_id(struct scst_tgt *tgt,
 	tr_id[0] = 0x40 | SCSI_TRANSPORTID_PROTOCOLID_ISCSI;
 	sprintf(&tr_id[4], "%s,i,0x%llx", sess->initiator_name, sid.id64);
 
-	put_unaligned_be16(tr_id_size - 4, &tr_id[2]);
+	put_unaligned(cpu_to_be16(tr_id_size - 4),
+		(__be16 *)&tr_id[2]);
 
 	*transport_id = tr_id;
 
@@ -3894,7 +3895,7 @@ int iscsi_threads_pool_get(const cpumask_t *cpu_mask,
 		if (!list_empty(&iscsi_thread_pools_list)) {
 			PRINT_WARNING("%s", "Using global iSCSI thread pool "
 				"instead");
-			p = list_first_entry(&iscsi_thread_pools_list,
+			p = list_entry(iscsi_thread_pools_list.next,
 				struct iscsi_thread_pool,
 				thread_pools_list_entry);
 		} else
@@ -4129,8 +4130,8 @@ out_callb:
 
 out_destroy_mempool:
 	mempool_destroy(iscsi_cmnd_abort_mempool);
-
 #endif
+
 out_free_dummy:
 	__free_pages(dummy_page, 0);
 	goto out;

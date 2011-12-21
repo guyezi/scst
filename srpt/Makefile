@@ -103,16 +103,16 @@ clean:
 extraclean: clean
 	rm -f *.orig *.rej
 
-2debug:
-	-$(MAKE) clean
+release2debug perf2debug:
+	-make clean
 	$(call set_var,build_mode,BUILDMODE,)
 
-2release:
-	-$(MAKE) clean
+debug2release:
+	-make clean
 	$(call set_var,build_mode,BUILDMODE,RELEASE)
 
-2perf:
-	-$(MAKE) clean
+debug2perf:
+	-make clean
 	$(call set_var,build_mode,BUILDMODE,PERF)
 
 .PHONY: all install clean extraclean 2debug 2release 2perf

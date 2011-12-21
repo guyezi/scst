@@ -1,11 +1,11 @@
 #
 #  Qlogic 2x00 SCSI target driver makefile
-#
+#  
 #  Copyright (C) 2004 - 2011 Vladislav Bolkhovitin <vst@vlnb.net>
 #  Copyright (C) 2004 - 2005 Leonid Stoljar
 #  Copyright (C) 2006 - 2010 ID7 Ltd.
 #  Copyright (C) 2010 - 2011 SCST Ltd.
-#
+#  
 #  This program is free software; you can redistribute it and/or
 #  modify it under the terms of the GNU General Public License
 #  as published by the Free Software Foundation, version 2
@@ -56,58 +56,30 @@ else
   KDIR := /lib/modules/$(KVER)/build
 endif
 
-ifeq ($(BUILD_2X_MODULE),)
 QLA2XXX_INC_DIR := $(KDIR)/drivers/scsi/qla2xxx
-else
-QLA2XXX_INC_DIR := $(SUBDIRS)/..
-QLA2XXX_DIR := $(shell pwd)/..
-QLA2XXX_SCST := qla2xxx_scst
-EXTRA_CFLAGS += -DCONFIG_SCSI_QLA2XXX_TARGET=y
-endif
-
 EXTRA_CFLAGS += -I$(QLA2XXX_INC_DIR)
 
 ifneq ($(PATCHLEVEL),)
 obj-m := qla2x00tgt.o
 qla2x00tgt-objs := qla2x00t.o
+
 else
 
-ifneq ($(BUILD_2X_MODULE),)
-# We need to make qla2xxx_scst before Module.symvers
-.NOTPARALLEL:
-endif
-
-all: $(QLA2XXX_SCST) Modules.symvers Module.symvers
+all: Modules.symvers Module.symvers
 	$(MAKE) -C $(KDIR) SUBDIRS=$(shell pwd) BUILD_INI=m
 
+tgt: Modules.symvers Module.symvers
+	$(MAKE) -C $(KDIR) SUBDIRS=$(shell pwd) BUILD_INI=n
+
 install: all
-ifneq ($(BUILD_2X_MODULE),)
-	$(MAKE) SUBDIRS=$(QLA2XXX_DIR) -C $(QLA2XXX_DIR) $@
-endif
 	$(MAKE) -C $(KDIR) SUBDIRS=$(shell pwd) BUILD_INI=m \
 		modules_install
 	-/sbin/depmod -a $(KVER)
-
-uninstall:
-ifneq ($(BUILD_2X_MODULE),)
-	$(MAKE) SUBDIRS=$(QLA2XXX_DIR) -C $(QLA2XXX_DIR) $@
-endif
-	rm -f $(INSTALL_DIR)/qla2[23x]00tgt.ko
-	-/sbin/depmod -a $(KVER)
-
-ifneq ($(BUILD_2X_MODULE),)
-qla2xxx_scst:
-	$(MAKE) BUILD_2X_MODULE=$(BUILD_2X_MODULE) CONFIG_SCSI_QLA2XXX_TARGET=y \
-		SUBDIRS=$(QLA2XXX_DIR) -C $(QLA2XXX_DIR) all
-endif
 
 SCST_MOD_VERS := $(shell ls $(SCST_DIR)/Modules.symvers 2>/dev/null)
 ifneq ($(SCST_MOD_VERS),)
 Modules.symvers: $(SCST_DIR)/Modules.symvers
 	cp $(SCST_DIR)/Modules.symvers .
-ifneq ($(BUILD_2X_MODULE),)
-	cat $(QLA2XXX_DIR)/Modules.symvers >>Modules.symvers
-endif
 else
 .PHONY: Modules.symvers
 endif
@@ -117,13 +89,13 @@ SCST_MOD_VERS := $(shell ls $(SCST_DIR)/Module.symvers 2>/dev/null)
 ifneq ($(SCST_MOD_VERS),)
 Module.symvers: $(SCST_DIR)/Module.symvers
 	cp $(SCST_DIR)/Module.symvers .
-ifneq ($(BUILD_2X_MODULE),)
-	cat $(QLA2XXX_DIR)/Module.symvers >>Module.symvers
-endif
 else
 .PHONY: Module.symvers
 endif
 
+uninstall:
+	rm -f $(INSTALL_DIR)/qla2[23x]00tgt.ko
+	-/sbin/depmod -a $(KVER)
 endif
 
 clean:
@@ -134,41 +106,46 @@ clean:
 extraclean: clean
 	rm -f *.orig *.rej
 
-2release:
-	sed -i.aa s/"^E\?XTRA_CFLAGS += \-DCONFIG_SCST_EXTRACHECKS"/"#EXTRA_CFLAGS += \-DCONFIG_SCST_EXTRACHECKS"/ Makefile
-	grep "^#EXTRA_CFLAGS += \-DCONFIG_SCST_EXTRACHECKS" Makefile >/dev/null
-	sed -i.aa s/"^#\?EXTRA_CFLAGS += \-DCONFIG_SCST_TRACING"/"EXTRA_CFLAGS += \-DCONFIG_SCST_TRACING"/ Makefile
-	grep "^EXTRA_CFLAGS += \-DCONFIG_SCST_TRACING" Makefile >/dev/null
-	sed -i.aa s/"^E\?XTRA_CFLAGS += \-DCONFIG_SCST_DEBUG -g -fno-inline -fno-inline-functions"/"#EXTRA_CFLAGS += \-DCONFIG_SCST_DEBUG -g -fno-inline -fno-inline-functions"/ Makefile
-	grep "^#EXTRA_CFLAGS += \-DCONFIG_SCST_DEBUG -g -fno-inline -fno-inline-functions" Makefile >/dev/null
+debug2release:
+	sed -i.aa s/"^EXTRA_CFLAGS += \-DCONFIG_SCST_EXTRACHECKS"/"#EXTRA_CFLAGS += \-DCONFIG_SCST_EXTRACHECKS"/ Makefile
+	@cmp Makefile Makefile.aa >/dev/null; if [[ $$? = 0 ]]; then rm Makefile.aa; echo "sed failed: wrong original state?"; false; fi
+	sed -i.aa s/"#EXTRA_CFLAGS += \-DCONFIG_SCST_TRACING"/"EXTRA_CFLAGS += \-DCONFIG_SCST_TRACING"/ Makefile
+	@cmp Makefile Makefile.aa >/dev/null; if [[ $$? = 0 ]]; then rm Makefile.aa; echo "sed failed: wrong original state?"; false; fi
+	sed -i.aa s/"^EXTRA_CFLAGS += \-DCONFIG_SCST_DEBUG -g -fno-inline -fno-inline-functions"/"#EXTRA_CFLAGS += \-DCONFIG_SCST_DEBUG -g -fno-inline -fno-inline-functions"/ Makefile
+	@cmp Makefile Makefile.aa >/dev/null; if [[ $$? = 0 ]]; then rm Makefile.aa; echo "sed failed: wrong original state?"; false; fi
 	rm Makefile.aa
 
-2debug:
-	sed -i.aa s/"^#\?EXTRA_CFLAGS += \-DCONFIG_SCST_EXTRACHECKS"/"EXTRA_CFLAGS += \-DCONFIG_SCST_EXTRACHECKS"/ Makefile
-	grep "^EXTRA_CFLAGS += \-DCONFIG_SCST_EXTRACHECKS" Makefile >/dev/null
-	sed -i.aa s/"^E\?XTRA_CFLAGS += \-DCONFIG_SCST_TRACING"/"#EXTRA_CFLAGS += \-DCONFIG_SCST_TRACING"/ Makefile
-	grep "^#EXTRA_CFLAGS += \-DCONFIG_SCST_TRACING" Makefile >/dev/null
-	sed -i.aa s/"^#\?EXTRA_CFLAGS += \-DCONFIG_SCST_DEBUG -g -fno-inline -fno-inline-functions"/"EXTRA_CFLAGS += \-DCONFIG_SCST_DEBUG -g -fno-inline -fno-inline-functions"/ Makefile
-	grep "^EXTRA_CFLAGS += \-DCONFIG_SCST_DEBUG -g -fno-inline -fno-inline-functions" Makefile >/dev/null
+release2debug:
+	sed -i.aa s/"#EXTRA_CFLAGS += \-DCONFIG_SCST_EXTRACHECKS"/"EXTRA_CFLAGS += \-DCONFIG_SCST_EXTRACHECKS"/ Makefile
+	@cmp Makefile Makefile.aa >/dev/null; if [[ $$? = 0 ]]; then rm Makefile.aa; echo "sed failed: wrong original state?"; false; fi
+	sed -i.aa s/"^EXTRA_CFLAGS += \-DCONFIG_SCST_TRACING"/"#EXTRA_CFLAGS += \-DCONFIG_SCST_TRACING"/ Makefile
+	@cmp Makefile Makefile.aa >/dev/null; if [[ $$? = 0 ]]; then rm Makefile.aa; echo "sed failed: wrong original state?"; false; fi
+	sed -i.aa s/"#EXTRA_CFLAGS += \-DCONFIG_SCST_DEBUG -g -fno-inline -fno-inline-functions"/"EXTRA_CFLAGS += \-DCONFIG_SCST_DEBUG -g -fno-inline -fno-inline-functions"/ Makefile
+	@cmp Makefile Makefile.aa >/dev/null; if [[ $$? = 0 ]]; then rm Makefile.aa; echo "sed failed: wrong original state?"; false; fi
 	rm Makefile.aa
 
-2perf:
-	sed -i.aa s/"^E\?XTRA_CFLAGS += \-DCONFIG_SCST_EXTRACHECKS"/"#EXTRA_CFLAGS += \-DCONFIG_SCST_EXTRACHECKS"/ Makefile
-	grep "^#EXTRA_CFLAGS += \-DCONFIG_SCST_EXTRACHECKS" Makefile >/dev/null
-	sed -i.aa s/"^E\?XTRA_CFLAGS += \-DCONFIG_SCST_TRACING"/"#EXTRA_CFLAGS += \-DCONFIG_SCST_TRACING"/ Makefile
-	grep "^#EXTRA_CFLAGS += \-DCONFIG_SCST_TRACING" Makefile >/dev/null
-	sed -i.aa s/"^E\?XTRA_CFLAGS += \-DCONFIG_SCST_DEBUG -g -fno-inline -fno-inline-functions"/"#EXTRA_CFLAGS += \-DCONFIG_SCST_DEBUG -g -fno-inline -fno-inline-functions"/ Makefile
-	grep "^#EXTRA_CFLAGS += \-DCONFIG_SCST_DEBUG -g -fno-inline -fno-inline-functions" Makefile >/dev/null
+debug2perf:
+	sed -i.aa s/"^EXTRA_CFLAGS += \-DCONFIG_SCST_EXTRACHECKS"/"#EXTRA_CFLAGS += \-DCONFIG_SCST_EXTRACHECKS"/ Makefile
+	@cmp Makefile Makefile.aa >/dev/null; if [[ $$? = 0 ]]; then rm Makefile.aa; echo "sed failed: wrong original state?"; false; fi
+	sed -i.aa s/"^EXTRA_CFLAGS += \-DCONFIG_SCST_DEBUG -g -fno-inline -fno-inline-functions"/"#EXTRA_CFLAGS += \-DCONFIG_SCST_DEBUG -g -fno-inline -fno-inline-functions"/ Makefile
+	@cmp Makefile Makefile.aa >/dev/null; if [[ $$? = 0 ]]; then rm Makefile.aa; echo "sed failed: wrong original state?"; false; fi
+	rm Makefile.aa
+
+perf2debug:
+	sed -i.aa s/"#EXTRA_CFLAGS += \-DCONFIG_SCST_EXTRACHECKS"/"EXTRA_CFLAGS += \-DCONFIG_SCST_EXTRACHECKS"/ Makefile
+	@cmp Makefile Makefile.aa >/dev/null; if [[ $$? = 0 ]]; then rm Makefile.aa; echo "sed failed: wrong original state?"; false; fi
+	sed -i.aa s/"#EXTRA_CFLAGS += \-DCONFIG_SCST_DEBUG -g -fno-inline -fno-inline-functions"/"EXTRA_CFLAGS += \-DCONFIG_SCST_DEBUG -g -fno-inline -fno-inline-functions"/ Makefile
+	@cmp Makefile Makefile.aa >/dev/null; if [[ $$? = 0 ]]; then rm Makefile.aa; echo "sed failed: wrong original state?"; false; fi
 	rm Makefile.aa
 
 disable_proc:
-	sed -i.aa s/"^#\?define CONFIG_SCST_PROC"/"\/* #define CONFIG_SCST_PROC *\/"/ ../qla_attr.c
-	grep "^\/\* #define CONFIG_SCST_PROC \*\/" ../qla_attr.c >/dev/null
+	sed -i.aa s/"^#define CONFIG_SCST_PROC"/"\/* #define CONFIG_SCST_PROC *\/"/ ../qla_attr.c
+	@cmp ../qla_attr.c ../qla_attr.c.aa >/dev/null; if [[ $$? = 0 ]]; then rm ../qla_attr.c.aa; echo "sed failed: wrong original state?"; false; fi
 	rm ../qla_attr.c.aa
 
 enable_proc:
-	sed -i.aa s/"^\/\?\* #define CONFIG_SCST_PROC \*\/"/"#define CONFIG_SCST_PROC"/ ../qla_attr.c
-	grep "^#define CONFIG_SCST_PROC" ../qla_attr.c >/dev/null
+	sed -i.aa s/"\/\* #define CONFIG_SCST_PROC \*\/"/"#define CONFIG_SCST_PROC"/ ../qla_attr.c
+	@cmp ../qla_attr.c ../qla_attr.c.aa >/dev/null; if [[ $$? = 0 ]]; then rm ../qla_attr.c.aa; echo "sed failed: wrong original state?"; false; fi
 	rm ../qla_attr.c.aa
 
-.PHONY: all tgt install uninstall clean extraclean 2perf 2release 2debug disable_proc enable_proc qla2xxx_scst
+.PHONY: all tgt install uninstall clean extraclean debug2perf debug2release perf2debug release2debug disable_proc enable_proc

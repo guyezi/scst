@@ -933,7 +933,7 @@ static int scst_set_lun_not_supported_inquiry(struct scst_cmd *cmd)
 		}
 
 		if (cmd->bufflen == 0)
-			cmd->bufflen = min_t(int, 36, get_unaligned_be16(&cmd->cdb[3]));
+			cmd->bufflen = min_t(int, 36, (cmd->cdb[3] << 8) | cmd->cdb[4]);
 
 		cmd->sg = scst_alloc(cmd->bufflen, GFP_ATOMIC, &cmd->sg_cnt);
 		if (cmd->sg == NULL) {
@@ -1312,7 +1312,7 @@ void scst_set_initial_UA(struct scst_session *sess, int key, int asc, int ascq)
 			if (!list_empty(&tgt_dev->UA_list)) {
 				struct scst_tgt_dev_UA *ua;
 
-				ua = list_first_entry(&tgt_dev->UA_list,
+				ua = list_entry(tgt_dev->UA_list.next,
 					typeof(*ua), UA_list_entry);
 				if (scst_analyze_sense(ua->UA_sense_buffer,
 						ua->UA_valid_sense_len,
@@ -1918,11 +1918,11 @@ static int scst_get_cmd_abnormal_done_state(const struct scst_cmd *cmd)
 	case SCST_CMD_STATE_RDY_TO_XFER:
 	case SCST_CMD_STATE_DATA_WAIT:
 	case SCST_CMD_STATE_TGT_PRE_EXEC:
-	case SCST_CMD_STATE_EXEC_CHECK_BLOCKING:
-	case SCST_CMD_STATE_EXEC_CHECK_SN:
+	case SCST_CMD_STATE_START_EXEC:
+	case SCST_CMD_STATE_SEND_FOR_EXEC:
 	case SCST_CMD_STATE_LOCAL_EXEC:
 	case SCST_CMD_STATE_REAL_EXEC:
-	case SCST_CMD_STATE_EXEC_WAIT:
+	case SCST_CMD_STATE_REAL_EXECUTING:
 		res = SCST_CMD_STATE_PRE_DEV_DONE;
 		break;
 
@@ -1977,11 +1977,11 @@ int scst_set_cmd_abnormal_done_state(struct scst_cmd *cmd)
 		cmd->resid_possible = 1;
 		break;
 	case SCST_CMD_STATE_TGT_PRE_EXEC:
-	case SCST_CMD_STATE_EXEC_CHECK_SN:
-	case SCST_CMD_STATE_EXEC_CHECK_BLOCKING:
+	case SCST_CMD_STATE_SEND_FOR_EXEC:
+	case SCST_CMD_STATE_START_EXEC:
 	case SCST_CMD_STATE_LOCAL_EXEC:
 	case SCST_CMD_STATE_REAL_EXEC:
-	case SCST_CMD_STATE_EXEC_WAIT:
+	case SCST_CMD_STATE_REAL_EXECUTING:
 	case SCST_CMD_STATE_DEV_DONE:
 	case SCST_CMD_STATE_PRE_DEV_DONE:
 	case SCST_CMD_STATE_MODE_SELECT_CHECKS:
@@ -3746,7 +3746,6 @@ static struct scst_cmd *scst_create_prepare_internal_cmd(
 	res->tgtt = orig_cmd->tgtt;
 	res->tgt = orig_cmd->tgt;
 	res->dev = orig_cmd->dev;
-	res->devt = orig_cmd->devt;
 	res->tgt_dev = orig_cmd->tgt_dev;
 	res->cur_order_data = orig_cmd->tgt_dev->curr_order_data;
 	res->lun = orig_cmd->lun;
@@ -4276,15 +4275,15 @@ void scst_free_cmd(struct scst_cmd *cmd)
 	}
 
 	if (likely(cmd->dev != NULL)) {
-		struct scst_dev_type *devt = cmd->devt;
-		if (devt->on_free_cmd != NULL) {
+		struct scst_dev_type *handler = cmd->dev->handler;
+		if (handler->on_free_cmd != NULL) {
 			TRACE_DBG("Calling dev handler %s on_free_cmd(%p)",
-				devt->name, cmd);
+				handler->name, cmd);
 			scst_set_cur_start(cmd);
-			devt->on_free_cmd(cmd);
+			handler->on_free_cmd(cmd);
 			scst_set_dev_on_free_time(cmd);
 			TRACE_DBG("Dev handler %s on_free_cmd() returned",
-				devt->name);
+				handler->name);
 		}
 	}
 
@@ -4445,10 +4444,10 @@ static bool scst_on_sg_tablesize_low(struct scst_cmd *cmd, bool out)
 		goto failed;
 	}
 
-	if (cmd->devt->on_sg_tablesize_low == NULL)
+	if (tgt_dev->dev->handler->on_sg_tablesize_low == NULL)
 		goto failed;
 
-	res = cmd->devt->on_sg_tablesize_low(cmd);
+	res = tgt_dev->dev->handler->on_sg_tablesize_low(cmd);
 
 	TRACE_DBG("on_sg_tablesize_low(%p) returned %d", cmd, res);
 
@@ -4735,7 +4734,7 @@ int scst_scsi_exec_async(struct scst_cmd *cmd, void *data,
 	struct request *rq;
 	struct scsi_io_context *sioc;
 	int write = (cmd->data_direction & SCST_DATA_WRITE) ? WRITE : READ;
-	gfp_t gfp = scst_cmd_get_gfp_flags(cmd);
+	gfp_t gfp = cmd->noio_mem_alloc ? GFP_NOIO : GFP_KERNEL;
 	int cmd_len = cmd->cdb_len;
 
 	sioc = kmem_cache_zalloc(scsi_io_context_cache, gfp);
@@ -5027,7 +5026,7 @@ static int get_trans_len_serv_act_in(struct scst_cmd *cmd, uint8_t off)
 
 	if ((cmd->cdb[1] & 0x1f) == SAI_READ_CAPACITY_16) {
 		cmd->op_name = "READ CAPACITY(16)";
-		cmd->bufflen = get_unaligned_be32(&cmd->cdb[10]);
+		cmd->bufflen = be32_to_cpu(get_unaligned((__be32 *)&cmd->cdb[10]));
 		cmd->op_flags |= SCST_IMPLICIT_HQ | SCST_REG_RESERVE_ALLOWED |
 			SCST_WRITE_EXCL_ALLOWED | SCST_EXCL_ACCESS_ALLOWED;
 	} else
@@ -5045,9 +5044,12 @@ static int get_trans_len_single(struct scst_cmd *cmd, uint8_t off)
 
 static int get_trans_len_read_pos(struct scst_cmd *cmd, uint8_t off)
 {
+	uint8_t *p = (uint8_t *)cmd->cdb + off;
 	int res = 0;
 
-	cmd->bufflen = get_unaligned_be16(cmd->cdb + off);
+	cmd->bufflen = 0;
+	cmd->bufflen |= ((u32)p[0]) << 8;
+	cmd->bufflen |= ((u32)p[1]);
 
 	switch (cmd->cdb[1] & 0x1f) {
 	case 0:
@@ -5108,7 +5110,12 @@ static int get_trans_len_start_stop(struct scst_cmd *cmd, uint8_t off)
 
 static int get_trans_len_3_read_elem_stat(struct scst_cmd *cmd, uint8_t off)
 {
-	cmd->bufflen = get_unaligned_be24(cmd->cdb + off);
+	const uint8_t *p = cmd->cdb + off;
+
+	cmd->bufflen = 0;
+	cmd->bufflen |= ((u32)p[0]) << 16;
+	cmd->bufflen |= ((u32)p[1]) << 8;
+	cmd->bufflen |= ((u32)p[2]);
 
 	if ((cmd->cdb[6] & 0x2) == 0x2)
 		cmd->op_flags |= SCST_REG_RESERVE_ALLOWED |
@@ -5124,37 +5131,45 @@ static int get_trans_len_1(struct scst_cmd *cmd, uint8_t off)
 
 static int get_trans_len_1_256(struct scst_cmd *cmd, uint8_t off)
 {
-	/*
-	 * From the READ(6) specification: a TRANSFER LENGTH field set to zero
-	 * specifies that 256 logical blocks shall be read.
-	 *
-	 * Note: while the C standard specifies that the behavior of a
-	 * computation with signed integers that overflows is undefined, the
-	 * same standard guarantees that the result of a computation with
-	 * unsigned integers that cannot be represented will yield the value
-	 * is reduced modulo the largest value that can be represented by the
-	 * resulting type.
-	 */
-	cmd->bufflen = (u8)(cmd->cdb[off] - 1) + 1;
+	cmd->bufflen = (u32)cmd->cdb[off];
+	if (cmd->bufflen == 0)
+		cmd->bufflen = 256;
 	return 0;
 }
 
 static int get_trans_len_2(struct scst_cmd *cmd, uint8_t off)
 {
-	cmd->bufflen = get_unaligned_be16(cmd->cdb + off);
+	const uint8_t *p = cmd->cdb + off;
+
+	cmd->bufflen = 0;
+	cmd->bufflen |= ((u32)p[0]) << 8;
+	cmd->bufflen |= ((u32)p[1]);
+
 	return 0;
 }
 
 static int get_trans_len_3(struct scst_cmd *cmd, uint8_t off)
 {
-	cmd->bufflen = get_unaligned_be24(cmd->cdb + off);
+	const uint8_t *p = cmd->cdb + off;
+
+	cmd->bufflen = 0;
+	cmd->bufflen |= ((u32)p[0]) << 16;
+	cmd->bufflen |= ((u32)p[1]) << 8;
+	cmd->bufflen |= ((u32)p[2]);
 
 	return 0;
 }
 
 static int get_trans_len_4(struct scst_cmd *cmd, uint8_t off)
 {
-	cmd->bufflen = get_unaligned_be32(cmd->cdb + off);
+	const uint8_t *p = cmd->cdb + off;
+
+	cmd->bufflen = 0;
+	cmd->bufflen |= ((u32)p[0]) << 24;
+	cmd->bufflen |= ((u32)p[1]) << 16;
+	cmd->bufflen |= ((u32)p[2]) << 8;
+	cmd->bufflen |= ((u32)p[3]);
+
 	return 0;
 }
 
@@ -5166,8 +5181,14 @@ static int get_trans_len_none(struct scst_cmd *cmd, uint8_t off)
 
 static int get_bidi_trans_len_2(struct scst_cmd *cmd, uint8_t off)
 {
-	cmd->bufflen = get_unaligned_be16(cmd->cdb + off);
+	const uint8_t *p = cmd->cdb + off;
+
+	cmd->bufflen = 0;
+	cmd->bufflen |= ((u32)p[0]) << 8;
+	cmd->bufflen |= ((u32)p[1]);
+
 	cmd->out_bufflen = cmd->bufflen;
+
 	return 0;
 }
 
@@ -5269,28 +5290,30 @@ uint64_t scst_unpack_lun(const uint8_t *lun, int len)
 
 	TRACE_BUFF_FLAG(TRACE_DEBUG, "Raw LUN", lun, len);
 
-	switch (len) {
-	case 2:
-		break;
-	case 8:
-		if ((*((__be64 *)lun) & cpu_to_be64(0x0000FFFFFFFFFFFFLL)) != 0)
-			goto out_err;
-		break;
-	case 4:
-		if (*((__be16 *)&lun[2]) != 0)
-			goto out_err;
-		break;
-	case 6:
-		if (*((__be32 *)&lun[2]) != 0)
-			goto out_err;
-		break;
-	case 1:
-	case 0:
-		PRINT_ERROR("Illegal lun length %d, expected 2 bytes "
-			    "or more", len);
+	if (unlikely(len < 2)) {
+		PRINT_ERROR("Illegal lun length %d, expected 2 bytes or "
+			"more", len);
 		goto out;
-	default:
-		goto out_err;
+	}
+
+	if (len > 2) {
+		switch (len) {
+		case 8:
+			if ((*((__be64 *)lun) &
+			  __constant_cpu_to_be64(0x0000FFFFFFFFFFFFLL)) != 0)
+				goto out_err;
+			break;
+		case 4:
+			if (*((__be16 *)&lun[2]) != 0)
+				goto out_err;
+			break;
+		case 6:
+			if (*((__be32 *)&lun[2]) != 0)
+				goto out_err;
+			break;
+		default:
+			goto out_err;
+		}
 	}
 
 	address_method = (*lun) >> 6;	/* high 2 bits of byte 0 */
@@ -5716,7 +5739,9 @@ int scst_block_generic_dev_done(struct scst_cmd *cmd,
 				goto out;
 			}
 
-			sector_size = get_unaligned_be32(&buffer[4]);
+			sector_size =
+			    ((buffer[4] << 24) | (buffer[5] << 16) |
+			     (buffer[6] << 8) | (buffer[7] << 0));
 			scst_put_buf_full(cmd, buffer);
 			if (sector_size != 0)
 				sh = scst_calc_block_shift(sector_size);
@@ -5784,7 +5809,8 @@ int scst_tape_generic_dev_done(struct scst_cmd *cmd,
 		TRACE_DBG("%s", "MODE_SENSE");
 		if ((cmd->cdb[2] & 0xC0) == 0) {
 			if (buffer[3] == 8) {
-				bs = get_unaligned_be24(&buffer[9]);
+				bs = (buffer[9] << 16) |
+				    (buffer[10] << 8) | buffer[11];
 				set_block_size(cmd, bs);
 			}
 		}
@@ -5792,7 +5818,8 @@ int scst_tape_generic_dev_done(struct scst_cmd *cmd,
 	case MODE_SELECT:
 		TRACE_DBG("%s", "MODE_SELECT");
 		if (buffer[3] == 8) {
-			bs = get_unaligned_be24(&buffer[9]);
+			bs = (buffer[9] << 16) | (buffer[10] << 8) |
+			    (buffer[11]);
 			set_block_size(cmd, bs);
 		}
 		break;
@@ -5863,6 +5890,151 @@ enum dma_data_direction scst_to_tgt_dma_dir(int scst_dir)
 	return tr_tbl[scst_dir];
 }
 EXPORT_SYMBOL(scst_to_tgt_dma_dir);
+
+/**
+ * scst_obtain_device_parameters() - obtain device control parameters
+ *
+ * Issues a MODE SENSE for control mode page data and sets the corresponding
+ * dev's parameter from it. Returns 0 on success and not 0 otherwise.
+ */
+int scst_obtain_device_parameters(struct scst_device *dev)
+{
+	int rc, i;
+	uint8_t cmd[16];
+	uint8_t buffer[4+0x0A];
+	uint8_t sense_buffer[SCSI_SENSE_BUFFERSIZE];
+
+	TRACE_ENTRY();
+
+	EXTRACHECKS_BUG_ON(dev->scsi_dev == NULL);
+
+	for (i = 0; i < 5; i++) {
+		/* Get control mode page */
+		memset(cmd, 0, sizeof(cmd));
+#if 0
+		cmd[0] = MODE_SENSE_10;
+		cmd[1] = 0;
+		cmd[2] = 0x0A;
+		cmd[8] = sizeof(buffer); /* it's < 256 */
+#else
+		cmd[0] = MODE_SENSE;
+		cmd[1] = 8; /* DBD */
+		cmd[2] = 0x0A;
+		cmd[4] = sizeof(buffer);
+#endif
+
+		memset(buffer, 0, sizeof(buffer));
+		memset(sense_buffer, 0, sizeof(sense_buffer));
+
+		TRACE(TRACE_SCSI, "%s", "Doing internal MODE_SENSE");
+		rc = scsi_execute(dev->scsi_dev, cmd, SCST_DATA_READ, buffer,
+				sizeof(buffer), sense_buffer, 15, 0, 0
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,29)
+				, NULL
+#endif
+				);
+
+		TRACE_DBG("MODE_SENSE done: %x", rc);
+
+		if (scsi_status_is_good(rc)) {
+			int q;
+
+			PRINT_BUFF_FLAG(TRACE_SCSI, "Returned control mode "
+				"page data", buffer, sizeof(buffer));
+
+			dev->tst = buffer[4+2] >> 5;
+			q = buffer[4+3] >> 4;
+			if (q > SCST_CONTR_MODE_QUEUE_ALG_UNRESTRICTED_REORDER) {
+				PRINT_ERROR("Too big QUEUE ALG %x, dev %s",
+					dev->queue_alg, dev->virt_name);
+			}
+			dev->queue_alg = q;
+			dev->swp = (buffer[4+4] & 0x8) >> 3;
+			dev->tas = (buffer[4+5] & 0x40) >> 6;
+			dev->d_sense = (buffer[4+2] & 0x4) >> 2;
+
+			/*
+			 * Unfortunately, SCSI ML doesn't provide a way to
+			 * specify commands task attribute, so we can rely on
+			 * device's restricted reordering only. Linux I/O
+			 * subsystem doesn't reorder pass-through (PC) requests.
+			 */
+			dev->has_own_order_mgmt = !dev->queue_alg;
+
+			PRINT_INFO("Device %s: TST %x, QUEUE ALG %x, SWP %x, "
+				"TAS %x, D_SENSE %d, has_own_order_mgmt %d",
+				dev->virt_name, dev->tst, dev->queue_alg,
+				dev->swp, dev->tas, dev->d_sense,
+				dev->has_own_order_mgmt);
+
+			goto out;
+		} else {
+			scst_check_internal_sense(dev, rc, sense_buffer,
+				sizeof(sense_buffer));
+#if 0
+			if ((status_byte(rc) == CHECK_CONDITION) &&
+			    SCST_SENSE_VALID(sense_buffer)) {
+#else
+			/*
+			 * 3ware controller is buggy and returns CONDITION_GOOD
+			 * instead of CHECK_CONDITION
+			 */
+			if (SCST_SENSE_VALID(sense_buffer)) {
+#endif
+				PRINT_BUFF_FLAG(TRACE_SCSI, "Returned sense "
+					"data", sense_buffer,
+					sizeof(sense_buffer));
+				if (scst_analyze_sense(sense_buffer,
+						sizeof(sense_buffer),
+						SCST_SENSE_KEY_VALID,
+						ILLEGAL_REQUEST, 0, 0)) {
+					PRINT_INFO("Device %s doesn't support "
+						"MODE SENSE", dev->virt_name);
+					break;
+				} else if (scst_analyze_sense(sense_buffer,
+						sizeof(sense_buffer),
+						SCST_SENSE_KEY_VALID,
+						NOT_READY, 0, 0)) {
+					PRINT_ERROR("Device %s not ready",
+						dev->virt_name);
+					break;
+				}
+			} else {
+				PRINT_INFO("Internal MODE SENSE to "
+					"device %s failed: %x",
+					dev->virt_name, rc);
+				PRINT_BUFF_FLAG(TRACE_SCSI, "MODE SENSE sense",
+					sense_buffer, sizeof(sense_buffer));
+				switch (host_byte(rc)) {
+				case DID_RESET:
+				case DID_ABORT:
+				case DID_SOFT_ERROR:
+					break;
+				default:
+					goto brk;
+				}
+				switch (driver_byte(rc)) {
+				case DRIVER_BUSY:
+				case DRIVER_SOFT:
+					break;
+				default:
+					goto brk;
+				}
+			}
+		}
+	}
+brk:
+	PRINT_WARNING("Unable to get device's %s control mode page, using "
+		"existing values/defaults: TST %x, QUEUE ALG %x, SWP %x, "
+		"TAS %x, D_SENSE %d, has_own_order_mgmt %d", dev->virt_name,
+		dev->tst, dev->queue_alg, dev->swp, dev->tas, dev->d_sense,
+		dev->has_own_order_mgmt);
+
+out:
+	TRACE_EXIT();
+	return 0;
+}
+EXPORT_SYMBOL_GPL(scst_obtain_device_parameters);
 
 /* Called under dev_lock and BH off */
 void scst_process_reset(struct scst_device *dev,
@@ -5997,7 +6169,7 @@ again:
 		goto out_unlock;
 	}
 
-	UA_entry = list_first_entry(&cmd->tgt_dev->UA_list, typeof(*UA_entry),
+	UA_entry = list_entry(cmd->tgt_dev->UA_list.next, typeof(*UA_entry),
 			      UA_list_entry);
 
 	TRACE_DBG("next %p UA_entry %p",
@@ -6604,151 +6776,6 @@ void scst_unblock_dev(struct scst_device *dev)
 	TRACE_EXIT();
 	return;
 }
-
-/**
- * scst_obtain_device_parameters() - obtain device control parameters
- *
- * Issues a MODE SENSE for control mode page data and sets the corresponding
- * dev's parameter from it. Returns 0 on success and not 0 otherwise.
- */
-int scst_obtain_device_parameters(struct scst_device *dev)
-{
-	int rc, i;
-	uint8_t cmd[16];
-	uint8_t buffer[4+0x0A];
-	uint8_t sense_buffer[SCSI_SENSE_BUFFERSIZE];
-
-	TRACE_ENTRY();
-
-	EXTRACHECKS_BUG_ON(dev->scsi_dev == NULL);
-
-	for (i = 0; i < 5; i++) {
-		/* Get control mode page */
-		memset(cmd, 0, sizeof(cmd));
-#if 0
-		cmd[0] = MODE_SENSE_10;
-		cmd[1] = 0;
-		cmd[2] = 0x0A;
-		cmd[8] = sizeof(buffer); /* it's < 256 */
-#else
-		cmd[0] = MODE_SENSE;
-		cmd[1] = 8; /* DBD */
-		cmd[2] = 0x0A;
-		cmd[4] = sizeof(buffer);
-#endif
-
-		memset(buffer, 0, sizeof(buffer));
-		memset(sense_buffer, 0, sizeof(sense_buffer));
-
-		TRACE(TRACE_SCSI, "%s", "Doing internal MODE_SENSE");
-		rc = scsi_execute(dev->scsi_dev, cmd, SCST_DATA_READ, buffer,
-				sizeof(buffer), sense_buffer, 15, 0, 0
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,29)
-				, NULL
-#endif
-				);
-
-		TRACE_DBG("MODE_SENSE done: %x", rc);
-
-		if (scsi_status_is_good(rc)) {
-			int q;
-
-			PRINT_BUFF_FLAG(TRACE_SCSI, "Returned control mode "
-				"page data", buffer, sizeof(buffer));
-
-			dev->tst = buffer[4+2] >> 5;
-			q = buffer[4+3] >> 4;
-			if (q > SCST_CONTR_MODE_QUEUE_ALG_UNRESTRICTED_REORDER) {
-				PRINT_ERROR("Too big QUEUE ALG %x, dev %s",
-					dev->queue_alg, dev->virt_name);
-			}
-			dev->queue_alg = q;
-			dev->swp = (buffer[4+4] & 0x8) >> 3;
-			dev->tas = (buffer[4+5] & 0x40) >> 6;
-			dev->d_sense = (buffer[4+2] & 0x4) >> 2;
-
-			/*
-			 * Unfortunately, SCSI ML doesn't provide a way to
-			 * specify commands task attribute, so we can rely on
-			 * device's restricted reordering only. Linux I/O
-			 * subsystem doesn't reorder pass-through (PC) requests.
-			 */
-			dev->has_own_order_mgmt = !dev->queue_alg;
-
-			PRINT_INFO("Device %s: TST %x, QUEUE ALG %x, SWP %x, "
-				"TAS %x, D_SENSE %d, has_own_order_mgmt %d",
-				dev->virt_name, dev->tst, dev->queue_alg,
-				dev->swp, dev->tas, dev->d_sense,
-				dev->has_own_order_mgmt);
-
-			goto out;
-		} else {
-			scst_check_internal_sense(dev, rc, sense_buffer,
-				sizeof(sense_buffer));
-#if 0
-			if ((status_byte(rc) == CHECK_CONDITION) &&
-			    SCST_SENSE_VALID(sense_buffer)) {
-#else
-			/*
-			 * 3ware controller is buggy and returns CONDITION_GOOD
-			 * instead of CHECK_CONDITION
-			 */
-			if (SCST_SENSE_VALID(sense_buffer)) {
-#endif
-				PRINT_BUFF_FLAG(TRACE_SCSI, "Returned sense "
-					"data", sense_buffer,
-					sizeof(sense_buffer));
-				if (scst_analyze_sense(sense_buffer,
-						sizeof(sense_buffer),
-						SCST_SENSE_KEY_VALID,
-						ILLEGAL_REQUEST, 0, 0)) {
-					PRINT_INFO("Device %s doesn't support "
-						"MODE SENSE", dev->virt_name);
-					break;
-				} else if (scst_analyze_sense(sense_buffer,
-						sizeof(sense_buffer),
-						SCST_SENSE_KEY_VALID,
-						NOT_READY, 0, 0)) {
-					PRINT_ERROR("Device %s not ready",
-						dev->virt_name);
-					break;
-				}
-			} else {
-				PRINT_INFO("Internal MODE SENSE to "
-					"device %s failed: %x",
-					dev->virt_name, rc);
-				PRINT_BUFF_FLAG(TRACE_SCSI, "MODE SENSE sense",
-					sense_buffer, sizeof(sense_buffer));
-				switch (host_byte(rc)) {
-				case DID_RESET:
-				case DID_ABORT:
-				case DID_SOFT_ERROR:
-					break;
-				default:
-					goto brk;
-				}
-				switch (driver_byte(rc)) {
-				case DRIVER_BUSY:
-				case DRIVER_SOFT:
-					break;
-				default:
-					goto brk;
-				}
-			}
-		}
-	}
-brk:
-	PRINT_WARNING("Unable to get device's %s control mode page, using "
-		"existing values/defaults: TST %x, QUEUE ALG %x, SWP %x, "
-		"TAS %x, D_SENSE %d, has_own_order_mgmt %d", dev->virt_name,
-		dev->tst, dev->queue_alg, dev->swp, dev->tas, dev->d_sense,
-		dev->has_own_order_mgmt);
-
-out:
-	TRACE_EXIT();
-	return 0;
-}
-EXPORT_SYMBOL_GPL(scst_obtain_device_parameters);
 
 void scst_on_hq_cmd_response(struct scst_cmd *cmd)
 {
@@ -7459,13 +7486,8 @@ out_unlock:
 static uint64_t scst_get_nsec(void)
 {
 	struct timespec ts;
-
 	ktime_get_ts(&ts);
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 16)
 	return (uint64_t)ts.tv_sec * 1000000000 + ts.tv_nsec;
-#else
-	return timespec_to_ns(&ts);
-#endif
 }
 
 void scst_set_start_time(struct scst_cmd *cmd)

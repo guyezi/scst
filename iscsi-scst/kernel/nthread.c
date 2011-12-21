@@ -653,7 +653,7 @@ static struct iscsi_cmnd *iscsi_get_send_cmnd(struct iscsi_conn *conn)
 
 	spin_lock_bh(&conn->write_list_lock);
 	if (!list_empty(&conn->write_list)) {
-		cmnd = list_first_entry(&conn->write_list, struct iscsi_cmnd,
+		cmnd = list_entry(conn->write_list.next, struct iscsi_cmnd,
 				write_list_entry);
 		cmd_del_from_write_list(cmnd);
 		cmnd->write_processing_started = 1;
@@ -1028,7 +1028,7 @@ static void scst_do_job_rd(struct iscsi_thread_pool *p)
 
 	while (!list_empty(&p->rd_list)) {
 		int closed = 0, rc;
-		struct iscsi_conn *conn = list_first_entry(&p->rd_list,
+		struct iscsi_conn *conn = list_entry(p->rd_list.next,
 			typeof(*conn), rd_list_entry);
 
 		list_del(&conn->rd_list_entry);
@@ -1095,8 +1095,22 @@ int istrd(void *arg)
 
 	spin_lock_bh(&p->rd_lock);
 	while (!kthread_should_stop()) {
-		wait_event_locked(p->rd_waitQ, test_rd_list(p), lock_bh,
-				  p->rd_lock);
+		wait_queue_t wait;
+		init_waitqueue_entry(&wait, current);
+
+		if (!test_rd_list(p)) {
+			add_wait_queue_exclusive_head(&p->rd_waitQ, &wait);
+			for (;;) {
+				set_current_state(TASK_INTERRUPTIBLE);
+				if (test_rd_list(p))
+					break;
+				spin_unlock_bh(&p->rd_lock);
+				schedule();
+				spin_lock_bh(&p->rd_lock);
+			}
+			set_current_state(TASK_RUNNING);
+			remove_wait_queue(&p->rd_waitQ, &wait);
+		}
 		scst_do_job_rd(p);
 	}
 	spin_unlock_bh(&p->rd_lock);
@@ -1550,10 +1564,9 @@ out_res:
 
 out_err:
 #ifndef CONFIG_SCST_DEBUG
-	if (!conn->closing) {
-#else
-	{
+	if (!conn->closing)
 #endif
+	{
 		PRINT_ERROR("error %d at sid:cid %#Lx:%u, cmnd %p", res,
 			    (long long unsigned int)conn->session->sid,
 			    conn->cid, conn->write_cmnd);
@@ -1580,10 +1593,9 @@ static int exit_tx(struct iscsi_conn *conn, int res)
 		break;
 	default:
 #ifndef CONFIG_SCST_DEBUG
-		if (!conn->closing) {
-#else
-		{
+		if (!conn->closing)
 #endif
+		{
 			PRINT_ERROR("Sending data failed: initiator %s, "
 				"write_size %d, write_state %d, res %d",
 				conn->session->initiator_name,
@@ -1784,7 +1796,7 @@ static void scst_do_job_wr(struct iscsi_thread_pool *p)
 
 	while (!list_empty(&p->wr_list)) {
 		int rc;
-		struct iscsi_conn *conn = list_first_entry(&p->wr_list,
+		struct iscsi_conn *conn = list_entry(p->wr_list.next,
 			typeof(*conn), wr_list_entry);
 
 		TRACE_DBG("conn %p, wr_state %x, wr_space_ready %d, "
@@ -1854,8 +1866,22 @@ int istwr(void *arg)
 
 	spin_lock_bh(&p->wr_lock);
 	while (!kthread_should_stop()) {
-		wait_event_locked(p->wr_waitQ, test_wr_list(p), lock_bh,
-				  p->wr_lock);
+		wait_queue_t wait;
+		init_waitqueue_entry(&wait, current);
+
+		if (!test_wr_list(p)) {
+			add_wait_queue_exclusive_head(&p->wr_waitQ, &wait);
+			for (;;) {
+				set_current_state(TASK_INTERRUPTIBLE);
+				if (test_wr_list(p))
+					break;
+				spin_unlock_bh(&p->wr_lock);
+				schedule();
+				spin_lock_bh(&p->wr_lock);
+			}
+			set_current_state(TASK_RUNNING);
+			remove_wait_queue(&p->wr_waitQ, &wait);
+		}
 		scst_do_job_wr(p);
 	}
 	spin_unlock_bh(&p->wr_lock);

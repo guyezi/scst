@@ -120,9 +120,10 @@ help:
 	@echo "		usr_install       : usr target: install"
 	@echo "		usr_uninstall     : usr target: uninstall"
 	@echo ""
-	@echo "		2perf        : changes debug state to full performance"
-	@echo "		2release     : changes debug state to release"
-	@echo "		2debug       : changes debug state to full debug"
+	@echo "		debug2perf        : changes debug state from full debug to full performance"
+	@echo "		debug2release     : changes debug state from full debug to release"
+	@echo "		perf2debug        : changes debug state from full performance to full debug"
+	@echo "		release2debug     : changes debug state from release to full debug"
 	@echo ""
 	@echo "	Note:"
 	@echo "		- install and uninstall may need root privileges"
@@ -364,7 +365,7 @@ fcst_clean:
 fcst_extraclean:
 	cd $(FCST_DIR) && $(MAKE) extraclean
 
-2perf: extraclean
+debug2perf: extraclean
 	cd $(SCST_DIR) && $(MAKE) $@
 	@if [ -d $(QLA_DIR) ]; then cd $(QLA_DIR) && $(MAKE) $@; fi
 #	patch -p0 <qla_isp-release.patch
@@ -374,7 +375,7 @@ fcst_extraclean:
 	@if [ -d $(USR_DIR) ]; then cd $(USR_DIR) && $(MAKE) $@; fi
 	@if [ -d $(SCST_LOCAL_DIR) ]; then cd $(SCST_LOCAL_DIR) && $(MAKE) $@; fi
 
-2release: extraclean
+debug2release: extraclean
 	cd $(SCST_DIR) && $(MAKE) $@
 	@if [ -d $(QLA_DIR) ]; then cd $(QLA_DIR) && $(MAKE) $@; fi
 #	patch -p0 <qla_isp-release.patch
@@ -384,7 +385,17 @@ fcst_extraclean:
 	@if [ -d $(USR_DIR) ]; then cd $(USR_DIR) && $(MAKE) $@; fi
 	@if [ -d $(SCST_LOCAL_DIR) ]; then cd $(SCST_LOCAL_DIR) && $(MAKE) $@; fi
 
-2debug: extraclean
+perf2debug: extraclean
+	cd $(SCST_DIR) && $(MAKE) $@
+	@if [ -d $(QLA_DIR) ]; then cd $(QLA_DIR) && $(MAKE) $@; fi
+#	patch -p0 -R <qla_isp-release.patch
+#	@if [ -d $(LSI_DIR) ]; then cd $(LSI_DIR) && $(MAKE) $@; fi
+	@if [ -d $(SRP_DIR) ]; then cd $(SRP_DIR) && $(MAKE) $@; fi
+	@if [ -d $(ISCSI_DIR) ]; then cd $(ISCSI_DIR) && $(MAKE) $@; fi
+	@if [ -d $(USR_DIR) ]; then cd $(USR_DIR) && $(MAKE) $@; fi
+	@if [ -d $(SCST_LOCAL_DIR) ]; then cd $(SCST_LOCAL_DIR) && $(MAKE) $@; fi
+
+release2debug: extraclean
 	cd $(SCST_DIR) && $(MAKE) $@
 	@if [ -d $(QLA_DIR) ]; then cd $(QLA_DIR) && $(MAKE) $@; fi
 #	patch -p0 -R <qla_isp-release.patch
@@ -427,4 +438,5 @@ disable_proc: extraclean
 	scst_local scst_local_install scst_local_uninstall scst_local_clean scst_local_extraclean \
 	mvsas mvsas_install mvsas_uninstall mvsas_clean mvsas_extraclean \
 	fcst fcst_install fcst_uninstall fcst_clean fcst_extraclean \
-	2perf 2release 2debug enable_proc disable_proc
+	debug2perf, debug2release, perf2debug, release2debug \
+	enable_proc disable_proc

@@ -695,7 +695,7 @@ static int q2t_reset(scsi_qla_host_t *ha, void *iocb, int mcmd)
 		atomic_inc(&ha->tgt->tgt_global_resets_count);
 		q2t_clear_tgt_db(ha->tgt, 1);
 		if (!list_empty(&ha->tgt->sess_list)) {
-			sess = list_first_entry(&ha->tgt->sess_list,
+			sess = list_entry(ha->tgt->sess_list.next,
 				typeof(*sess), sess_list_entry);
 			switch (mcmd) {
 			case Q2T_NEXUS_LOSS_SESS:
@@ -1038,7 +1038,7 @@ static void q2t_del_sess_work_fn(struct delayed_work *work)
 
 	spin_lock_irqsave(&pha->hardware_lock, flags);
 	while (!list_empty(&tgt->del_sess_list)) {
-		sess = list_first_entry(&tgt->del_sess_list, typeof(*sess),
+		sess = list_entry(tgt->del_sess_list.next, typeof(*sess),
 				del_list_entry);
 		if (time_after_eq(jiffies, sess->expires)) {
 			bool cancel;
@@ -1561,7 +1561,7 @@ static void q2x_send_notify_ack(scsi_qla_host_t *ha, notify_entry_t *iocb,
 	ntfy->task_flags = iocb->task_flags;
 	ntfy->seq_id = iocb->seq_id;
 	/* Do not increment here, the chip isn't decrementing */
-	/* ntfy->flags = cpu_to_le16(NOTIFY_ACK_RES_COUNT); */
+	/* ntfy->flags = __constant_cpu_to_le16(NOTIFY_ACK_RES_COUNT); */
 	ntfy->flags |= cpu_to_le16(add_flags);
 	ntfy->srr_rx_id = iocb->srr_rx_id;
 	ntfy->srr_rel_offs = iocb->srr_rel_offs;
@@ -1573,7 +1573,8 @@ static void q2x_send_notify_ack(scsi_qla_host_t *ha, notify_entry_t *iocb,
 
 	if (resp_code_valid) {
 		ntfy->resp_code = cpu_to_le16(resp_code);
-		ntfy->flags |= cpu_to_le16(NOTIFY_ACK_TM_RESP_CODE_VALID);
+		ntfy->flags |= __constant_cpu_to_le16(
+			NOTIFY_ACK_TM_RESP_CODE_VALID);
 	}
 
 	TRACE(TRACE_SCSI, "qla2x00t(%ld): Sending Notify Ack Seq %#x -> I %#x "
@@ -1622,7 +1623,7 @@ static void q24_send_abts_resp(scsi_qla_host_t *ha,
 	resp->sof_type = abts->sof_type;
 	resp->exchange_address = abts->exchange_address;
 	resp->fcp_hdr_le = abts->fcp_hdr_le;
-	f_ctl = cpu_to_le32(F_CTL_EXCH_CONTEXT_RESP |
+	f_ctl = __constant_cpu_to_le32(F_CTL_EXCH_CONTEXT_RESP |
 			F_CTL_LAST_SEQ | F_CTL_END_SEQ |
 			F_CTL_SEQ_INITIATIVE);
 	p = (uint8_t *)&f_ctl;
@@ -1702,13 +1703,13 @@ static void q24_retry_term_exchange(scsi_qla_host_t *ha,
 	ctio->common.entry_count = 1;
 	ctio->common.nport_handle = entry->nport_handle;
 	ctio->common.handle = Q2T_SKIP_HANDLE |	CTIO_COMPLETION_HANDLE_MARK;
-	ctio->common.timeout = cpu_to_le16(Q2T_TIMEOUT);
+	ctio->common.timeout = __constant_cpu_to_le16(Q2T_TIMEOUT);
 	ctio->common.vp_index = ha->vp_idx;
 	ctio->common.initiator_id[0] = entry->fcp_hdr_le.d_id[0];
 	ctio->common.initiator_id[1] = entry->fcp_hdr_le.d_id[1];
 	ctio->common.initiator_id[2] = entry->fcp_hdr_le.d_id[2];
 	ctio->common.exchange_addr = entry->exchange_addr_to_abort;
-	ctio->flags = cpu_to_le16(CTIO7_FLAGS_STATUS_MODE_1 | CTIO7_FLAGS_TERMINATE);
+	ctio->flags = __constant_cpu_to_le16(CTIO7_FLAGS_STATUS_MODE_1 | CTIO7_FLAGS_TERMINATE);
 	ctio->ox_id = entry->fcp_hdr_le.ox_id;
 
 	TRACE_BUFFER("CTIO7 retry TERM EXCH packet data", ctio, REQUEST_ENTRY_SIZE);
@@ -1851,17 +1852,17 @@ static void q24_send_task_mgmt_ctio(scsi_qla_host_t *ha,
 	ctio->common.entry_count = 1;
 	ctio->common.handle = Q2T_SKIP_HANDLE | CTIO_COMPLETION_HANDLE_MARK;
 	ctio->common.nport_handle = mcmd->sess->loop_id;
-	ctio->common.timeout = cpu_to_le16(Q2T_TIMEOUT);
+	ctio->common.timeout = __constant_cpu_to_le16(Q2T_TIMEOUT);
 	ctio->common.vp_index = ha->vp_idx;
 	ctio->common.initiator_id[0] = atio->fcp_hdr.s_id[2];
 	ctio->common.initiator_id[1] = atio->fcp_hdr.s_id[1];
 	ctio->common.initiator_id[2] = atio->fcp_hdr.s_id[0];
 	ctio->common.exchange_addr = atio->exchange_addr;
-	ctio->flags = (atio->attr << 9) | cpu_to_le16(
+	ctio->flags = (atio->attr << 9) | __constant_cpu_to_le16(
 		CTIO7_FLAGS_STATUS_MODE_1 | CTIO7_FLAGS_SEND_STATUS);
 	ctio->ox_id = swab16(atio->fcp_hdr.ox_id);
-	ctio->scsi_status = cpu_to_le16(SS_RESPONSE_INFO_LEN_VALID);
-	ctio->response_len = cpu_to_le16(8);
+	ctio->scsi_status = __constant_cpu_to_le16(SS_RESPONSE_INFO_LEN_VALID);
+	ctio->response_len = __constant_cpu_to_le16(8);
 	((uint32_t *)ctio->sense_data)[0] = cpu_to_be32(resp_code);
 
 	TRACE_BUFFER("CTIO7 TASK MGMT packet data", ctio, REQUEST_ENTRY_SIZE);
@@ -1905,7 +1906,7 @@ static void q24_send_notify_ack(scsi_qla_host_t *ha,
 	nack->nport_handle = iocb->nport_handle;
 	if (le16_to_cpu(iocb->status) == IMM_NTFY_ELS) {
 		nack->flags = iocb->flags &
-			cpu_to_le32(NOTIFY24XX_FLAGS_PUREX_IOCB);
+			__constant_cpu_to_le32(NOTIFY24XX_FLAGS_PUREX_IOCB);
 	}
 	nack->srr_rx_id = iocb->srr_rx_id;
 	nack->status = iocb->status;
@@ -2167,7 +2168,7 @@ static void q2x_build_ctio_pkt(struct q2t_prm *prm)
 		ha->cmds[h-1] = prm->cmd;
 
 	pkt->common.handle = h | CTIO_COMPLETION_HANDLE_MARK;
-	pkt->common.timeout = cpu_to_le16(Q2T_TIMEOUT);
+	pkt->common.timeout = __constant_cpu_to_le16(Q2T_TIMEOUT);
 
 	/* Set initiator ID */
 	h = GET_TARGET_ID(ha, &prm->cmd->atio.atio2x);
@@ -2216,7 +2217,7 @@ static int q24_build_ctio_pkt(struct q2t_prm *prm)
 
 	pkt->common.handle = h | CTIO_COMPLETION_HANDLE_MARK;
 	pkt->common.nport_handle = cpu_to_le16(prm->cmd->loop_id);
-	pkt->common.timeout = cpu_to_le16(Q2T_TIMEOUT);
+	pkt->common.timeout = __constant_cpu_to_le16(Q2T_TIMEOUT);
 	pkt->common.initiator_id[0] = atio->fcp_hdr.s_id[2];
 	pkt->common.initiator_id[1] = atio->fcp_hdr.s_id[1];
 	pkt->common.initiator_id[2] = atio->fcp_hdr.s_id[0];
@@ -2346,7 +2347,8 @@ static void q2x_load_data_segments(struct q2t_prm *prm)
 		    cpu_to_le32(pci_dma_lo32(sg_dma_address(prm->sg)));
 		if (enable_64bit_addressing) {
 			*dword_ptr++ =
-			    cpu_to_le32(pci_dma_hi32(sg_dma_address(prm->sg)));
+			    cpu_to_le32(pci_dma_hi32
+					(sg_dma_address(prm->sg)));
 		}
 		*dword_ptr++ = cpu_to_le32(sg_dma_len(prm->sg));
 
@@ -2409,7 +2411,8 @@ static void q24_load_data_segments(struct q2t_prm *prm)
 		    cpu_to_le32(pci_dma_lo32(sg_dma_address(prm->sg)));
 		if (enable_64bit_addressing) {
 			*dword_ptr++ =
-			    cpu_to_le32(pci_dma_hi32(sg_dma_address(prm->sg)));
+			    cpu_to_le32(pci_dma_hi32(
+					sg_dma_address(prm->sg)));
 		}
 		*dword_ptr++ = cpu_to_le32(sg_dma_len(prm->sg));
 
@@ -2577,18 +2580,22 @@ static void q2x_init_ctio_ret_entry(ctio_ret_entry_t *ctio_m1,
 	prm->sense_buffer_len = min((uint32_t)prm->sense_buffer_len,
 				    (uint32_t)sizeof(ctio_m1->sense_data));
 
-	ctio_m1->flags = cpu_to_le16(OF_SSTS | OF_FAST_POST |
+	ctio_m1->flags = __constant_cpu_to_le16(OF_SSTS | OF_FAST_POST |
 				     OF_NO_DATA | OF_SS_MODE_1);
-	ctio_m1->flags |= cpu_to_le16(OF_INC_RC);
-	if (q2t_need_explicit_conf(prm->tgt->ha, prm->cmd, 0))
-		ctio_m1->flags |= cpu_to_le16(OF_EXPL_CONF | OF_CONF_REQ);
-
+	ctio_m1->flags |= __constant_cpu_to_le16(OF_INC_RC);
+	if (q2t_need_explicit_conf(prm->tgt->ha, prm->cmd, 0)) {
+		ctio_m1->flags |= __constant_cpu_to_le16(OF_EXPL_CONF |
+					OF_CONF_REQ);
+	}
 	ctio_m1->scsi_status = cpu_to_le16(prm->rq_result);
 	ctio_m1->residual = cpu_to_le32(prm->residual);
 	if (SCST_SENSE_VALID(prm->sense_buffer)) {
-		if (q2t_need_explicit_conf(prm->tgt->ha, prm->cmd, 1))
-			ctio_m1->flags |= cpu_to_le16(OF_EXPL_CONF | OF_CONF_REQ);
-		ctio_m1->scsi_status |= cpu_to_le16(SS_SENSE_LEN_VALID);
+		if (q2t_need_explicit_conf(prm->tgt->ha, prm->cmd, 1)) {
+			ctio_m1->flags |= __constant_cpu_to_le16(OF_EXPL_CONF |
+						OF_CONF_REQ);
+		}
+		ctio_m1->scsi_status |= __constant_cpu_to_le16(
+						SS_SENSE_LEN_VALID);
 		ctio_m1->sense_length = cpu_to_le16(prm->sense_buffer_len);
 		memcpy(ctio_m1->sense_data, prm->sense_buffer,
 		       prm->sense_buffer_len);
@@ -2631,8 +2638,8 @@ static int __q2x_xmit_response(struct q2t_cmd *cmd, int xmit_type)
 	pkt = (ctio_common_entry_t *)prm.pkt;
 
 	if (q2t_has_data(cmd) && (xmit_type & Q2T_XMIT_DATA)) {
-		pkt->flags |= cpu_to_le16(OF_FAST_POST | OF_DATA_IN);
-		pkt->flags |= cpu_to_le16(OF_INC_RC);
+		pkt->flags |= __constant_cpu_to_le16(OF_FAST_POST | OF_DATA_IN);
+		pkt->flags |= __constant_cpu_to_le16(OF_INC_RC);
 
 		q2x_load_data_segments(&prm);
 
@@ -2640,9 +2647,9 @@ static int __q2x_xmit_response(struct q2t_cmd *cmd, int xmit_type)
 			if (xmit_type & Q2T_XMIT_STATUS) {
 				pkt->scsi_status = cpu_to_le16(prm.rq_result);
 				pkt->residual = cpu_to_le32(prm.residual);
-				pkt->flags |= cpu_to_le16(OF_SSTS);
+				pkt->flags |= __constant_cpu_to_le16(OF_SSTS);
 				if (q2t_need_explicit_conf(ha, cmd, 0)) {
-					pkt->flags |= cpu_to_le16(
+					pkt->flags |= __constant_cpu_to_le16(
 							OF_EXPL_CONF |
 							OF_CONF_REQ);
 				}
@@ -2664,7 +2671,7 @@ static int __q2x_xmit_response(struct q2t_cmd *cmd, int xmit_type)
 
 			/* Real finish is ctio_m1's finish */
 			pkt->handle |= CTIO_INTERMEDIATE_HANDLE_MARK;
-			pkt->flags &= ~cpu_to_le16(OF_INC_RC);
+			pkt->flags &= ~__constant_cpu_to_le16(OF_INC_RC);
 
 			q2x_init_ctio_ret_entry(ctio_m1, &prm);
 			TRACE_BUFFER("Status CTIO packet data", ctio_m1,
@@ -2783,9 +2790,9 @@ static void q24_init_ctio_ret_entry(ctio7_status0_entry_t *ctio,
 
 	prm->sense_buffer_len = min((uint32_t)prm->sense_buffer_len,
 				    (uint32_t)sizeof(ctio1->sense_data));
-	ctio->flags |= cpu_to_le16(CTIO7_FLAGS_SEND_STATUS);
+	ctio->flags |= __constant_cpu_to_le16(CTIO7_FLAGS_SEND_STATUS);
 	if (q2t_need_explicit_conf(prm->tgt->ha, prm->cmd, 0)) {
-		ctio->flags |= cpu_to_le16(
+		ctio->flags |= __constant_cpu_to_le16(
 				CTIO7_FLAGS_EXPLICIT_CONFORM |
 				CTIO7_FLAGS_CONFORM_REQ);
 	}
@@ -2795,13 +2802,13 @@ static void q24_init_ctio_ret_entry(ctio7_status0_entry_t *ctio,
 		int i;
 		ctio1 = (ctio7_status1_entry_t *)ctio;
 		if (q2t_need_explicit_conf(prm->tgt->ha, prm->cmd, 1)) {
-			ctio1->flags |= cpu_to_le16(
+			ctio1->flags |= __constant_cpu_to_le16(
 				CTIO7_FLAGS_EXPLICIT_CONFORM |
 				CTIO7_FLAGS_CONFORM_REQ);
 		}
-		ctio1->flags &= ~cpu_to_le16(CTIO7_FLAGS_STATUS_MODE_0);
-		ctio1->flags |= cpu_to_le16(CTIO7_FLAGS_STATUS_MODE_1);
-		ctio1->scsi_status |= cpu_to_le16(SS_SENSE_LEN_VALID);
+		ctio1->flags &= ~__constant_cpu_to_le16(CTIO7_FLAGS_STATUS_MODE_0);
+		ctio1->flags |= __constant_cpu_to_le16(CTIO7_FLAGS_STATUS_MODE_1);
+		ctio1->scsi_status |= __constant_cpu_to_le16(SS_SENSE_LEN_VALID);
 		ctio1->sense_length = cpu_to_le16(prm->sense_buffer_len);
 		for (i = 0; i < prm->sense_buffer_len/4; i++)
 			((uint32_t *)ctio1->sense_data)[i] =
@@ -2819,8 +2826,8 @@ static void q24_init_ctio_ret_entry(ctio7_status0_entry_t *ctio,
 #endif
 	} else {
 		ctio1 = (ctio7_status1_entry_t *)ctio;
-		ctio1->flags &= ~cpu_to_le16(CTIO7_FLAGS_STATUS_MODE_0);
-		ctio1->flags |= cpu_to_le16(CTIO7_FLAGS_STATUS_MODE_1);
+		ctio1->flags &= ~__constant_cpu_to_le16(CTIO7_FLAGS_STATUS_MODE_0);
+		ctio1->flags |= __constant_cpu_to_le16(CTIO7_FLAGS_STATUS_MODE_1);
 		ctio1->sense_length = 0;
 		memset(ctio1->sense_data, 0, sizeof(ctio1->sense_data));
 	}
@@ -2862,8 +2869,8 @@ static int __q24_xmit_response(struct q2t_cmd *cmd, int xmit_type)
 	pkt = (ctio7_status0_entry_t *)prm.pkt;
 
 	if (q2t_has_data(cmd) && (xmit_type & Q2T_XMIT_DATA)) {
-		pkt->flags |= cpu_to_le16(CTIO7_FLAGS_DATA_IN |
-					  CTIO7_FLAGS_STATUS_MODE_0);
+		pkt->flags |= __constant_cpu_to_le16(CTIO7_FLAGS_DATA_IN |
+				CTIO7_FLAGS_STATUS_MODE_0);
 
 		q24_load_data_segments(&prm);
 
@@ -2871,10 +2878,10 @@ static int __q24_xmit_response(struct q2t_cmd *cmd, int xmit_type)
 			if (xmit_type & Q2T_XMIT_STATUS) {
 				pkt->scsi_status = cpu_to_le16(prm.rq_result);
 				pkt->residual = cpu_to_le32(prm.residual);
-				pkt->flags |= cpu_to_le16(
+				pkt->flags |= __constant_cpu_to_le16(
 						CTIO7_FLAGS_SEND_STATUS);
 				if (q2t_need_explicit_conf(ha, cmd, 0)) {
-					pkt->flags |= cpu_to_le16(
+					pkt->flags |= __constant_cpu_to_le16(
 						CTIO7_FLAGS_EXPLICIT_CONFORM |
 						CTIO7_FLAGS_CONFORM_REQ);
 				}
@@ -2893,11 +2900,13 @@ static int __q24_xmit_response(struct q2t_cmd *cmd, int xmit_type)
 			memcpy(ctio, pkt, sizeof(*ctio));
 			ctio->common.entry_count = 1;
 			ctio->common.dseg_count = 0;
-			ctio->flags &= ~cpu_to_le16(CTIO7_FLAGS_DATA_IN);
+			ctio->flags &= ~__constant_cpu_to_le16(
+						CTIO7_FLAGS_DATA_IN);
 
 			/* Real finish is ctio_m1's finish */
 			pkt->common.handle |= CTIO_INTERMEDIATE_HANDLE_MARK;
-			pkt->flags |= cpu_to_le16(CTIO7_FLAGS_DONT_RET_CTIO);
+			pkt->flags |= __constant_cpu_to_le16(
+					CTIO7_FLAGS_DONT_RET_CTIO);
 			q24_init_ctio_ret_entry((ctio7_status0_entry_t *)ctio,
 							&prm);
 			TRACE_BUFFER("Status CTIO7", ctio, REQUEST_ENTRY_SIZE);
@@ -2972,15 +2981,15 @@ static int __q2t_rdy_to_xfer(struct q2t_cmd *cmd)
 		if (unlikely(res != SCST_TGT_RES_SUCCESS))
 			goto out_unlock_free_unmap;
 		pkt = (ctio7_status0_entry_t *)prm.pkt;
-		pkt->flags |= cpu_to_le16(CTIO7_FLAGS_DATA_OUT |
-					  CTIO7_FLAGS_STATUS_MODE_0);
+		pkt->flags |= __constant_cpu_to_le16(CTIO7_FLAGS_DATA_OUT |
+				CTIO7_FLAGS_STATUS_MODE_0);
 		q24_load_data_segments(&prm);
 		p = pkt;
 	} else {
 		ctio_common_entry_t *pkt;
 		q2x_build_ctio_pkt(&prm);
 		pkt = (ctio_common_entry_t *)prm.pkt;
-		pkt->flags = cpu_to_le16(OF_FAST_POST | OF_DATA_OUT);
+		pkt->flags = __constant_cpu_to_le16(OF_FAST_POST | OF_DATA_OUT);
 		q2x_load_data_segments(&prm);
 		p = pkt;
 	}
@@ -3074,9 +3083,9 @@ static void q2x_send_term_exchange(scsi_qla_host_t *ha, struct q2t_cmd *cmd,
 	if (ctio->residual != 0)
 		ctio->scsi_status |= SS_RESIDUAL_UNDER;
 
-	ctio->flags = cpu_to_le16(OF_FAST_POST | OF_TERM_EXCH |
-				  OF_NO_DATA | OF_SS_MODE_1);
-	ctio->flags |= cpu_to_le16(OF_INC_RC);
+	ctio->flags = __constant_cpu_to_le16(OF_FAST_POST | OF_TERM_EXCH |
+			OF_NO_DATA | OF_SS_MODE_1);
+	ctio->flags |= __constant_cpu_to_le16(OF_INC_RC);
 
 	TRACE_BUFFER("CTIO TERM EXCH packet data", ctio, REQUEST_ENTRY_SIZE);
 
@@ -3140,13 +3149,13 @@ static void q24_send_term_exchange(scsi_qla_host_t *ha, struct q2t_cmd *cmd,
 	} else
 		ctio->common.nport_handle = CTIO7_NHANDLE_UNRECOGNIZED;
 	ctio->common.handle = Q2T_SKIP_HANDLE |	CTIO_COMPLETION_HANDLE_MARK;
-	ctio->common.timeout = cpu_to_le16(Q2T_TIMEOUT);
+	ctio->common.timeout = __constant_cpu_to_le16(Q2T_TIMEOUT);
 	ctio->common.vp_index = ha->vp_idx;
 	ctio->common.initiator_id[0] = atio->fcp_hdr.s_id[2];
 	ctio->common.initiator_id[1] = atio->fcp_hdr.s_id[1];
 	ctio->common.initiator_id[2] = atio->fcp_hdr.s_id[0];
 	ctio->common.exchange_addr = atio->exchange_addr;
-	ctio->flags = (atio->attr << 9) | cpu_to_le16(
+	ctio->flags = (atio->attr << 9) | __constant_cpu_to_le16(
 		CTIO7_FLAGS_STATUS_MODE_1 | CTIO7_FLAGS_TERMINATE);
 	ctio->ox_id = swab16(atio->fcp_hdr.ox_id);
 
@@ -3301,7 +3310,8 @@ static int q2t_term_ctio_exchange(scsi_qla_host_t *ha, void *ctio,
 	if (IS_FWI2_CAPABLE(ha)) {
 		if (ctio != NULL) {
 			ctio7_fw_entry_t *c = (ctio7_fw_entry_t *)ctio;
-			term = !(c->flags & cpu_to_le16(OF_TERM_EXCH));
+			term = !(c->flags &
+				__constant_cpu_to_le16(OF_TERM_EXCH));
 		} else
 			term = 1;
 		if (term) {
@@ -3314,7 +3324,9 @@ static int q2t_term_ctio_exchange(scsi_qla_host_t *ha, void *ctio,
 #if 0 /* seems, it isn't needed */
 		if (ctio != NULL) {
 			ctio_common_entry_t *c = (ctio_common_entry_t *)ctio;
-			term = !(c->flags & cpu_to_le16(CTIO7_FLAGS_TERMINATE));
+			term = !(c->flags &
+				__constant_cpu_to_le16(
+					CTIO7_FLAGS_TERMINATE));
 		} else
 			term = 1;
 		if (term) {
@@ -3666,8 +3678,8 @@ static int q24_do_send_cmd_to_scst(struct q2t_cmd *cmd)
 	else
 		dir = SCST_DATA_NONE;
 	scst_cmd_set_expected(cmd->scst_cmd, dir,
-		get_unaligned_be32(
-			&atio->fcp_cmnd.add_cdb[atio->fcp_cmnd.add_cdb_len]));
+		be32_to_cpu(get_unaligned((uint32_t *)
+			&atio->fcp_cmnd.add_cdb[atio->fcp_cmnd.add_cdb_len])));
 
 	switch (atio->fcp_cmnd.task_attr) {
 	case ATIO_SIMPLE_QUEUE:
@@ -4045,8 +4057,6 @@ out:
 static int q24_handle_els(scsi_qla_host_t *ha, notify24xx_entry_t *iocb)
 {
 	int res = 1; /* send notify ack */
-	struct q2t_sess *sess;
-	int loop_id;
 
 	TRACE_ENTRY();
 
@@ -4062,37 +4072,6 @@ static int q24_handle_els(scsi_qla_host_t *ha, notify24xx_entry_t *iocb)
 	case ELS_LOGO:
 	case ELS_PRLO:
 		res = q2t_reset(ha, iocb, Q2T_NEXUS_LOSS_SESS);
-
-		/* The peer logged out - if we have a session, we'll drop it */
-		if (IS_FWI2_CAPABLE(ha)) {
-			notify24xx_entry_t *n = (notify24xx_entry_t *)iocb;
-			loop_id = le16_to_cpu(n->nport_handle);
-		} else
-			loop_id = GET_TARGET_ID(ha, (notify_entry_t *)iocb);
-
-		if (loop_id != 0xFFFF) {
-			sess = q2t_find_sess_by_loop_id(ha->tgt, loop_id);
-
-			if (sess) {
-				TRACE_MGMT_DBG("qla2x00t(%ld): port logged out - scheduling session %p for deletion "
-					"(port %02x:%02x:%02x:%02x:%02x:%02x:%02x:%02x, loop_id %d)",
-					ha->instance, sess,
-					sess->port_name[0], sess->port_name[1],
-					sess->port_name[2], sess->port_name[3],
-					sess->port_name[4], sess->port_name[5],
-					sess->port_name[6], sess->port_name[7],
-					loop_id);
-
-				q2t_schedule_sess_for_deletion(sess);
-
-			} else {
-				/* no session - no action required */
-			}
-		} else {
-			PRINT_ERROR("qla2x00t(%ld): invalid loop id "
-				"%x for ELS opcode %x", ha->instance,
-				loop_id, iocb->status_subcode);
-		}
 		break;
 
 	case ELS_PDISC:
@@ -4813,7 +4792,7 @@ static void q2x_send_busy(scsi_qla_host_t *ha, atio_entry_t *atio)
 	ctio->entry_type = CTIO_RET_TYPE;
 	ctio->entry_count = 1;
 	ctio->handle = Q2T_SKIP_HANDLE | CTIO_COMPLETION_HANDLE_MARK;
-	ctio->scsi_status = cpu_to_le16(SAM_STAT_BUSY);
+	ctio->scsi_status = __constant_cpu_to_le16(SAM_STAT_BUSY);
 	ctio->residual = atio->data_length;
 	if (ctio->residual != 0)
 		ctio->scsi_status |= SS_RESIDUAL_UNDER;
@@ -4822,9 +4801,9 @@ static void q2x_send_busy(scsi_qla_host_t *ha, atio_entry_t *atio)
 	SET_TARGET_ID(ha, ctio->target, GET_TARGET_ID(ha, atio));
 	ctio->rx_id = atio->rx_id;
 
-	ctio->flags = cpu_to_le16(OF_SSTS | OF_FAST_POST |
+	ctio->flags = __constant_cpu_to_le16(OF_SSTS | OF_FAST_POST |
 				  OF_NO_DATA | OF_SS_MODE_1);
-	ctio->flags |= cpu_to_le16(OF_INC_RC);
+	ctio->flags |= __constant_cpu_to_le16(OF_INC_RC);
 	/*
 	 * CTIO from fw w/o scst_cmd doesn't provide enough info to retry it,
 	 * if the explicit conformation is used.
@@ -4877,13 +4856,13 @@ static void q24_send_busy(scsi_qla_host_t *ha, atio7_entry_t *atio,
 	ctio->common.entry_count = 1;
 	ctio->common.handle = Q2T_SKIP_HANDLE | CTIO_COMPLETION_HANDLE_MARK;
 	ctio->common.nport_handle = loop_id;
-	ctio->common.timeout = cpu_to_le16(Q2T_TIMEOUT);
+	ctio->common.timeout = __constant_cpu_to_le16(Q2T_TIMEOUT);
 	ctio->common.vp_index = ha->vp_idx;
 	ctio->common.initiator_id[0] = atio->fcp_hdr.s_id[2];
 	ctio->common.initiator_id[1] = atio->fcp_hdr.s_id[1];
 	ctio->common.initiator_id[2] = atio->fcp_hdr.s_id[0];
 	ctio->common.exchange_addr = atio->exchange_addr;
-	ctio->flags = (atio->attr << 9) | cpu_to_le16(
+	ctio->flags = (atio->attr << 9) | __constant_cpu_to_le16(
 		CTIO7_FLAGS_STATUS_MODE_1 | CTIO7_FLAGS_SEND_STATUS |
 		CTIO7_FLAGS_DONT_RET_CTIO);
 	/*
@@ -4936,8 +4915,8 @@ static void q24_atio_pkt(scsi_qla_host_t *ha, atio7_entry_t *atio)
 			"add_cdb_len %d, data_length %04x, s_id %x:%x:%x",
 			ha->instance, atio->fcp_cmnd.lun, atio->fcp_cmnd.rddata,
 			atio->fcp_cmnd.wrdata, atio->fcp_cmnd.add_cdb_len,
-			get_unaligned_be32(
-				&atio->fcp_cmnd.add_cdb[atio->fcp_cmnd.add_cdb_len]),
+			be32_to_cpu(get_unaligned((uint32_t *)
+				&atio->fcp_cmnd.add_cdb[atio->fcp_cmnd.add_cdb_len])),
 			atio->fcp_hdr.s_id[0], atio->fcp_hdr.s_id[1],
 			atio->fcp_hdr.s_id[2]);
 		TRACE_BUFFER("Incoming ATIO7 packet data", atio,
@@ -5067,7 +5046,7 @@ static void q2t_response_pkt(scsi_qla_host_t *ha, response_t *pkt)
 			  GET_TARGET_ID(ha, atio), atio->rx_id);
 		TRACE_BUFFER("Incoming ATIO packet data", atio,
 			REQUEST_ENTRY_SIZE);
-		if (atio->status != cpu_to_le16(ATIO_CDB_VALID)) {
+		if (atio->status != __constant_cpu_to_le16(ATIO_CDB_VALID)) {
 			PRINT_ERROR("qla2x00t(%ld): ATIO with error "
 				    "status %x received", ha->instance,
 				    le16_to_cpu(atio->status));
@@ -5132,7 +5111,7 @@ static void q2t_response_pkt(scsi_qla_host_t *ha, response_t *pkt)
 			TRACE_BUFFER("Incoming NOTIFY_ACK packet data", pkt,
 				RESPONSE_ENTRY_SIZE);
 			tgt->notify_ack_expected--;
-			if (entry->status != cpu_to_le16(NOTIFY_ACK_SUCCESS)) {
+			if (entry->status != __constant_cpu_to_le16(NOTIFY_ACK_SUCCESS)) {
 				PRINT_ERROR("qla2x00t(%ld): NOTIFY_ACK "
 					    "failed %x", ha->instance,
 					    le16_to_cpu(entry->status));

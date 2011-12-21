@@ -22,7 +22,6 @@
 #include <linux/cdrom.h>
 #include <scsi/scsi_host.h>
 #include <linux/slab.h>
-#include <asm/unaligned.h>
 
 #define LOG_PREFIX	"dev_cdrom"
 
@@ -136,7 +135,8 @@ static int cdrom_attach(struct scst_device *dev)
 	}
 
 	if (rc == 0) {
-		uint32_t sector_size = get_unaligned_be32(&buffer[4]);
+		int sector_size = ((buffer[4] << 24) | (buffer[5] << 16) |
+				      (buffer[6] << 8) | (buffer[7] << 0));
 		if (sector_size == 0)
 			params->block_shift = CDROM_DEF_BLOCK_SHIFT;
 		else

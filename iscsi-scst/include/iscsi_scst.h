@@ -17,11 +17,8 @@
 #ifndef _ISCSI_SCST_U_H
 #define _ISCSI_SCST_U_H
 
-#ifdef __KERNEL__
-#include <linux/types.h>
-#else
+#ifndef __KERNEL__
 #include <sys/uio.h>
-#define aligned_u64 uint64_t __attribute__((aligned(8)))
 #endif
 
 #include "iscsi_scst_ver.h"
@@ -38,6 +35,10 @@
 #define ISCSI_LISTEN_PORT	3260
 
 #define SCSI_ID_LEN		24
+
+#ifndef aligned_u64
+#define aligned_u64 uint64_t __attribute__((aligned(8)))
+#endif
 
 #define ISCSI_MAX_ATTR_NAME_LEN		50
 #define ISCSI_MAX_ATTR_VALUE_LEN	512
