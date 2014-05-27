@@ -80,7 +80,7 @@ static struct scst_trace_log vdisk_local_trace_tbl[] = {
 #define SCST_FIO_VENDOR			"SCST_FIO"
 #define SCST_BIO_VENDOR			"SCST_BIO"
 /* 4 byte ASCII Product Revision Level - left aligned */
-#define SCST_FIO_REV			" 310"
+#define SCST_FIO_REV			" 300"
 
 #define MAX_USN_LEN			(20+1) /* For '\0' */
 #define MAX_INQ_VEND_SPECIFIC_LEN	(INQ_BUF_SZ - 96)
@@ -109,7 +109,6 @@ static struct scst_trace_log vdisk_local_trace_tbl[] = {
 #define DEF_NV_CACHE			0
 #define DEF_O_DIRECT			0
 #define DEF_DUMMY			0
-#define DEF_READ_ZERO			0
 #define DEF_REMOVABLE			0
 #define DEF_ROTATIONAL			1
 #define DEF_THIN_PROVISIONED		0
@@ -161,7 +160,6 @@ struct scst_vdisk_dev {
 	unsigned int blockio:1;
 	unsigned int cdrom_empty:1;
 	unsigned int dummy:1;
-	unsigned int read_zero:1;
 	unsigned int removable:1;
 	unsigned int thin_provisioned:1;
 	unsigned int thin_provisioned_manually_set:1;
@@ -351,10 +349,6 @@ static ssize_t vdisk_sysfs_o_direct_show(struct kobject *kobj,
 	struct kobj_attribute *attr, char *buf);
 static ssize_t vdev_sysfs_dummy_show(struct kobject *kobj,
 	struct kobj_attribute *attr, char *buf);
-static ssize_t vdev_sysfs_rz_show(struct kobject *kobj,
-	struct kobj_attribute *attr, char *buf);
-static ssize_t vdev_sysfs_rz_store(struct kobject *kobj,
-	struct kobj_attribute *attr, const char *buf, size_t count);
 static ssize_t vdisk_sysfs_removable_show(struct kobject *kobj,
 	struct kobj_attribute *attr, char *buf);
 static ssize_t vdev_sysfs_filename_show(struct kobject *kobj,
@@ -427,9 +421,6 @@ static struct kobj_attribute vdisk_o_direct_attr =
 	__ATTR(o_direct, S_IRUGO, vdisk_sysfs_o_direct_show, NULL);
 static struct kobj_attribute vdev_dummy_attr =
 	__ATTR(dummy, S_IRUGO, vdev_sysfs_dummy_show, NULL);
-static struct kobj_attribute vdev_read_zero_attr =
-	__ATTR(read_zero, S_IWUSR|S_IRUGO, vdev_sysfs_rz_show,
-	       vdev_sysfs_rz_store);
 static struct kobj_attribute vdisk_removable_attr =
 	__ATTR(removable, S_IRUGO, vdisk_sysfs_removable_show, NULL);
 static struct kobj_attribute vdisk_filename_attr =
@@ -525,7 +516,6 @@ static const struct attribute *vdisk_nullio_attrs[] = {
 	&vdisk_rd_only_attr.attr,
 	&vdisk_tst_attr.attr,
 	&vdev_dummy_attr.attr,
-	&vdev_read_zero_attr.attr,
 	&vdisk_removable_attr.attr,
 	&vdev_t10_vend_id_attr.attr,
 	&vdev_vend_specific_id_attr.attr,
@@ -4755,28 +4745,6 @@ out:
 
 static enum compl_status_e nullio_exec_read(struct vdisk_cmd_params *p)
 {
-	struct scst_cmd *cmd = p->cmd;
-	struct scst_device *dev = cmd->dev;
-	struct scst_vdisk_dev *virt_dev = dev->dh_priv;
-
-	TRACE_ENTRY();
-
-	if (virt_dev->read_zero) {
-		struct scatterlist *sge;
-		int i;
-		void *p;
-
-		for_each_sg(cmd->sg, sge, cmd->sg_cnt, i) {
-			p = kmap(sg_page(sge));
-			if (sge->offset == 0 && sge->length == PAGE_SIZE)
-				clear_page(p);
-			else
-				memset(p + sge->offset, 0, sge->length);
-			kunmap(p);
-		}
-	}
-
-	TRACE_EXIT();
 	return CMD_SUCCEEDED;
 }
 
@@ -5974,7 +5942,6 @@ static int vdev_create(struct scst_dev_type *devt,
 
 	virt_dev->rd_only = DEF_RD_ONLY;
 	virt_dev->dummy = DEF_DUMMY;
-	virt_dev->read_zero = DEF_READ_ZERO;
 	virt_dev->removable = DEF_REMOVABLE;
 	virt_dev->rotational = DEF_ROTATIONAL;
 	virt_dev->thin_provisioned = DEF_THIN_PROVISIONED;
@@ -7043,51 +7010,6 @@ static ssize_t vdev_sysfs_dummy_show(struct kobject *kobj,
 
 	return sprintf(buf, "%d\n%s", virt_dev->dummy,
 		 virt_dev->dummy != DEF_DUMMY ? SCST_SYSFS_KEY_MARK "\n" : "");
-}
-
-static ssize_t vdev_sysfs_rz_show(struct kobject *kobj,
-				  struct kobj_attribute *attr, char *buf)
-{
-	struct scst_device *dev = container_of(kobj, struct scst_device,
-					       dev_kobj);
-	struct scst_vdisk_dev *virt_dev = dev->dh_priv;
-	bool read_zero = virt_dev->read_zero;
-
-	return sprintf(buf, "%d\n%s", read_zero, read_zero != DEF_READ_ZERO ?
-		       SCST_SYSFS_KEY_MARK "\n" : "");
-}
-
-static ssize_t vdev_sysfs_rz_store(struct kobject *kobj,
-				   struct kobj_attribute *attr, const char *buf,
-				   size_t count)
-{
-	struct scst_device *dev = container_of(kobj, struct scst_device,
-					       dev_kobj);
-	struct scst_vdisk_dev *virt_dev = dev->dh_priv;
-	long read_zero;
-	int res;
-	char ch[16];
-
-	sprintf(ch, "%.*s", min_t(int, sizeof(ch) - 1, count), buf);
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 39)
-	res = kstrtol(ch, 0, &read_zero);
-#else
-	res = strict_strtol(ch, 0, &read_zero);
-#endif
-	if (res)
-		goto out;
-	res = -EINVAL;
-	if (read_zero != 0 && read_zero != 1)
-		goto out;
-
-	spin_lock(&virt_dev->flags_lock);
-	virt_dev->read_zero = read_zero;
-	spin_unlock(&virt_dev->flags_lock);
-
-	res = count;
-
-out:
-	return res;
 }
 
 static ssize_t vdisk_sysfs_removable_show(struct kobject *kobj,

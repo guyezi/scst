@@ -192,12 +192,12 @@ qla2x00_store_expl_conf_enabled(struct device *dev,
 	switch (buffer[0]) {
 	case '0':
 		ha->enable_explicit_conf = 0;
-		qla_printk(KERN_INFO, ha, "qla2xxx(%ld): explicit confirmation "
+		qla_printk(KERN_INFO, ha, "qla2xxx(%ld): explicit conformation "
 			"disabled\n", ha->instance);
 		break;
 	case '1':
 		ha->enable_explicit_conf = 1;
-		qla_printk(KERN_INFO, ha, "qla2xxx(%ld): explicit confirmation "
+		qla_printk(KERN_INFO, ha, "qla2xxx(%ld): explicit conformation "
 			"enabled\n", ha->instance);
 		break;
 	default:
