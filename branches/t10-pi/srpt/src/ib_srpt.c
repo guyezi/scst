@@ -1427,34 +1427,6 @@ static void srpt_abort_cmd(struct srpt_send_ioctx *ioctx,
 	}
 }
 
-static void srpt_on_abort_cmd(struct scst_cmd *cmd)
-{
-	struct srpt_send_ioctx *ioctx = scst_cmd_get_tgt_priv(cmd);
-	struct srpt_rdma_ch *ch = ioctx->ch;
-
-	if (ch->state >= CH_DISCONNECTED) {
-		switch (ioctx->state) {
-		case SRPT_STATE_NEW:
-		case SRPT_STATE_DATA_IN:
-		case SRPT_STATE_MGMT:
-		case SRPT_STATE_DONE:
-			/*
-			 * An SCST command thread is busy processing the
-			 * command associated with the I/O context, so wait
-			 * until that processing has finished.
-			 */
-			break;
-		case SRPT_STATE_NEED_DATA:
-		case SRPT_STATE_CMD_RSP_SENT:
-		case SRPT_STATE_MGMT_RSP_SENT:
-			pr_err("Cmd %p: IB completion for idx %u has not been received in time (SRPT command state %d)\n",
-			       cmd, ioctx->ioctx.index, ioctx->state);
-			srpt_abort_cmd(ioctx, SCST_CONTEXT_THREAD);
-			break;
-		}
-	}
-}
-
 /**
  * srpt_handle_send_err_comp() - Process an IB_WC_SEND error completion.
  */
@@ -4060,7 +4032,6 @@ static struct scst_tgt_template srpt_template = {
 	.close_session			 = srpt_close_session,
 	.xmit_response			 = srpt_xmit_response,
 	.rdy_to_xfer			 = srpt_rdy_to_xfer,
-	.on_abort_cmd			 = srpt_on_abort_cmd,
 	.on_hw_pending_cmd_timeout	 = srpt_pending_cmd_timeout,
 	.on_free_cmd			 = srpt_on_free_cmd,
 	.task_mgmt_fn_done		 = srpt_tsk_mgmt_done,
@@ -4218,8 +4189,11 @@ static void srpt_add_one(struct ib_device *device)
 		INIT_LIST_HEAD(&sport->nexus_list);
 		init_waitqueue_head(&sport->ch_releaseQ);
 		mutex_init(&sport->mutex);
-		for (j = 0; j < COMP_V_MASK_SIZE; j++)
+		for (j = 0; j < sdev->device->num_comp_vectors; j++) {
+			if (WARN_ON_ONCE(j >= COMP_V_MASK_SIZE))
+				break;
 			__set_bit(j, sport->comp_v_mask);
+		}
 #if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 20) && !defined(BACKPORT_LINUX_WORKQUEUE_TO_2_6_19)
 		/*
 		 * A vanilla 2.6.19 or older kernel without backported OFED
