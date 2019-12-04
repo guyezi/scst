@@ -1,0 +1,2 @@
+# iscsi-scstd command-line options. See also man iscsi-scstd.
+# ISCSID_OPTIONS="-u0 -g0 -p3260"

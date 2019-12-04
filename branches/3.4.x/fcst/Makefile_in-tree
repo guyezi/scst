@@ -1,0 +1,11 @@
+ifneq ($(and $(KBUILD_EXTMOD),$(if $(findstring $(abspath $(srctree)),$(abspath $(KBUILD_EXTMOD))),,true)),)
+ccflags-y += -I$(KBUILD_EXTMOD)/../scst/include
+endif
+
+obj-$(CONFIG_FCST) += fcst.o
+
+fcst-objs := \
+	ft_cmd.o \
+	ft_io.o \
+	ft_scst.o \
+	ft_sess.o

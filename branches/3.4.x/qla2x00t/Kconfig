@@ -1,0 +1,69 @@
+config SCSI_QLA_FC
+	tristate "QLogic QLA2XXX Fibre Channel Support"
+	depends on PCI && SCSI
+	select SCSI_FC_ATTRS
+	select FW_LOADER
+	---help---
+	This qla2xxx driver supports all QLogic Fibre Channel
+	PCI and PCIe host adapters.
+
+	By default, firmware for the ISP parts will be loaded
+	via the Firmware Loader interface.
+
+	ISP               Firmware Filename
+	----------        -----------------
+	21xx              ql2100_fw.bin
+	22xx              ql2200_fw.bin
+	2300, 2312, 6312  ql2300_fw.bin
+	2322, 6322        ql2322_fw.bin
+	24xx, 54xx        ql2400_fw.bin
+	25xx              ql2500_fw.bin
+
+	Upon request, the driver caches the firmware image until
+	the driver is unloaded.
+
+	Firmware images can be retrieved from:
+
+		http://ldriver.qlogic.com/firmware/
+
+config SCSI_QLA2XXX_TARGET
+	bool "QLogic 2xxx target mode support"
+	depends on SCSI_QLA_FC
+	default y
+	---help---
+	This option enables target mode hooks used by the SCST qla2x00t
+	driver. Once qla2x00tgt module is loaded, target mode for each
+	port can be enable via sysfs interface.
+
+	You will also need the SCST middle level for qla2x00t.
+
+config SCST_QLA_TGT_ADDON
+	tristate "QLogic 2XXX Target Mode Add-On"
+	depends on SCST && SCSI_QLA_FC && SCSI_QLA2XXX_TARGET
+	default SCST
+	help
+	  Target mode add-on driver for QLogic 2xxx Fibre Channel host adapters.
+	  Visit http://scst.sourceforge.net for more info about this driver.
+
+config QLA_TGT_DEBUG_WORK_IN_THREAD
+	bool "Use threads context only"
+	depends on SCST_QLA_TGT_ADDON
+	help
+	  Makes SCST process incoming commands from the qla2x00t target
+	  driver and call the driver's callbacks in internal SCST
+	  threads context instead of SIRQ context, where thise commands
+	  were received. Useful for debugging and lead to some
+	  performance loss.
+
+	  If unsure, say "N".
+
+config QLA_TGT_DEBUG_SRR
+	bool "SRR debugging"
+	depends on SCST_QLA_TGT_ADDON
+	help
+	  Turns on retransmitting packets (SRR)
+	  debugging. In this mode some CTIOs will be "broken" to force the
+	  initiator to issue a retransmit request. Useful for debugging and lead to big
+	  performance loss.
+
+	  If unsure, say "N".

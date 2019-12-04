@@ -1,0 +1,26 @@
+#!/bin/bash
+
+# Parse modules.order and sign the modules found in that file.
+
+if [ -z "$KDIR" ]; then
+    echo "Error: \$KDIR has not been set"
+    exit 1
+fi
+
+scst_dir=$(dirname "$(cd "$(dirname "$0")" && pwd)")
+
+if [ ! -e "${KDIR}/scripts/sign-file" ]; then
+    echo "Not signing modules because no sign-file executable"
+    exit
+fi
+
+[ -e "${scst_dir}/scst/src/certs/scst_module_key.priv" ] || exit 0
+[ -e "${scst_dir}/scst/src/certs/scst_module_key.der" ] || exit 0
+
+CONFIG_MODULE_SIG_HASH=$(sed -n 's/^CONFIG_MODULE_SIG_HASH="\([^"]*\)"$/\1/p' "${KDIR}/.config" | { read -r line; [ -n "$line" ] && echo "$line" || echo sha256; })
+
+sed 's,^kernel/,,' < modules.order | \
+    while read -r f; do
+	echo "Signing $f"
+	"${KDIR}/scripts/sign-file" "${CONFIG_MODULE_SIG_HASH}" "${scst_dir}/scst/src/certs/scst_module_key.priv" "${scst_dir}/scst/src/certs/scst_module_key.der" "$f" || exit $?
+    done
